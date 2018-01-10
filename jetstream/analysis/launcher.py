@@ -1,3 +1,13 @@
+""" This should bridge the workflow components and the execution environment. 
+Module names should be linked to the command that executes them. We need to decide
+on exactly how the modules behave:
+
+    - Do they receive a path to the project as an argument?
+    - Can they assume that they will always start in a project directory?
+    - Should they read project data from some sort of manifest?
+    - Or, is piped to stdin?
+    
+"""    
 import jetstream.settings as settings
 from random import random
 
