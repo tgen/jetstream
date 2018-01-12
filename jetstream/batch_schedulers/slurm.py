@@ -3,6 +3,7 @@ import json
 import shlex
 import subprocess
 import logging
+import asyncio
 from collections import OrderedDict
 
 log = logging.getLogger(__name__)
@@ -39,9 +40,10 @@ states = {
                  'and CPUs have been released for other jobs.',
     'TIMEOUT': 'Job terminated upon reaching its time limit.'
 }
-active_states = {'CONFIGURING', 'COMPLETING', 'RUNNING', 'SPECIAL_EXIT',}
+active_states = {'CONFIGURING', 'COMPLETING', 'RUNNING', 'SPECIAL_EXIT',
+                 'PENDING',}
 inactive_states = {'BOOT_FAIL', 'CANCELLED', 'COMPLETED', 'FAILED',
-                   'NODE_FAIL', 'PENDING', 'PREEMPTED', 'REVOKED',
+                   'NODE_FAIL', 'PREEMPTED', 'REVOKED',
                    'STOPPED', 'SUSPENDED', 'TIMEOUT',}
 failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL',}
 completed_states = {'COMPLETED',}
@@ -85,6 +87,12 @@ class SlurmJob(object):
     def update(self):
         # TODO This class could be useful if exposed with an update feature
         raise NotImplementedError
+
+    async def await(self):
+        while not self.is_complete:
+            self.update()
+            await asyncio.sleep(1)
+        return self
 
 
 def job_ids_to_arguments(job_ids):

@@ -1,4 +1,4 @@
-""" Validators for project config settings
+""" Validators for project config files
 
 These functions are used to validate teh config file key,value pairs against
 a schema. Add more value types in the fns module. This should stay relatively

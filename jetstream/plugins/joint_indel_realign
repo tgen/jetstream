@@ -14,6 +14,7 @@
 # They have read-only access in data/, and read-write access in tmp/. A project manifest will always be available in data/ that 
 # stores project-wide runtime variables. These variables can be used by the analysis modules for configuration. 
 
-echo "Analysis Module B is running on: $(pwd)"
+echo "Running on: $(pwd)"
+jetstream -h
 sleep 300
-echo "Analysis Module B is done!"
+echo "Done!"

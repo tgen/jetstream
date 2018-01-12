@@ -14,6 +14,7 @@ extension = '.intervals'
 
 
 def parse_interval(string):
+    # TODO sometimes the records are just "chr:start"
     seqname, *others = string.split(':')
     if others:
         start, stop = others.split('-')

@@ -29,11 +29,6 @@ import subprocess
 import logging
 import configparser
 import argparse
-import tempfile
-import threading
-import os
-import sys
-from uuid import uuid1
 
 import jetstream
 
@@ -153,7 +148,6 @@ def parse_args(args=None):
 
 def cli(args=None): #reference_gtf, reference_dict, targets_bed, regions_bed):
     args = parse_args(args)
-
     baits_gtf = args.baits
     targets_gtf = args.targets
     ref_dict = args.reference

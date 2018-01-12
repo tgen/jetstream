@@ -18,7 +18,7 @@ class NotDagError(Exception):
 class Workflow:
     def __init__(self, id=None, notify=None, graph=None):
         self.id = id or str(uuid())
-        self.notify = notify or print
+        self.notify = notify or log.debug
         self.graph = graph or nx.DiGraph(name=self.id, )
 
     # Utility methods
@@ -33,7 +33,7 @@ class Workflow:
         return data
 
     def serialize_pydot(self):
-        # Had to dig into the networkx source to find this, but it works..
+        # Note Had to dig into the networkx source to find this, but it works..
         return to_pydot(self.graph).__str__()
 
     @staticmethod
@@ -50,8 +50,8 @@ class Workflow:
 
     def __send__(self, result):
         """ Returns results to the workflow """
-        node_name, process = result
-        print('Workflow recieved results for pid:', str(process.pid))
+        node_name, record = result
+        log.critical('Workflow recieved results for {}\n{}'.format(node_name, record))
         # TODO handle results better
         self.update(node_name, 'complete')
 
