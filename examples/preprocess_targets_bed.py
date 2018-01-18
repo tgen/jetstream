@@ -14,10 +14,12 @@ def preprocess_bed(path):
     """ Preprocessing used for canine """
     bed = intervals.read_bed(path)
 
-    # Remove chr prefix from sequence names
+    # Fix abnormal sequence names
     for i in bed:
         i['seqname'] = remove_prefix(i['seqname'], 'chr')
         i['seqname'] = i['seqname'].replace('_', '.')
+        if i['seqname'] == 'M':
+            i['seqname'] = 'MT'
 
     print(intervals.to_bed(bed))
 
