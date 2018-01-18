@@ -268,15 +268,15 @@ def make_vcf_filter(targets, refdict, gtf):
     # "cmd = 'cat {padded_targets} {exons_in_targets} | {BEDTOOLS} sort -i stdin
     # | {BEDTOOLS} merge -i {} > {union}'"
 
-    union = tempfile.NamedTemporaryFile()
-    with open(union.name, 'w') as union_fp:
+    all_ints = tempfile.NamedTemporaryFile()
+    with open(all_ints.name, 'w') as all_ints_fp:
         with open(padded_targets.name, 'r') as padded_targets_fp:
             for line in padded_targets_fp:
-                union_fp.write(line)
+                all_ints_fp.write(line)
         with open(exons_in_targets.name, 'r') as exons_in_targets_fp:
             for line in exons_in_targets_fp:
-                union_fp.write(line)
-    bedtools_merge(union.name)
+                all_ints_fp.write(line)
+    union = bedtools_merge(all_ints.name)
 
     return union
 
