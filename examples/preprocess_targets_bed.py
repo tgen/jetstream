@@ -10,7 +10,7 @@ def remove_prefix(string, prefix):
         return string
 
 
-def preprocess_bed(path, out_path):
+def preprocess_bed(path):
     """ Preprocessing used for canine """
     bed = intervals.read_bed(path)
 
