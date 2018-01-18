@@ -7,3 +7,4 @@ plugin_path = _plugin_path
 plugins = {f: path.join(_plugin_path, f) for f in listdir(_plugin_path)}
 
 from jetstream.workflow import Workflow
+from jetstream import formats

@@ -18,6 +18,7 @@ def read(fname):
 
 
 plugins = package_files('jetstream/plugins')
+libs = package_files('jetstream/jslib')
 
 setup(
     name = "jetstream",
@@ -35,6 +36,7 @@ setup(
     ],
     include_package_data=True,
     package_data={'': plugins},
+
 
     # Eventually this will be replaced with cli entry-points but for now it
     # helps me prototype quickly
