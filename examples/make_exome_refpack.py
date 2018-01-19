@@ -282,13 +282,25 @@ def make_vcf_filter(targets, refdict, gtf):
 
 
 def make_cna_filter(cna_template_bed, bed):
+    # First we need to changed X -> 24 and Y -> 25
+    bed = intervals.read_bed(bed)
+    for i in bed:
+        if i['seqname'] == 'X':
+            i['seqname'] = '24'
+        elif i['seqname'] == 'Y':
+            i['seqname'] = '25'
+
+    temp_bed = tempfile.NamedTemporaryFile()
+    with open(temp_bed.name, 'w') as fp:
+        print(intervals.to_bed(bed), file=fp)
+
     cmd_args = [
         BEDTOOLS,
         'intersect',
         '-header',
         '-c',
         '-a', cna_template_bed,
-        '-b', bed
+        '-b', temp_bed.name
     ]
 
     log.debug('Starting Bedtools intersect count: {}'.format(' '.join(cmd_args)))
