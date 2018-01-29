@@ -15,6 +15,19 @@ included along with each script? Or this utility pulls plugins from a central
 
 Uses some advanced glob for stageIn/stageOut
 
+Plugin id format:
+    "{}/{}:{}".format(plugin, path, revision (optional))
+
+The tools here can be combined for some pretty cool results. Here is a loop that
+prints every version of a plugin component available in the archive:
+
+```python
+for r in plugins.list_revisions('pegasusPipe/jobScripts/pegasus_firstStrandedSalmon.sh'):
+     p = plugins.get_plugin('pegasusPipe/jobScripts/pegasus_firstStrandedSalmon.sh'+ ':'+r['id'])
+     print('pegasusPipe/jobScripts/pegasus_firstStrandedSalmon.sh'+ ':'+r['id'])
+     print(p.decode())
+```
+
 """
 import os
 import shutil
@@ -49,28 +62,6 @@ def _remove(plugin):
     shutil.rmtree(os.path.join(plugin_dir, plugin))
 
 
-def _list_revisions(plugin, path):
-    """ Returns a dictionary of all the logs for a particular path.
-    It may be useful at some point for discovering versions available.
-    http://blog.lost-theory.org/post/how-to-parse-git-log-output/
-    """
-    commit_fields= ['id', 'author_name', 'author_email', 'date', 'message']
-    log_fields = ['%H', '%an', '%ae', '%ad', '%s']
-    git_log_format = '%x1f'.join(log_fields) + '%x1e'
-    format_flag = '--format={}'.format(git_log_format)
-
-    data = subprocess.check_output(
-        ['git', 'log', format_flag],
-        cwd=os.path.join(plugin_dir, plugin)
-    ).decode()
-
-    git_log = data.strip('\n\x1e').strip().split('\x1e')
-    git_log = [row.strip().split('\x1f') for row in git_log]
-    git_log = [dict(zip(commit_fields, row)) for row in git_log]
-
-    return git_log
-
-
 def _get_path(plugin, path, revision=None):
     """ Retrieve a path from plugin. Returns the path as bytes."""
     if revision is None:
@@ -90,6 +81,28 @@ def _get_path(plugin, path, revision=None):
     return data
 
 
+def _get_path_revisions(plugin, path):
+    """ Returns a list of all the logs for a particular path.
+   It may be useful at some point for discovering versions available.
+   http://blog.lost-theory.org/post/how-to-parse-git-log-output/
+   """
+    commit_fields = ['id', 'author_name', 'author_email', 'date', 'message']
+    log_fields = ['%H', '%an', '%ae', '%ad', '%s']
+    git_log_format = '%x1f'.join(log_fields) + '%x1e'
+    format_flag = '--format={}'.format(git_log_format)
+
+    data = subprocess.check_output(
+        ['git', 'log', format_flag, '--', path],
+        cwd=os.path.join(plugin_dir, plugin)
+    ).decode()
+
+    git_log = data.strip('\n\x1e').strip().split('\x1e')
+    git_log = [row.strip().split('\x1f') for row in git_log]
+    git_log = [dict(zip(commit_fields, row)) for row in git_log]
+
+    return git_log
+
+
 def _resolve_plugin_id(string):
     """ Resolves a plugin id string, returns a dictionary of properties """
     rx = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
@@ -100,6 +113,7 @@ def _resolve_plugin_id(string):
 
 
 def list():
+    """ List all plugin paths available """
     # TODO oh god this is ugly,,
     all = glob.glob(plugin_dir + '/**', recursive=True)
     all = [p for p in all if os.path.isfile(p)]
@@ -108,7 +122,25 @@ def list():
     return all
 
 
+def list_revisions(plugin_id):
+    """ Given a plugin id, returns a list of all revisions """
+    p = _resolve_plugin_id(plugin_id)
+    revs = _get_path_revisions(p['plugin'], p['path'])
+    return revs
+
+
+def revision_freeze(plugin_id):
+    """ Given plugin id, returns the lastest version as a freeze string """
+    p = _resolve_plugin_id(plugin_id)
+    revs = _get_path_revisions(p['plugin'], p['path'])
+    latest_id = revs[0]['id']
+    freeze = '{}/{}:{}'.format(p['plugin'], p['path'], latest_id)
+    return freeze
+
+
 def get_plugin(plugin_id):
+    """ Given plugin_id Returns the plugin path. Freeze strings are allowed
+    here. """
     p = _resolve_plugin_id(plugin_id)
     plugin_data = _get_path(p.get('plugin'), p.get('path'), p.get('revision'))
 
