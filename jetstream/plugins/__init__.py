@@ -103,13 +103,16 @@ def _get_path_revisions(plugin, path):
     return git_log
 
 
-def _resolve_plugin_id(string):
+def _parse_plugin_id(string):
     """ Resolves a plugin id string, returns a dictionary of properties """
     rx = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
     plugin_id_pattern = re.compile(rx)
+
     match = plugin_id_pattern.match(string)
-    groups = match.groupdict()
-    return groups
+    if match is None:
+        raise ValueError('Invalid plugin id: {}'.format(string))
+    else:
+        return match.groupdict()
 
 
 def list():
@@ -124,14 +127,14 @@ def list():
 
 def list_revisions(plugin_id):
     """ Given a plugin id, returns a list of all revisions """
-    p = _resolve_plugin_id(plugin_id)
+    p = _parse_plugin_id(plugin_id)
     revs = _get_path_revisions(p['plugin'], p['path'])
     return revs
 
 
 def revision_freeze(plugin_id):
     """ Given plugin id, returns the lastest version as a freeze string """
-    p = _resolve_plugin_id(plugin_id)
+    p =  _parse_plugin_id(plugin_id)
     revs = _get_path_revisions(p['plugin'], p['path'])
     latest_id = revs[0]['id']
     freeze = '{}/{}:{}'.format(p['plugin'], p['path'], latest_id)
@@ -141,7 +144,7 @@ def revision_freeze(plugin_id):
 def get_plugin(plugin_id):
     """ Given plugin_id Returns the plugin path. Freeze strings are allowed
     here. """
-    p = _resolve_plugin_id(plugin_id)
+    p = _parse_plugin_id(plugin_id)
     plugin_data = _get_path(p.get('plugin'), p.get('path'), p.get('revision'))
 
     # TODO this should return a plugin object, need to parse yaml
@@ -158,3 +161,11 @@ def get_plugin(plugin_id):
     # plugin_obj['_script_temp_obj'] = t
     # plugin_obj['_script_path'] = t.name
     return plugin_data
+
+
+def is_available(plugin_id):
+    try:
+        _parse_plugin_id(plugin_id)
+        return True
+    except (ValueError, ChildProcessError):
+        return False
