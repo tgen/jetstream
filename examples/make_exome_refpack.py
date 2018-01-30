@@ -80,7 +80,8 @@ from jetstream.formats import intervals
 log = logging.getLogger(__name__)
 
 PICARD_PATH = pkg_resources.resource_filename('jetstream', 'lib/picard.jar')
-BEDTOOLS = 'bedtools'
+BEDTOOLS = 'bedtools'  # TODO im stumped how to add bedtools source in, maybe it
+# needs to be added in a bdist?
 
 
 def parse_args(args=None):
