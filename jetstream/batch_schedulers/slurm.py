@@ -3,7 +3,6 @@ import json
 import shlex
 import subprocess
 import logging
-import asyncio
 from collections import OrderedDict
 
 log = logging.getLogger(__name__)
@@ -50,9 +49,10 @@ completed_states = {'COMPLETED',}
 
 
 class SlurmJob(object):
-    # TODO this should be a mix-in that can be used by a generic job class
-    def __init__(self, props):
-        self.properties = props
+    def __init__(self, jid, sacct=None, cluster=None):
+        self.jid = jid
+        self.sacct = sacct
+        self.cluster = cluster
 
     def __getattr__(self, item):
         return self.properties[item]
@@ -61,7 +61,7 @@ class SlurmJob(object):
         return "SlurmJob(%s)" % self.JobID
 
     def __str__(self):
-        return json.dumps(self.properties)
+        return json.dumps(self.__dict__)
 
     @property
     def is_active(self):
@@ -85,64 +85,66 @@ class SlurmJob(object):
             return False
 
     def update(self):
-        # TODO This class could be useful if exposed with an update feature
-        raise NotImplementedError
+        sacct_data = query_sacct(self.jid)
+        matches = [r for r in sacct_data if r['JobID'] == self.jid]
+
+        if len(matches) != 1:
+            msg = "Sacct returned more than one record for {}".format(self.jid)
+            raise ValueError(msg)
+        else:
+            self.sacct = matches[0]
+
+        return self.sacct
 
 
-def job_ids_to_arguments(job_ids):
-    """ Given list of job ids, return as list of arguments with each job
-    id prefixed with -j """
-    job_ids_prefixed = ' '.join(['-j %s' % jid for jid in job_ids])
-    job_ids_split = shlex.split(job_ids_prefixed)
-    return job_ids_split
-
-
-def query_sacct(job_ids):
+def query_sacct(*job_ids):
     """ Run sacct query for given job_ids and returns a list of records """
-    log.debug('query_sacct: %s' % job_ids)
-    if isinstance(job_ids, (str, int)):
-        job_ids = (job_ids,)
+    log.debug('query_sacct: {}'.format(str(job_ids)))
 
-    # Build the query and execute sacct
-    job_id_args = job_ids_to_arguments(job_ids)
-    cmd_args = ['sacct', '-XP', '--format', 'all'] + job_id_args
+    cmd_prefix = ['sacct', '-XP', '--format', 'all']
 
-    log.debug('Launching: %s' % ' '.join(cmd_args))
-    res = subprocess.check_output(cmd_args)
+    if job_ids:
+        job_ids = ' '.join(['-j %s' % jid for jid in job_ids if jid])
+        cmd_args = cmd_prefix + shlex.split(job_ids)
+    else:
+        cmd_args = cmd_prefix
 
-    # With python3.x res will be a bytes object that we need to decode
-    try:
-        res = res.decode()
-    except AttributeError:
-        pass
+    log.critical('Launching: %s' % ' '.join(cmd_args))
+    res = subprocess.check_output(cmd_args).decode()
 
     # Convert the sacct report to an object
     records = []
     lines = res.splitlines()
-    header = lines.pop(0)
-    columns = header.strip().split('|')
+    header = lines.pop(0).strip().split('|')
+
     for line in lines:
-        row = OrderedDict(zip(columns, line.strip().split('|')))
+        row = OrderedDict(zip(header, line.strip().split('|')))
         records.append(row)
+
     return records
 
 
-def get_jobs(job_ids):
-    """ Run sacct query for given job_ids, returns list of SlurmJobs """
-    records = query_sacct(job_ids)
+def get_jobs(*job_ids):
+    """ Run batch query for slurm jobs, returns a list of SlurmJobs """
     jobs = []
-    for record in records:
-        jobs.append(SlurmJob(record))
+    records = query_sacct(*job_ids)
+    for r in records:
+        s = SlurmJob(r['JobID'], r)
+        jobs.append(s)
+
     return jobs
 
 
 def srun(cmd, *args):
     """ Srun a command, additional args are added to srun prefix """
-    cmd_args = shlex.split(cmd)
     prefix = ['srun'] + list(args)
+    cmd_args = shlex.split(cmd)
     return subprocess.check_output(prefix + cmd_args)
 
 
 def sbatch(cmd, *args):
-    # TODO retrun a slurmjob
-    pass
+    prefix = ['sbatch', '--parsable'] + list(args)
+    cmd_args = shlex.split(cmd)
+    job_info = subprocess.check_output(prefix + cmd_args).decode()
+    jid, _, cluster = job_info.partition(';')
+    return SlurmJob(jid, cluster=cluster)
