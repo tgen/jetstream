@@ -1,10 +1,5 @@
-import pkg_resources
-from os import environ, listdir, path
-
-_plugin_path = pkg_resources.resource_filename('jetstream', 'plugins/')
-environ["JESTREAM_plugin_PATH"] = _plugin_path
-plugin_path = _plugin_path
-plugins = {f: path.join(_plugin_path, f) for f in listdir(_plugin_path)}
+"""TODO: update main docstring
+"""
 
 from jetstream.workflow import Workflow
-from jetstream import formats
+from jetstream import formats, plugins

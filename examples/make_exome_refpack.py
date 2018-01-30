@@ -79,7 +79,7 @@ from jetstream.formats import intervals
 
 log = logging.getLogger(__name__)
 
-PICARD_PATH = pkg_resources.resource_filename('jetstream', 'plugins/picard.jar')
+PICARD_PATH = pkg_resources.resource_filename('jetstream', 'lib/picard.jar')
 BEDTOOLS = 'bedtools'
 
 

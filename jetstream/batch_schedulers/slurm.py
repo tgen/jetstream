@@ -88,12 +88,6 @@ class SlurmJob(object):
         # TODO This class could be useful if exposed with an update feature
         raise NotImplementedError
 
-    async def await(self):
-        while not self.is_complete:
-            self.update()
-            await asyncio.sleep(1)
-        return self
-
 
 def job_ids_to_arguments(job_ids):
     """ Given list of job ids, return as list of arguments with each job
@@ -140,3 +134,15 @@ def get_jobs(job_ids):
     for record in records:
         jobs.append(SlurmJob(record))
     return jobs
+
+
+def srun(cmd, *args):
+    """ Srun a command, additional args are added to srun prefix """
+    cmd_args = shlex.split(cmd)
+    prefix = ['srun'] + list(args)
+    return subprocess.check_output(prefix + cmd_args)
+
+
+def sbatch(cmd, *args):
+    # TODO retrun a slurmjob
+    pass

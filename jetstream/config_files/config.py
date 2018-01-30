@@ -1,84 +1,57 @@
 import json
+from ruamel import yaml
+import logging
 
-from jetstream.components.project import Project
-from jetstream import validator
+from .validator import check
 
-class Source(str):
-    """ String subclass that includes a line_numbers property for tracking
-    the source code line numbers after lines are split up.
+log = logging.getLogger(__name__)
 
-    I considered making this a base object composed of a string and line number:
 
-    ```python
-    class SourceLine(object):
-        def __init__(self, line_number, data):
-          self.line_number = line_number
-          self.data = data
+def deserialize(data, format='yaml'):
+    if format == 'yaml':
+        config = yaml.load(data, Loader=yaml.Loader)
+    elif format == 'json':
+        config = json.loads(data)
+    else:
+        config = format(data)
 
-    line = SourceLine(0, 'Hello World')
-    ```
-
-    But, this actually complicates most use cases. For example, if the source
-    lines were stored in a list, we might want to count a pattern. This is easy
-    with a list of strings:
-
-    ```python
-        res = mylist.count('pattern')
-    ```
-
-    With a for a custom class you would be forced to do something like:
-
-    ```python
-         res = Sum([line for line in lines if line.data == 'pattern'])
-    ```
-
-    I think this string subclass inheritance pattern is more difficult to
-    explain upfront, but it's much is easier to work with downstream. This class
-    behaves exactly like a string except in one case: str.splitlines() which
-    generates a list of Source objects instead of strings. """
-    def __new__(cls, data='', line_number=None):
-        line = super(Source, cls).__new__(cls, data)
-        line.line_number = line_number
-        return line
-
-    def splitlines(self, *args, **kwargs):
-        lines = super(Source, self).splitlines(*args, **kwargs)
-        lines = [Source(data, line_number=i) for i, data in enumerate(lines)]
-        return lines
-
-    def print_ln(self):
-        return '{}: {}'.format(self.line_number, self)
+    return config
 
 
 def read(path, *args, **kwargs):
-    """ Read a JSON config file, additional arguments are
-    passed to json.loads() """
+    """ Read a config file from a path. Path can be "yaml", "json", or a
+     function that takes data as its first argument and returns a config. """
     with open(path, 'r') as fp:
-        data = Source(fp.read())
-        parsed = json.loads(data, *args, **kwargs)
-        source = data.splitlines()
+        data = fp.read()
 
-    project = Project(
-        source=source,
-        format='json',
-        samples=parsed['samples'],
-        properties=parsed['properties']
-    )
-
-    return project
+    return deserialize(data, *args, **kwargs)
 
 
+def serialize(config, format='yaml'):
+    if format == 'yaml':
+        data = yaml.dump(config, default_flow_style=False)
+    elif format == 'json':
+        data = json.dumps(config, indent=4)
+    else:
+        data = format(config)
+    return data
 
-def validate_metadata(key, value, line=0):
+
+def write(path, config, *args, **kwargs):
+    with open(path, 'w') as fp:
+        fp.write(serialize(config, *args, **kwargs))
+
+
+def validate(config):
     """ Validate the key-value pair against the schema"""
+    fails = []
+    for k, v in config['meta'].items():
+        if check(k, v):
+            pass
+        else:
+            fails.append((k, v))
 
-    is_valid = validator.check(value)
-
-    if not isinstance(is_valid, bool):
-        raise Exception('Schema validator error: {}'.format(str(fn)))
-
-    if not is_valid:
-        log.warning('Line {}: Schema validation for "{}" failed for "{}"!'.format(
-            line, value, fn.__name__))
-        # raise SchemaValueError(msg)
-    return key, value
+    if fails:
+        for k, v in fails:
+            log.warning('Validator failed for "{}: {}"!'.format(k, v))
+        raise ValueError(str(fails))

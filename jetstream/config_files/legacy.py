@@ -41,7 +41,7 @@
 import logging
 from collections import OrderedDict
 
-from .config import Config, Source
+from jetstream.utils import Source
 
 log = logging.getLogger(__name__)
 
@@ -50,23 +50,27 @@ class ConfigParsingException(Exception):
     """ Raised when config files contain syntax errors """
 
 
-def legacy_config(path):
-    """Loads a legacy config file with basic syntax validation. Briefly,
-    performs the following:
-      - Leading and trailing whitespace is removed
-      - Checks for single occurrence of "=START" and "=END" lines
-      - Verifies that no data follows "=END"
-      - All metadata keys are translated to lowercase
-    """
-    with open(path, 'r') as fp:
-        source = Source(fp.read().strip())
+def deserialize(data):
+    """Loads a legacy config file from data. Performs  several validation
+    steps, briefly:
 
+     - Leading and trailing whitespace is removed
+     - Checks for single occurrence of "=START" and "=END" lines
+     - Verifies that no data follows "=END"
+     - All metadata keys are translated to lowercase
+
+    """
+    source = Source(data.strip())
     meta_lines, sample_lines = _split_sections(source)
     meta = _parse_meta_lines(meta_lines)
     sample_line_groups = _group_sample_lines(sample_lines)
     samples = [_parse_sample(group) for group in sample_line_groups]
+    return {'meta': meta, 'samples': samples}
 
-    return Config(source, samples, meta)
+
+def read(path):
+    with open(path, 'r') as fp:
+        return deserialize(fp.read())
 
 
 def _split_sections(source):

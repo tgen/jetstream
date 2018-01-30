@@ -2,13 +2,7 @@
 import sys
 import argparse
 from jetstream.formats import intervals
-
-
-def remove_prefix(string, prefix):
-    if string.startswith(prefix):
-        return string[len(prefix):]
-    else:
-        return string
+from jetstream.utils import remove_prefix
 
 
 def preprocess_bed(path, replace_underscores=False, replace_mt=False,

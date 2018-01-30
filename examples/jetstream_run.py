@@ -4,7 +4,7 @@ import sys
 
 from pydot import graph_from_dot_file
 
-import jetstream.execution.runner
+import jetstream.workflow.runner
 
 # TODO These should be written with a unittest framework
 
@@ -16,4 +16,4 @@ if __name__ == '__main__':
     graph = graph_from_dot_file(sys.argv[1])[0]
     wf = jetstream.Workflow.from_pydot(graph)
 
-    jetstream.execution.runner.run(wf, debug=False)
+    jetstream.workflow.runner.run(wf, debug=False)
