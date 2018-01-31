@@ -132,8 +132,9 @@ def list_revisions(plugin_id):
     return revs
 
 
-def revision_freeze(plugin_id):
-    """ Given plugin id, returns the lastest version as a freeze string """
+def freeze(plugin_id):
+    """ Given plugin id, returns the latest revision as a complete plugin
+     id string """
     p =  _parse_plugin_id(plugin_id)
     revs = _get_path_revisions(p['plugin'], p['path'])
     latest_id = revs[0]['id']
@@ -149,23 +150,19 @@ def get_plugin(plugin_id):
 
     # TODO this should return a plugin object, need to parse yaml
     # but right now the plugin library is just a placeholder so
-    # the scripts are not yaml
+    # the scripts are not yaml. This code temporarily converts to obj
 
-    # t = tempfile.NamedTemporaryFile()
+    obj = {'stagein': None, 'stageout': None, 'script': plugin_data.decode()}
 
-    #plugin_obj = utils.load_yaml()
+    # obj = utils.load_yaml(plugin_data)
 
-    # with open(t, 'w') as fp:
-    #     fp.write(plugin_obj['script'])
-    #
-    # plugin_obj['_script_temp_obj'] = t
-    # plugin_obj['_script_path'] = t.name
-    return plugin_data
+    return obj
 
 
 def is_available(plugin_id):
     try:
         _parse_plugin_id(plugin_id)
+        _ = get_plugin(plugin_id)
         return True
-    except (ValueError, ChildProcessError):
+    except (FileNotFoundError, ValueError, ChildProcessError):
         return False
