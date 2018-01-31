@@ -81,7 +81,9 @@ log = logging.getLogger(__name__)
 
 PICARD_PATH = pkg_resources.resource_filename('jetstream', 'lib/picard.jar')
 BEDTOOLS = 'bedtools'  # TODO im stumped how to add bedtools source in, maybe it
-# needs to be added in a bdist?
+# needs to be built first and then distributed with a bdist? In that case we'll
+# need to create setup a build tool/script for the project and it adds some
+# complexity to the development process.
 
 
 def parse_args(args=None):
@@ -128,7 +130,7 @@ def parse_args(args=None):
 
 
 def check_java_version():
-    subprocess.check_call(['java', '-version'])
+    return subprocess.check_call(['java', '-version'])
 
 
 class DeconstructedPath:
@@ -266,8 +268,8 @@ def make_vcf_filter(targets, refdict, gtf):
 
     # D: Generate Union of A and C
     # This is ugly, here is what it would look like in bash:
-    # "cmd = 'cat {padded_targets} {exons_in_targets} | {BEDTOOLS} sort -i stdin
-    # | {BEDTOOLS} merge -i {} > {union}'"
+    # "cat {padded_targets} {exons_in_targets} | {BEDTOOLS} sort -i stdin
+    # | {BEDTOOLS} merge -i {} > {union}"
 
     all_ints = tempfile.NamedTemporaryFile()
     with open(all_ints.name, 'w') as all_ints_fp:
