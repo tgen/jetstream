@@ -6,15 +6,20 @@ from jetstream.workflow import Workflow
 
 def test():
     wf = Workflow('test_wf')
-    wf.add_module('dna_align')
-    wf.add_module_after('dna_align', 'joint_indel_realign')
-    wf.add_module_after('dna_align', 'germline_variant_calling')
-    wf.add_module_after('joint_indel_realign', 'somatic_variant_calling')
-    wf.add_module_after('somatic_variant_calling', 'snpeff')
-    wf.add_module_before('snpeff', 'germline_variant_calling')
-    wf.add_module_before('rna_quant_htseq', 'rna_align_star')
-    wf.add_module('multiqc')
-    wf.add_module_before('multiqc', 'snpeff', 'rna_quant_htseq')
+    wf.add_module('pegasusPipe/pegasus_dnaAlign.sh')
+    wf.add_module_after('pegasusPipe/pegasus_dnaAlign.sh', 'pegasusPipe/pegasus_indelRealign.sh')
+    wf.add_module_after('pegasusPipe/pegasus_dnaAlign.sh', 'pegasusPipe/pegasus_haplotypeCaller.sh')
+    wf.add_module_after('pegasusPipe/pegasus_indelRealign.sh', 'pegasusPipe/pegasus_mutect.sh')
+    wf.add_module_after('pegasusPipe/pegasus_mutect.sh', 'pegasusPipe/pegasus_vcfMerger.sh')
+    wf.add_module_before('pegasusPipe/pegasus_vcfMerger.sh', 'pegasusPipe/pegasus_haplotypeCaller.sh')
+    wf.add_module('pegasusPipe/pegasus_htSeq.sh')
+    wf.add_module_before('pegasusPipe/pegasus_htSeq.sh', 'pegasusPipe/pegasus_rnaAlign.sh')
+    wf.add_module('pegasusPipe/pegasus_summaryStats.sh')
+    wf.add_module_before(
+        'pegasusPipe/pegasus_summaryStats.sh',
+        'pegasusPipe/pegasus_vcfMerger.sh',
+        'pegasusPipe/pegasus_htSeq.sh'
+    )
     return wf
 
 
