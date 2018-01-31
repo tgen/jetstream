@@ -5,6 +5,8 @@ import networkx as nx
 import pydot
 from networkx.drawing.nx_pydot import to_pydot, from_pydot
 
+from jetstream import plugins
+
 log = logging.getLogger(__name__)
 
 
@@ -22,13 +24,8 @@ class Workflow:
     # Utility methods
     def __str__(self):
         """ Gives better results when using print() """
-        data = self.serialize_pydot()
+        data = self.serialize_json()
         return json.dumps(data, indent=4)
-
-    def _clean_graph(self):
-        graph = self.graph.copy()
-        for node in graph:
-            print(node['status'])
 
     def serialize_json(self):
         """ Returns a json representation of the graph """
@@ -36,9 +33,10 @@ class Workflow:
         return data
 
     def serialize_pydot(self):
+        """ Returns a pydot representation of the graph """
         # Note Had to dig into the networkx source to find this, but it works..
         graph = self.graph.copy()
-        return to_pydot(self.graph).__str__()
+        return to_pydot(graph).__str__()
 
     @staticmethod
     def from_pydot(p, *args, **kwargs):
@@ -49,18 +47,12 @@ class Workflow:
     def __iter__(self):
         """ Workflows are essentially fancy iterators that allow feedback
         through the __send__ method. See generators """
-        # we may want this to reset all the tasks?
+        # TODO we may want this to reset the status for pending tasks?
         return self
 
-    def __send__(self, result):
-        """ Returns results to the workflow """
-        node_name, record = result
-        log.critical('Workflow recieved results for {}\n{}'.format(node_name, record))
-        # TODO handle results better
-        self.update(node_name, 'complete')
-
     def __next__(self):
-        """ returns the next module available for launch and marks its status as "pending" """
+        """ returns the next module available for launch and marks
+        the status as "pending" """
         pending = False
         for node, node_data in self.graph.nodes(data=True):
             if node_data['status'] == 'pending':
@@ -74,7 +66,21 @@ class Workflow:
             else:
                 raise StopIteration
 
-    # Access/update modules in the workflow
+    def __send__(self, result):
+        """ Returns results to the workflow """
+        node = result['id']
+        process_record = result['record']
+
+        log.critical('Recieved results for {}\n{}'.format(node, process_record))
+
+        # TODO handle results better
+        # this needs to recognized failures and set node status to new
+        # but we might also want to only allow a limited number of retrys
+        # per node or globally
+
+        self.update(node, 'complete')
+
+    # Methods for interacting with a workflow
     def nodes(self, *args, **kwargs):
         return self.graph.nodes(*args, **kwargs)
 
@@ -129,6 +135,13 @@ class Workflow:
                 res.add(node)
         return res
 
+    def freeze(self):
+        # TODO Test this out
+        g = self.graph.copy()
+        mapping = {n: plugins.freeze(n) for n in g.nodes()}
+        return mapping
+
+    # Methods for building the workflow
     def _auto_notify(callback):
         """ This decorator sends a tuple of useful data to Workflow.notify()
         prior to the function being called """
@@ -139,9 +152,10 @@ class Workflow:
         return fn
 
     @_auto_notify
-    def _add_node(self, name, **kwargs):
-        self.graph.add_node(name, **kwargs)
-        return self.get_node(name)
+    def _add_node(self, id, **kwargs):
+        _ = plugins.get_plugin(id)
+        self.graph.add_node(id, **kwargs)
+        return self.get_node(id)
 
     @_auto_notify
     def _add_edge(self, from_node, to_node):
@@ -172,8 +186,11 @@ class Workflow:
     def add_module_before(self, before, *names):
         """ Add a module and specify that it should run before some other
         module(s) """
+        child = self.get_node(before)
 
-        child = self.get_node(before) or self.add_module(before)
+        if child is None:
+            raise ValueError('Node: {} not in workflow'.format(before))
+
         for n in names:
             parent = self.get_node(n) or self.add_module(n)
             self._add_edge(from_node=child, to_node=parent)
@@ -183,6 +200,9 @@ class Workflow:
         """ Add a module and specify that it should run after some other
         module(s) """
         parent = self.get_node(after) or self.add_module(after)
+
+        if parent is None:
+            raise ValueError('Node: {} not in workflow'.format(parent))
 
         for n in names:
             child = self.get_node(n) or self.add_module(n)
