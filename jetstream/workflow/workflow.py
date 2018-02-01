@@ -53,25 +53,27 @@ class Workflow:
     def __next__(self):
         """ returns the next module available for launch and marks
         the status as "pending" """
+
         pending = False
         for node, node_data in self.graph.nodes(data=True):
             if node_data['status'] == 'pending':
                 pending = True
             if self.node_ready(node):
+                log.debug('Request for next task giving {}'.format(node))
                 self.update(node, 'pending')
-                return (node, node_data)
+                return node
         else:
             if pending:
+                log.debug('Request for next task but None available')
                 return None
             else:
+                log.debug('Request for next task but all complete')
                 raise StopIteration
 
     def __send__(self, result):
         """ Returns results to the workflow """
-        node = result['id']
-        process_record = result['record']
-
-        log.critical('Recieved results for {}\n{}'.format(node, process_record))
+        log.debug('Received results for {}'.format(result))
+        node, result = result
 
         # TODO handle results better
         # this needs to recognized failures and set node status to new
@@ -80,17 +82,13 @@ class Workflow:
 
         self.update(node, 'complete')
 
-    # Methods for interacting with a workflow
+    # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
         return self.graph.nodes(*args, **kwargs)
 
     def modules(self, *args, **kwargs):
         """ same as Workflow.nodes() """
         return self.nodes(*args, **kwargs)
-
-    def update(self, node, status):
-        """ Change the status of a node """
-        self.graph.nodes[node]['status'] = status
 
     def status(self, node=None):
         """ Returns the status of a node or all nodes if node is None """
@@ -141,7 +139,7 @@ class Workflow:
         mapping = {n: plugins.freeze(n) for n in g.nodes()}
         return mapping
 
-    # Methods for building the workflow
+    # Methods for modifying the workflow
     def _auto_notify(callback):
         """ This decorator sends a tuple of useful data to Workflow.notify()
         prior to the function being called """
@@ -150,6 +148,11 @@ class Workflow:
                 self.notify((self.id, callback.__name__, args, kwargs))
             return callback(self, *args, **kwargs)
         return fn
+
+    @_auto_notify
+    def update(self, node, status):
+        """ Change the status of a node """
+        self.graph.nodes[node]['status'] = status
 
     @_auto_notify
     def _add_node(self, id, **kwargs):

@@ -9,6 +9,7 @@ runs it with the synchronous workflow runner.
 import sys
 import logging
 from jetstream import workflow
+from jetstream.strategies import dry
 
 # TODO These should be written with a unittest framework
 
@@ -18,6 +19,7 @@ if __name__ == '__main__':
     log.critical('Logging started')
 
     wf = workflow.load_pydot(sys.argv[1])
-    workflow.runner.run(wf, debug=False)
+
+    workflow.runner.run(wf,strategy=dry, debug=False)
 
     log.critical('All done!')

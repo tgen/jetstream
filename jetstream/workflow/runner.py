@@ -73,7 +73,7 @@ def _handle(tasks, wf):
         next_task = tasks.popleft()
 
 
-def _threaded_run(wf, strategy=strategies.strategy):
+def _threaded_run(wf, strategy):
     """ Sleepy loop that requests new tasks from the workflow, spawns
     new processes, and handles any active processes. """
     tasks = deque()
@@ -90,11 +90,13 @@ def _threaded_run(wf, strategy=strategies.strategy):
         else:
             plugin = plugins.get_plugin(task)
             thread = ThreadWithReturnValue(target=strategy, args=(plugin, ))
+            thread.start()
             tasks.append((task, thread))
 
 
-def run(wf, debug=True):
+def run(wf, strategy, debug=True):
     """ Entry point for running a workflow """
+
     log.critical('Starting walker')
-    _threaded_run(wf)
+    _threaded_run(wf, strategy)
     log.critical('wf appears to be done')

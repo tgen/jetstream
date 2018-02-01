@@ -32,7 +32,6 @@ for r in plugins.list_revisions('pegasusPipe/jobScripts/pegasus_firstStrandedSal
 import os
 import shutil
 import subprocess
-import tempfile
 import pkg_resources
 import glob
 import logging
@@ -43,6 +42,33 @@ from jetstream import utils
 plugin_dir = pkg_resources.resource_filename('jetstream', 'plugins/')
 
 log = logging.getLogger(__name__)
+
+
+class PluginId:
+    def __init__(self, plugin, path, revision=None):
+        self.plugin = plugin
+        self.path = path
+        self.revision = revision or 'HEAD'
+
+    def __repr__(self):
+        return "{}/{}:{}".format(self.plugin, self.path, self.revision)
+
+    @staticmethod
+    def from_string(string):
+        group_dict = _parse_plugin_id(str(string))
+        return PluginId(**group_dict)
+
+
+def _parse_plugin_id(string):
+    """ Resolves a plugin id string, returns a dictionary of properties """
+    rx = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
+    plugin_id_pattern = re.compile(rx)
+
+    match = plugin_id_pattern.match(string)
+    if match is None:
+        raise ValueError('Invalid plugin id: {}'.format(string))
+    else:
+        return match.groupdict()
 
 
 def _clone(repo='https://github.com/tgen/pegasusPipe.git'):
@@ -103,18 +129,6 @@ def _get_path_revisions(plugin, path):
     return git_log
 
 
-def _parse_plugin_id(string):
-    """ Resolves a plugin id string, returns a dictionary of properties """
-    rx = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
-    plugin_id_pattern = re.compile(rx)
-
-    match = plugin_id_pattern.match(string)
-    if match is None:
-        raise ValueError('Invalid plugin id: {}'.format(string))
-    else:
-        return match.groupdict()
-
-
 def list():
     """ List all plugin paths available """
     # TODO oh god this is ugly,,
@@ -127,32 +141,36 @@ def list():
 
 def list_revisions(plugin_id):
     """ Given a plugin id, returns a list of all revisions """
-    p = _parse_plugin_id(plugin_id)
-    revs = _get_path_revisions(p['plugin'], p['path'])
+    pid = PluginId.from_string(plugin_id)
+    revs = _get_path_revisions(pid.plugin, pid.path)
     return revs
 
 
 def freeze(plugin_id):
     """ Given plugin id, returns the latest revision as a complete plugin
      id string """
-    p =  _parse_plugin_id(plugin_id)
-    revs = _get_path_revisions(p['plugin'], p['path'])
+    pid = PluginId.from_string(plugin_id)
+    revs = _get_path_revisions(pid.plugin, pid.path)
     latest_id = revs[0]['id']
-    freeze = '{}/{}:{}'.format(p['plugin'], p['path'], latest_id)
+    freeze = '{}/{}:{}'.format(pid.plugin, pid.path, latest_id)
     return freeze
 
 
 def get_plugin(plugin_id):
     """ Given plugin_id Returns the plugin path. Freeze strings are allowed
     here. """
-    p = _parse_plugin_id(plugin_id)
-    plugin_data = _get_path(p.get('plugin'), p.get('path'), p.get('revision'))
+    pid = PluginId.from_string(plugin_id)
+    plugin_data = _get_path(pid.plugin, pid.path, pid.revision)
 
     # TODO this should return a plugin object, need to parse yaml
     # but right now the plugin library is just a placeholder so
-    # the scripts are not yaml. This code temporarily converts to obj
+    # the scripts are not yaml. This code temporarily converts
+    # the basic script to an obj
 
-    obj = {'stagein': None, 'stageout': None, 'script': plugin_data.decode()}
+    obj = {
+        'id': str(pid),
+        'script': plugin_data.decode()
+    }
 
     # obj = utils.load_yaml(plugin_data)
 
@@ -161,7 +179,7 @@ def get_plugin(plugin_id):
 
 def is_available(plugin_id):
     try:
-        _parse_plugin_id(plugin_id)
+        PluginId.from_string(plugin_id)
         _ = get_plugin(plugin_id)
         return True
     except (FileNotFoundError, ValueError, ChildProcessError):
