@@ -51,7 +51,7 @@ class Workflow:
         return self
 
     def __next__(self):
-        """ returns the next module available for launch and marks
+        """ returns the next component available for launch and marks
         the status as "pending" """
 
         pending = False
@@ -86,8 +86,8 @@ class Workflow:
     def nodes(self, *args, **kwargs):
         return self.graph.nodes(*args, **kwargs)
 
-    def modules(self, *args, **kwargs):
-        """ same as Workflow.nodes() """
+    def components(self, *args, **kwargs):
+        """ alias for Workflow.nodes() """
         return self.nodes(*args, **kwargs)
 
     def status(self, node=None):
@@ -155,15 +155,18 @@ class Workflow:
         self.graph.nodes[node]['status'] = status
 
     @_auto_notify
-    def _add_node(self, id, **kwargs):
-        _ = plugins.get_plugin(id)
-        self.graph.add_node(id, **kwargs)
-        return self.get_node(id)
+    def _add_node(self, mapping):
+        """ Adding a node requires a mapping that includes "id" key. The id will
+        be used to reference the node in the graph, the rest of the mapping will
+        be added as data """
+        node_id = mapping.pop('id')
+        self.graph.add_node(node_id, **mapping)
+        return self.get_node(node_id)
 
     @_auto_notify
     def _add_edge(self, from_node, to_node):
-        """ Edges represent dependencies between modules. Edges run
-        FROM one node TO another node that the module depends upon. Nodes
+        """ Edges represent dependencies between components. Edges run
+        FROM one node TO another node that the component depends upon. Nodes
         can have multiple edges.
 
             Child ----- Depends Upon -----> Parent
@@ -171,10 +174,10 @@ class Workflow:
 
         This means that the out-degree of a node represents the number
         of dependencies it has. A node with zero out-edges is a "root"
-        node, or a module with no dependencies.
+        node, or a component with no dependencies.
 
-        The methods ".add_module_before()" and ".add_module_after()" are
-        provided for adding modules to a workflow, and should be preferred 
+        The methods ".add_component_before()" and ".add_component_after()" are
+        provided for adding components to a workflow, and should be preferred
         over adding edges directly to the workflow.
         """ 
         g = self.graph
@@ -186,32 +189,34 @@ class Workflow:
             raise NotDagError
 
     @_auto_notify
-    def add_module_before(self, before, *names):
-        """ Add a module and specify that it should run before some other
-        module(s) """
+    def add_component_before(self, before, *names):
+        """ Add a component and specify that it should run before some other
+        component(s) """
         child = self.get_node(before)
 
         if child is None:
             raise ValueError('Node: {} not in workflow'.format(before))
 
         for n in names:
-            parent = self.get_node(n) or self.add_module(n)
+            parent = self.get_node(n) or self.add_component(n)
             self._add_edge(from_node=child, to_node=parent)
 
     @_auto_notify
-    def add_module_after(self, after, *names):
-        """ Add a module and specify that it should run after some other
-        module(s) """
-        parent = self.get_node(after) or self.add_module(after)
+    def add_component_after(self, after, *names):
+        """ Add a component and specify that it should run after some other
+        component(s) """
+        parent = self.get_node(after) or self.add_component(after)
 
         if parent is None:
             raise ValueError('Node: {} not in workflow'.format(parent))
 
         for n in names:
-            child = self.get_node(n) or self.add_module(n)
+            child = self.get_node(n) or self.add_component(n)
             self._add_edge(from_node=child, to_node=parent)
 
-    def add_module(self, module):
-        self._add_node(module, status='new')
-        return module
+    @_auto_notify
+    def add_component(self, id):
+        plugin_comp = plugins.get_plugin(id)
+        plugin_comp['status'] = 'new'
+        return self._add_node(plugin_comp)
 
