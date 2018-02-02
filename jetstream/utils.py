@@ -2,11 +2,13 @@ import os
 import shutil
 import gzip
 import ulid
+import logging
 from ruamel import yaml
 
+log = logging.getLogger(__name__)
 
 class Source(str):
-    """ String subclass that includes a line_numbers property for tracking
+    """String subclass that includes a "line_numbers" property for tracking
     the source code line numbers after lines are split up.
 
     I considered making this an object composed of a string and line number:
@@ -81,9 +83,13 @@ def remove_prefix(string, prefix):
         return string
 
 
+def load_yaml_data(data):
+    return yaml.load(data, Loader=yaml.Loader)
+
+
 def load_yaml(path):
     with open(path, 'r') as fp:
-        obj = yaml.load(fp, Loader=yaml.Loader)
+        obj = load_yaml_data(fp.read())
     return obj
 
 
@@ -159,6 +165,10 @@ def _find_latest_run(path):
     return sorted(runs)[0]
 
 
+def new_run(path):
+    _ = load_project(path)
+
+
 def load_run(project, run_id):
     """ Loads and returns a specific run from a project """
     _assert_project(project)
@@ -185,5 +195,6 @@ def initialize(path=None):
     """ Initialize a Jetstream project in 'path' """
     if path is None:
         path = os.getcwd()
+    log.critical('Initializing project in {}'.format(path))
     target = os.path.join(path, '.jetstream/')
     os.makedirs(target, exist_ok=True)
