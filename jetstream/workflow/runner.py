@@ -6,7 +6,7 @@ import logging
 from collections import deque
 from threading import Thread
 
-from jetstream import plugins, strategies
+from jetstream import utils
 
 log = logging.getLogger(__name__)
 
@@ -23,28 +23,6 @@ class ThreadWithReturnValue(Thread):
     def join(self, **kwargs):
         Thread.join(self, **kwargs)
         return self._return
-
-
-# def spawn(task, **kwargs):
-#     """ Spawn a subprocess, this returns a Popen object """
-#
-#     # Capture stdout/stderr by default. This may cause memory issues
-#     # if the subprocesses produce too much stream data. but less code for now.
-#     if 'stdout' not in kwargs:
-#         kwargs['stdout'] = subprocess.PIPE
-#     if 'stderr' not in kwargs:
-#         kwargs['stderr'] = subprocess.PIPE
-#
-#     node_name, node_data = task
-#
-#     # Prep command for execution on slurm
-#     cmd = slurm(node_name)
-#     cmd_args = shlex.split(cmd)
-#
-#     proc = subprocess.Popen(cmd_args, **kwargs)
-#     log.critical('Spawned: {} pid: {}'.format(cmd, proc.pid))
-#
-#     return proc
 
 
 def _handle(tasks, wf):
@@ -79,24 +57,24 @@ def _threaded_run(wf, strategy):
     tasks = deque()
     while 1:
         try:
-            task = next(wf)
+            plugin = next(wf)
         except StopIteration:
             log.critical('wf raised stop iteration')
             break
 
-        if task is None:
+        if plugin is None:
             _handle(tasks, wf)
             time.sleep(1)
         else:
-            plugin = plugins.get_plugin(task)
+            #plugin = plugins.get_plugin(task)
             thread = ThreadWithReturnValue(target=strategy, args=(plugin, ))
             thread.start()
-            tasks.append((task, thread))
+            tasks.append((plugin, thread))
 
 
 def run(wf, strategy, debug=True):
     """ Entry point for running a workflow """
-
+    project = utils.load_project()
     log.critical('Starting walker')
     _threaded_run(wf, strategy)
     log.critical('wf appears to be done')
