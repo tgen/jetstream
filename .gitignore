@@ -1,4 +1,4 @@
-jetstream/plugins/*
+jetstream/plugins/
 
 !jetstream/plugins/__init__.py
 !jetstream/plugins/README.md
