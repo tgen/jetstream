@@ -1,8 +1,6 @@
 import json
 import logging
-from uuid import uuid4 as uuid
 import networkx as nx
-import pydot
 from networkx.drawing.nx_pydot import to_pydot, from_pydot
 
 from jetstream import plugins
@@ -16,10 +14,9 @@ class NotDagError(Exception):
 
 
 class Workflow:
-    def __init__(self, id=None, notify=None, graph=None):
-        self.id = id or str(uuid())
+    def __init__(self, notify=None, graph=None):
         self.notify = notify or log.debug
-        self.graph = graph or nx.DiGraph(name=self.id, )
+        self.graph = graph or nx.DiGraph()
 
     # Utility methods
     def __str__(self):
