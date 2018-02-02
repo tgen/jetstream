@@ -30,18 +30,25 @@ for r in plugins.list_revisions('pegasusPipe/jobScripts/pegasus_firstStrandedSal
 
 """
 import os
+import re
 import shutil
 import subprocess
-import pkg_resources
 import glob
 import logging
-import re
 
-from jetstream import utils
-
-plugin_dir = pkg_resources.resource_filename('jetstream', 'plugins/')
+from jetstream import utils, plugin_dir, plugin_id_pattern
 
 log = logging.getLogger(__name__)
+
+
+class PluginParserFail(Exception):
+    """ Raised when a plugin is found but does not pass validation """
+
+class PluginLookup(Exception):
+    """ Raised when plugin is not found """
+
+class InvalidPluginId(Exception):
+    """ Raised when a plugin id does not match format """
 
 
 class PluginId:
@@ -61,12 +68,11 @@ class PluginId:
 
 def _parse_plugin_id(string):
     """ Resolves a plugin id string, returns a dictionary of properties """
-    rx = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
-    plugin_id_pattern = re.compile(rx)
+    pat = re.compile(plugin_id_pattern)
 
-    match = plugin_id_pattern.match(string)
+    match = pat.match(string)
     if match is None:
-        raise ValueError('Invalid plugin id: {}'.format(string))
+        raise InvalidPluginId(string)
     else:
         return match.groupdict()
 
@@ -99,12 +105,22 @@ def _get_path(plugin, path, revision=None):
     # error if the path does not exist
 
     identifier = '{}:{}'.format(revision, path)
-    data = subprocess.check_output(
-        ['git', 'show', identifier],
-        cwd=os.path.join(plugin_dir, plugin)
-    )
+    try:
+        p = subprocess.Popen(
+            ['git', 'show', identifier],
+            cwd=os.path.join(plugin_dir, plugin),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+    except FileNotFoundError:
+        raise PluginLookup('Cant launch git')
 
-    return data
+    stdout, stderr = p.communicate()
+
+    if p.returncode != 0:
+        raise PluginLookup(stderr.decode())
+
+    return stdout.decode()
 
 
 def _get_path_revisions(plugin, path):
@@ -156,25 +172,27 @@ def freeze(plugin_id):
     return freeze
 
 
+def parse_plugin(data):
+    # TODO This is the only plugin validation, do we need more?
+    try:
+        plugin = utils.load_yaml_data(data)
+    except utils.yaml.YAMLError as err:
+        raise PluginParserFail(str(err)) from None
+
+    try:
+        assert plugin['script']
+    except AssertionError:
+        raise PluginParserFail('"script" not found')
+
+    return plugin
+
+
 def get_plugin(plugin_id):
     """ Given plugin_id Returns the plugin path. Freeze strings are allowed
     here. """
     pid = PluginId.from_string(plugin_id)
     plugin_data = _get_path(pid.plugin, pid.path, pid.revision)
-
-    # TODO this should return a plugin object, need to parse yaml
-    # but right now the plugin library is just a placeholder so
-    # the scripts are not yaml. This code temporarily converts
-    # the basic script to an obj
-
-    obj = {
-        'id': str(pid),
-        'script': plugin_data.decode()
-    }
-
-    # obj = utils.load_yaml(plugin_data)
-
-    return obj
+    return parse_plugin(plugin_data)
 
 
 def is_available(plugin_id):
