@@ -79,7 +79,7 @@ from jetstream.formats import intervals
 
 log = logging.getLogger(__name__)
 
-PICARD_PATH = pkg_resources.resource_filename('jetstream', 'lib/picard.jar')
+PICARD_PATH = pkg_resources.resource_filename('jetstream', 'etc/picard.jar')
 BEDTOOLS = 'bedtools'  # TODO im stumped how to add bedtools source in, maybe it
 # needs to be built first and then distributed with a bdist? In that case we'll
 # need to create setup a build tool/script for the project and it adds some
