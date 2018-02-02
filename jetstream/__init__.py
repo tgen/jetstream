@@ -7,5 +7,5 @@ import pkg_resources
 plugin_dir = pkg_resources.resource_filename('jetstream', 'plugins/')
 plugin_id_pattern = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0-9a-f]{5,40})?$'
 
-from jetstream.workflow import Workflow
-from jetstream import formats, plugins
+from . import formats, plugins, config
+from .workflow import Workflow
