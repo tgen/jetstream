@@ -36,7 +36,7 @@ import subprocess
 import glob
 import logging
 
-from jetstream import utils, plugin_dir, plugin_id_pattern
+from jetstream import utils, PLUGIN_DIR, PLUGIN_ID_PATTERN
 
 log = logging.getLogger(__name__)
 
@@ -51,69 +51,42 @@ class InvalidPluginId(Exception):
     """ Raised when a plugin id does not match format """
 
 
-class PluginId:
-    def __init__(self, plugin, path, revision=None):
-        self.plugin = plugin
-        self.path = path
-        self.revision = revision or 'HEAD'
-
-    def __repr__(self):
-        return "{}/{}:{}".format(self.plugin, self.path, self.revision)
-
-    @staticmethod
-    def from_string(string):
-        group_dict = _parse_plugin_id(str(string))
-        return PluginId(**group_dict)
-
-
-def _parse_plugin_id(string):
-    """ Resolves a plugin id string, returns a dictionary of properties """
-    pat = re.compile(plugin_id_pattern)
-
-    match = pat.match(string)
-    if match is None:
-        raise InvalidPluginId(string)
-    else:
-        return match.groupdict()
-
-
 def _clone(repo='https://github.com/tgen/pegasusPipe.git'):
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
     # a collection of yaml files that describe plugins, we don't want to try
     # loading files that are not plugins etc..
-    log.critical('Cloning {} into {}'.format(repo, plugin_dir))
+    log.critical('Cloning {} into {}'.format(repo, PLUGIN_DIR))
     subprocess.run(
         ['git', 'clone', repo],
-        cwd=plugin_dir
+        cwd=PLUGIN_DIR
     )
 
 
 def _remove(plugin):
     """ Careful, this is essentially a shortcut to rm -rf """
-    shutil.rmtree(os.path.join(plugin_dir, plugin))
+    shutil.rmtree(os.path.join(PLUGIN_DIR, plugin))
 
 
-def _get_path(plugin, path, revision=None):
-    """ Retrieve a path from plugin. Returns the path as bytes."""
-    if revision is None:
-        revision = 'HEAD'
+def _get_path(plugin, path, revision):
+    """ Retrieve a path from plugin. Returns the path as bytes.
 
-    # This function translates its parameters into a 'git show' command
-    # to allow for archival access to old scripts. The current version
-    # of the path will be used if revision is None. This will throw an
-    # error if the path does not exist
+    This function translates its parameters into a 'git show' command
+    in order to pull scripts from the archival git repo. The most recent
+    version of the path will be returned if "revision" is None. This will
+    raise a PluginLookup exception if the path does not exist.
 
+    """
     identifier = '{}:{}'.format(revision, path)
     try:
         p = subprocess.Popen(
             ['git', 'show', identifier],
-            cwd=os.path.join(plugin_dir, plugin),
+            cwd=os.path.join(PLUGIN_DIR, plugin),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
     except FileNotFoundError:
-        raise PluginLookup('Cant launch git')
+        raise FileNotFoundError('Cant launch git executable') from None
 
     stdout, stderr = p.communicate()
 
@@ -135,7 +108,7 @@ def _get_path_revisions(plugin, path):
 
     data = subprocess.check_output(
         ['git', 'log', format_flag, '--', path],
-        cwd=os.path.join(plugin_dir, plugin)
+        cwd=os.path.join(PLUGIN_DIR, plugin)
     ).decode()
 
     git_log = data.strip('\n\x1e').strip().split('\x1e')
@@ -145,34 +118,7 @@ def _get_path_revisions(plugin, path):
     return git_log
 
 
-def list():
-    """ List all plugin paths available """
-    # TODO oh god this is ugly,,
-    all = glob.glob(plugin_dir + '/**', recursive=True)
-    all = [p for p in all if os.path.isfile(p)]
-    all = [utils.remove_prefix(p, plugin_dir) for p in all]
-    all = [p for p in all if p and not p.startswith(('_', 'README'))]
-    return all
-
-
-def list_revisions(plugin_id):
-    """ Given a plugin id, returns a list of all revisions """
-    pid = PluginId.from_string(plugin_id)
-    revs = _get_path_revisions(pid.plugin, pid.path)
-    return revs
-
-
-def freeze(plugin_id):
-    """ Given plugin id, returns the latest revision as a complete plugin
-     id string """
-    pid = PluginId.from_string(plugin_id)
-    revs = _get_path_revisions(pid.plugin, pid.path)
-    latest_id = revs[0]['id']
-    freeze = '{}/{}:{}'.format(pid.plugin, pid.path, latest_id)
-    return freeze
-
-
-def parse_plugin(data):
+def _load_plugin_from_data(data):
     # TODO This is the only plugin validation, do we need more?
     try:
         plugin = utils.load_yaml_data(data)
@@ -182,23 +128,76 @@ def parse_plugin(data):
     try:
         assert plugin['script']
     except AssertionError:
-        raise PluginParserFail('"script" not found')
+        raise PluginParserFail('"script" not found in plugin data')
 
     return plugin
 
 
+def plugin_id(plugin, path, revision, **kwargs):
+    """ Returns a string formatted plugin id from a set of parameters. This
+    can called with only a mapping that includes the required keys:
+    plugin_id(**mapping) """
+    return "{}/{}:{}".format(plugin, path, revision)
+
+
+def parse_plugin_id(string):
+    """ Resolves a plugin id string, returns tuple:(plugin, path, revision)"""
+    pat = re.compile(PLUGIN_ID_PATTERN)
+
+    match = pat.match(string)
+    if match is None:
+        raise InvalidPluginId(string)
+    else:
+        g = match.groupdict()
+        return (g.get('plugin'), g.get('path'), g.get('revision'))
+
+
+def list():
+    """ List all plugin paths available """
+    all = glob.glob(PLUGIN_DIR + '/**', recursive=True)
+    all = [p for p in all if os.path.isfile(p)]
+    all = [utils.remove_prefix(p, PLUGIN_DIR) for p in all]
+    all = [p for p in all if p and not p.startswith(('_', 'README'))]
+    return all
+
+
+def list_revisions(plugin_id):
+    """ Given a plugin id, returns a list of all revisions """
+    plugin, path, revision = parse_plugin_id(plugin_id)
+    revs = _get_path_revisions(plugin, path)
+    return revs
+
+
+def latest_revision(plugin_id):
+    """ Given plugin id, returns the latest revision as a complete plugin
+     id string """
+    plugin, path, _ = parse_plugin_id(plugin_id)
+    revs = _get_path_revisions(plugin, path)
+    return revs[0]['id']
+
+
 def get_plugin(plugin_id):
-    """ Given plugin_id Returns the plugin path. Freeze strings are allowed
-    here. """
-    pid = PluginId.from_string(plugin_id)
-    plugin_data = _get_path(pid.plugin, pid.path, pid.revision)
-    return parse_plugin(plugin_data)
+    """ Given plugin_id returns loaded the plugin object.
+    If the plugin_id does not contain revision information, the latest
+    revision will be returned. """
+    plugin, path, revision = parse_plugin_id(plugin_id)  # Validate the id
+
+    if revision is None:
+        revision = latest_revision(plugin_id)
+
+    plugin_data = _get_path(plugin, path, revision)  # lookup id in repo
+
+    plugin_obj = _load_plugin_from_data(plugin_data)  # Parse data pulled from repo
+    plugin_obj['plugin'] = plugin  # Add some extra identifiers
+    plugin_obj['path'] = path
+    plugin_obj['revision'] = revision
+
+    return plugin_obj
 
 
 def is_available(plugin_id):
     try:
-        PluginId.from_string(plugin_id)
-        _ = get_plugin(plugin_id)
+        get_plugin(plugin_id)
         return True
     except (FileNotFoundError, ValueError, ChildProcessError):
         return False
