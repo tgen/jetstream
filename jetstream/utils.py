@@ -1,5 +1,11 @@
+import os
 import gzip
 import logging
+import subprocess
+from socket import gethostname
+from getpass import getuser
+from uuid import getnode
+from datetime import datetime
 from ruamel import yaml
 
 log = logging.getLogger(__name__)
@@ -88,3 +94,19 @@ def load_yaml(path):
     with open(path, 'r') as fp:
         obj = load_yaml_data(fp.read())
     return obj
+
+
+def launch_module(module, cmd):
+    p = subprocess.Popen(['bash', '-l'], stdin=subprocess.PIPE)
+    rc = p.communicate('module load {}; {}'.format(module, cmd))
+    return rc
+
+
+def fingerprint():
+    return {
+        'datetime': str(datetime.now()),
+        'user': getuser(),
+        'mac': hex(getnode()).upper(),
+        'pid': os.getpid(),
+        'hostname': gethostname(),
+    }
