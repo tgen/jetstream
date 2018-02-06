@@ -178,7 +178,7 @@ def preprocess_bed(path, replace_underscores=False, replace_mt=False,
     # Iterate over every interval in the bed file
     for i in bed:
         if ucsc_to_ensembl:
-            i['seqname'] = grch37_hg19_UCSC_TO_ENSEMBL.get(i['seqname'], default=i['seqname'])
+            i['seqname'] = grch37_hg19_UCSC_TO_ENSEMBL.get(i['seqname'], i['seqname'])
         if replace_underscores:
             i['seqname'] = i['seqname'].replace('_', '.')
         if replace_mt:
