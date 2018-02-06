@@ -29,7 +29,7 @@ class Workflow:
     from_pydot() method.
 
     """
-    def __init__(self, on_update=None, graph=None):
+    def __init__(self, *, on_update=None, graph=None):
         self.serializer = serialize_pydot
         self.on_update = on_update or log.debug
         self.graph = graph or nx.DiGraph()
