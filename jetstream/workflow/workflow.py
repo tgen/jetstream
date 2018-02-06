@@ -14,26 +14,41 @@ class NotDagError(Exception):
 
 
 class Workflow:
-    def __init__(self, notify=None, graph=None):
-        self.notify = notify or log.debug
+    """ Workflows are a network graph representating a series of steps that need
+    to be executed on a project. Each node of the graph represents a plugin
+    component loaded with jetstream.plugins.get_plugin(). Workflows are a type
+    of iterable that implement __next__() and __send__() methods. Calling next()
+    on a workflow will yield a plugin that is ready for to be executed, or None
+    if there are none available. StopIteration will be raised when all plugins
+    are completed.
+
+    on_update takes a function that will be called every time a change is made
+    to the workflow.
+
+    Workflows can be loaded from existing graphs with the graph argument or
+    from_pydot() method.
+
+    """
+    def __init__(self, on_update=None, graph=None):
+        self.serializer = serialize_pydot
+        self.on_update = on_update or log.debug
         self.graph = graph or nx.DiGraph()
+
+        if not nx.is_directed_acyclic_graph(self.graph):
+            raise NotDagError
 
     # Utility methods
     def __str__(self):
         """ Gives better results when using print() """
-        data = self.serialize_json()
-        return json.dumps(data, indent=4)
+        return self.serialize()
 
-    def serialize_json(self):
-        """ Returns a json representation of the graph """
-        data = nx.json_graph.cytoscape_data(self.graph)
-        return data
+    def to_json(self):
+        return nx.json_graph.cytoscape_data(self.graph)
 
-    def serialize_pydot(self):
-        """ Returns a pydot representation of the graph """
-        # Note Had to dig into the networkx source to find this, but it works..
-        graph = self.graph.copy()
-        return to_pydot(graph).__str__()
+    def serialize(self, serializer=None):
+        if serializer is None:
+            serializer = self.serializer
+        return serializer(self)
 
     @staticmethod
     def from_pydot(p, *args, **kwargs):
@@ -50,7 +65,6 @@ class Workflow:
     def __next__(self):
         """ returns the next component available for launch and marks
         the status as "pending" """
-
         pending = False
         for node, node_data in self.graph.nodes(data=True):
             if node_data['status'] == 'pending':
@@ -141,8 +155,8 @@ class Workflow:
         """ This decorator sends a tuple of useful data to Workflow.notify()
         prior to the function being called """
         def fn(self, *args, **kwargs):
-            if self.notify is not None:
-                self.notify((self.id, callback.__name__, args, kwargs))
+            if self.on_update is not None:
+                self.on_update((callback.__name__, args, kwargs))
             return callback(self, *args, **kwargs)
         return fn
 
@@ -217,3 +231,15 @@ class Workflow:
         plugin_comp['status'] = 'new'
         return self._add_node(plugin_comp)
 
+
+def serialize_json(wf):
+    """ Returns a json representation of the workflow """
+    data = nx.json_graph.cytoscape_data(wf.graph)
+    return json.dumps(data, indent=4)
+
+
+def serialize_pydot(wf):
+    """ Returns a pydot representation of the graph """
+    # Note Had to dig into the networkx source to find this, but it works..
+    graph = wf.graph.copy()
+    return to_pydot(graph).__str__()

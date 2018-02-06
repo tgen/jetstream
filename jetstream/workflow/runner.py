@@ -1,14 +1,23 @@
 """ Runners operate on workflows to execute plugin components. They make use
 of workflow methods .__next__() and .__send__() to get tasks and return results
+They also require a strategy, which is the function that will be executed for
+each plugin component when it is time to launch that component.
 """
+import os
 import time
 import logging
+import shutil
+from socket import gethostname
+from datetime import datetime
 from collections import deque
 from threading import Thread
 
-from jetstream import utils
+from jetstream.project import Project
+from jetstream.utils import yaml
 
 log = logging.getLogger(__name__)
+
+_CURRENT_RUN = None
 
 
 class ThreadWithReturnValue(Thread):
@@ -23,6 +32,25 @@ class ThreadWithReturnValue(Thread):
     def join(self, **kwargs):
         Thread.join(self, **kwargs)
         return self._return
+
+
+def _save(wf):
+    """ This function is called every time a wf.__next__() or wf.__send__() is
+    issued, and it saves the current workflow state to the project/run/data"""
+    run_data_path = os.path.join(_CURRENT_RUN, 'data')
+    lock_file = run_data_path + '.lock'
+
+    run_data = {
+        'pid': os.getpid(),
+        'hostname': gethostname(),
+        'last_update': str(datetime.now()),
+        'workflow': wf.serialize_pydot()
+    }
+
+    with open(lock_file, 'w') as fp:
+        yaml.dump(run_data, fp, default_flow_style=False)
+
+    shutil.move(lock_file, run_data_path)
 
 
 def _handle(tasks, wf):
@@ -44,6 +72,7 @@ def _handle(tasks, wf):
             try:
                 res = thread.join(timeout=1)
                 wf.__send__((task, res))
+                _save()
             except TimeoutError:
                 tasks.append(next_task)
                 log.critical('Thread join timeout error: {}'.format(task))
@@ -66,15 +95,27 @@ def _threaded_run(wf, strategy):
             _handle(tasks, wf)
             time.sleep(1)
         else:
-            #plugin = plugins.get_plugin(task)
             thread = ThreadWithReturnValue(target=strategy, args=(plugin, ))
             thread.start()
             tasks.append((plugin, thread))
+            _save()
 
 
-def run(wf, strategy, debug=True):
-    """ Entry point for running a workflow """
-    project = utils.load_project()
-    log.critical('Starting walker')
+def run(wf, project, strategy):
+    global _CURRENT_RUN
+
+    # Make sure we're working in a project dir
+    os.chdir(project)
+    p = Project(os.getcwd())
+
+    # Request a new run id
+    _CURRENT_RUN = p.new_run()
+
+    # Now go!
     _threaded_run(wf, strategy)
-    log.critical('wf appears to be done')
+
+
+def resume(project, run_id):
+    # This will be for resuming a given
+    pass
+
