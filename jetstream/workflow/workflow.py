@@ -1,7 +1,10 @@
 import json
 import logging
 import networkx as nx
+from uuid import uuid4 as uuid
+import pydot
 from networkx.drawing.nx_pydot import to_pydot, from_pydot
+from networkx.readwrite import json_graph
 
 from jetstream import plugins
 
@@ -30,7 +33,7 @@ class Workflow:
 
     """
     def __init__(self, *, on_update=None, graph=None):
-        self.serializer = serialize_pydot
+        self.serializer = to_json
         self.on_update = on_update or log.debug
         self.graph = graph or nx.DiGraph()
 
@@ -42,18 +45,10 @@ class Workflow:
         """ Gives better results when using print() """
         return self.serialize()
 
-    def to_json(self):
-        return nx.json_graph.cytoscape_data(self.graph)
-
     def serialize(self, serializer=None):
         if serializer is None:
             serializer = self.serializer
         return serializer(self)
-
-    @staticmethod
-    def from_pydot(p, *args, **kwargs):
-        graph = from_pydot(p)
-        return Workflow(graph=graph, *args, **kwargs)
 
     # Methods for iterating over a workflow
     def __iter__(self):
@@ -72,7 +67,7 @@ class Workflow:
             if self.node_ready(node):
                 log.debug('Request for next task giving {}'.format(node))
                 self.update(node, 'pending')
-                return node
+                return node, node_data
         else:
             if pending:
                 log.debug('Request for next task but None available')
@@ -83,7 +78,7 @@ class Workflow:
 
     def __send__(self, result):
         """ Returns results to the workflow """
-        log.debug('Received results for {}'.format(result))
+        log.critical('Received results {}'.format(result))
         node, result = result
 
         # TODO handle results better
@@ -156,7 +151,7 @@ class Workflow:
         prior to the function being called """
         def fn(self, *args, **kwargs):
             if self.on_update is not None:
-                self.on_update((callback.__name__, args, kwargs))
+                self.on_update((callback.__name__))
             return callback(self, *args, **kwargs)
         return fn
 
@@ -170,7 +165,7 @@ class Workflow:
         """ Adding a node requires a mapping that includes "id" key. The id will
         be used to reference the node in the graph, the rest of the mapping will
         be added as data """
-        node_id = mapping.pop('id')
+        node_id = str(uuid())
         self.graph.add_node(node_id, **mapping)
         return self.get_node(node_id)
 
@@ -200,41 +195,62 @@ class Workflow:
             raise NotDagError
 
     @_auto_notify
-    def add_component_before(self, before, *names):
+    def add_component_before(self, pid, *before):
         """ Add a component and specify that it should run before some other
         component(s) """
-        child = self.get_node(before)
-
-        if child is None:
-            raise ValueError('Node: {} not in workflow'.format(before))
-
-        for n in names:
-            parent = self.get_node(n) or self.add_component(n)
-            self._add_edge(from_node=child, to_node=parent)
+        for child_id in before:
+            if not child_id in self.nodes():
+                raise ValueError('Node: {} not in workflow'.format(child_id))
+        else:
+            parent_id = self.add_component(pid)
+            for node_id in before:
+                child_id = self.get_node(node_id)
+                self._add_edge(from_node=child_id, to_node=parent_id)
+            return parent_id
 
     @_auto_notify
-    def add_component_after(self, after, *names):
+    def add_component_after(self, pid, *after):
         """ Add a component and specify that it should run after some other
         component(s) """
-        parent = self.get_node(after) or self.add_component(after)
-
-        if parent is None:
-            raise ValueError('Node: {} not in workflow'.format(parent))
-
-        for n in names:
-            child = self.get_node(n) or self.add_component(n)
-            self._add_edge(from_node=child, to_node=parent)
+        for parent_id in after:
+            if not parent_id in self.nodes():
+                raise ValueError('Node: {} not in workflow'.format(parent_id))
+        else:
+            child_id = self.add_component(pid)
+            for parent_id in after:
+                self._add_edge(from_node=child_id, to_node=parent_id)
+            return child_id
 
     @_auto_notify
-    def add_component(self, id):
-        plugin_comp = plugins.get_plugin(id)
-        plugin_comp['status'] = 'new'
-        return self._add_node(plugin_comp)
+    def add_component(self, pid):
+        _ = plugins.get_plugin(pid)
+
+        node_data = {
+            'pid': pid,
+            'status': 'new'
+        }
+
+        return self._add_node(node_data)
+
+
+def load_json(path, *args, **kwargs):
+    with open(path, 'r') as fp:
+        data = json.load(fp)
+        return from_json(data, *args, **kwargs)
+
+
+def from_json(data, *args, **kwargs):
+    graph = json_graph.node_link_graph(data)
+    return Workflow(graph=graph, *args, **kwargs)
+
+
+def to_json(wf):
+    return json_graph.node_link_data(wf.graph)
 
 
 def serialize_json(wf):
     """ Returns a json representation of the workflow """
-    data = nx.json_graph.cytoscape_data(wf.graph)
+    data = json_graph.node_link_data(wf.graph)
     return json.dumps(data, indent=4)
 
 

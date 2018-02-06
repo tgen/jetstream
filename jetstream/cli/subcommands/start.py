@@ -22,6 +22,7 @@ To keep things simple for now:
 
 """
 import os
+import json
 import logging
 import jetstream
 
@@ -40,16 +41,14 @@ def validator(value):
 
 
 def arg_parser(subparser):
-    parser = subparser.add_parser('start')
+    parser = subparser.add_parser('start', )
     parser.set_defaults(action=main)
 
-    parser.add_argument('-w', '--workflow',
-                        required=True,
+    parser.add_argument('workflow',
                         help='Path to a workflow file',
                         type=validator)
 
     parser.add_argument('-s', '--strategy',
-                        required=True,
                         default='dry')
 
 def main(args):
@@ -59,7 +58,9 @@ def main(args):
     strategy = getattr(strategies, args.strategy)
 
     # Load the workflow (built beforehand and saved to a file)
-    wf = jetstream.Workflow.from_pydot(args.workflow)
+    with open(args.workflow, 'r') as fp:
+        data = json.load(fp)
+    wf = jetstream.workflow.from_json(data)
 
     # Start the runner (there may be more than one of these if performance
     # becomes a concern)

@@ -51,6 +51,22 @@ class InvalidPluginId(Exception):
     """ Raised when a plugin id does not match format """
 
 
+def plugins():
+    for plugin in os.listdir(PLUGIN_DIR):
+        git_repo = os.path.join(PLUGIN_DIR, plugin, '.git')
+        if os.path.exists(git_repo) and os.path.isdir(git_repo):
+            yield utils.remove_prefix(plugin, PLUGIN_DIR)
+
+
+def components():
+    for p in plugins():
+        dirname = os.path.join(PLUGIN_DIR, p)
+        all_paths = glob.glob(dirname + '/**', recursive=True)
+        for f in all_paths:
+            if os.path.isfile(f):
+                yield utils.remove_prefix(os.path.join(p, f), PLUGIN_DIR)
+
+
 def _clone(repo='https://github.com/tgen/pegasusPipe.git'):
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
@@ -152,43 +168,48 @@ def parse_plugin_id(string):
         return (g.get('plugin'), g.get('path'), g.get('revision'))
 
 
-def list():
-    """ List all plugin paths available """
-    all = glob.glob(PLUGIN_DIR + '/**', recursive=True)
-    all = [p for p in all if os.path.isfile(p)]
-    all = [utils.remove_prefix(p, PLUGIN_DIR) for p in all]
-    all = [p for p in all if p and not p.startswith(('_', 'README'))]
-    return all
+def sync():
+    for plugin in os.listdir(PLUGIN_DIR):
+        git_repo = os.path.join(PLUGIN_DIR, plugin, '.git')
+        if os.path.exists(git_repo) and os.path.isdir(git_repo):
+            subprocess.call([
+                'git', 'pull'
+            ], cwd=os.path.join(PLUGIN_DIR, plugin))
 
 
-def list_revisions(plugin_id):
+def ls():
+    return list(components())
+
+
+def list_revisions(pid):
     """ Given a plugin id, returns a list of all revisions """
-    plugin, path, revision = parse_plugin_id(plugin_id)
+    plugin, path, revision = parse_plugin_id(pid)
     revs = _get_path_revisions(plugin, path)
     return revs
 
 
-def latest_revision(plugin_id):
+def latest_revision(pid):
     """ Given plugin id, returns the latest revision as a complete plugin
      id string """
-    plugin, path, _ = parse_plugin_id(plugin_id)
+    plugin, path, _ = parse_plugin_id(pid)
     revs = _get_path_revisions(plugin, path)
     return revs[0]['id']
 
 
-def get_plugin(plugin_id):
+def get_plugin(pid):
     """ Given plugin_id returns loaded the plugin object.
     If the plugin_id does not contain revision information, the latest
     revision will be returned. """
-    plugin, path, revision = parse_plugin_id(plugin_id)  # Validate the id
+    plugin, path, revision = parse_plugin_id(pid)  # Validate the id
 
     if revision is None:
-        revision = latest_revision(plugin_id)
+        revision = latest_revision(pid)
 
     plugin_data = _get_path(plugin, path, revision)  # lookup id in repo
 
     plugin_obj = _load_plugin_from_data(plugin_data)  # Parse data pulled from repo
-    plugin_obj['plugin'] = plugin  # Add some extra identifiers
+    plugin_obj['id'] = plugin_id(plugin, path, revision)  # Add some extra identifiers
+    plugin_obj['plugin'] = plugin
     plugin_obj['path'] = path
     plugin_obj['revision'] = revision
 

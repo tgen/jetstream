@@ -33,7 +33,7 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'jetstream=jetstream.cli.parsers:main',
+            'jetstream=jetstream.cli.main:main',
         ],
     }
 
