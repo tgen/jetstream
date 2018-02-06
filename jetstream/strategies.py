@@ -202,7 +202,7 @@ def dry(plugin):
 
     # Execution phase
     log.debug('Launching {}'.format(plugin['id']))
-    rnd = random.randrange(10, 60)
+    rnd = random.randrange(60, 300)
     cmd = 'echo "{}" | tee logs.txt && sleep {}'.format(plugin['id'], rnd)
     dry_script = ['bash', '-vx', '-c', cmd]
     p = subprocess.Popen(
