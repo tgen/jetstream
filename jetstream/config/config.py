@@ -1,7 +1,7 @@
 import json
-from ruamel import yaml
 import logging
 
+from jetstream.utils import yaml
 from .validator import check
 
 log = logging.getLogger(__name__)
@@ -33,11 +33,11 @@ def serialize(config, format='yaml'):
     elif format == 'json':
         data = json.dumps(config, indent=4)
     else:
-        data = format(config)
+         data = format(config)
     return data
 
 
-def write(path, config, *args, **kwargs):
+def write(config, path, *args, **kwargs):
     with open(path, 'w') as fp:
         fp.write(serialize(config, *args, **kwargs))
 
