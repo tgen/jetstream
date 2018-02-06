@@ -184,7 +184,7 @@ def dry(plugin):
     Which means that you cannot actually use any arguments at all."
 
     This means that there is no guarantee that a script with a shebang behaves
-    the same from system to system. Although I am not convinced that is a
+    the same from system to system. Although, I am not convinced that is a
     defeating problem, the code inside the scripts themselves is more prone to
     system variability than the shebang.
 
@@ -193,17 +193,21 @@ def dry(plugin):
 
     # Setup phase
     work_dir = LocalFsDataStore()
-    log.debug('Setup workspace in {}'.format(work_dir.path))
+    log.critical('Setup workspace in {}'.format(work_dir.path))
 
-    stagein = plugin.get('stagein')
+    stagein = plugin.get('stage_in')
     if stagein:
-        for path in glob(stagein, recursive=True):
-            work_dir.add(path)
+        subprocess.check_call(['rsync', '--progress', '--exclude', '.jetstream', '-rtu', '.', work_dir.path])
+
+    try:
+        work_dir.add('project.json')
+    except FileExistsError:
+        pass
 
     # Execution phase
     log.debug('Launching {}'.format(plugin['id']))
-    rnd = random.randrange(60, 300)
-    cmd = 'echo "{}" | tee logs.txt && sleep {}'.format(plugin['id'], rnd)
+    rnd = random.randrange(30, 45)
+    cmd = 'echo $(date) $(pwd) "{}" | tee logs{}.bam && sleep {}'.format(plugin['id'], rnd, rnd)
     dry_script = ['bash', '-vx', '-c', cmd]
     p = subprocess.Popen(
         dry_script,
@@ -214,12 +218,11 @@ def dry(plugin):
     p.wait()
 
     # Teardown phase
-    log.debug('Copying results back from {}'.format(work_dir.path))
-    stageout = plugin.get('stageout')
+    stageout = plugin.get('stage_out')
+    log.critical('Copying {} back from {}'.format(stageout, work_dir.path))
+
     if stageout:
-        for source in glob(os.path.join(work_dir.path, stageout), recursive=True):
-            dest = utils.remove_prefix(source, work_dir.path)
-            safe_copy(source, dest)
+        subprocess.check_call(['rsync', '--progress', '--exclude', 'project.json', '-rtu', work_dir.path + '/', '.'])
 
     # Generate results
     # TODO The structure of this object is determined by Workflow.__send__()
