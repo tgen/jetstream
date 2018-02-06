@@ -1,4 +1,5 @@
 import os
+import stat
 import gzip
 import logging
 import subprocess
@@ -7,6 +8,7 @@ from getpass import getuser
 from uuid import getnode
 from datetime import datetime
 from ruamel import yaml
+
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +61,11 @@ class Source(str):
 
 def read_lines_allow_gzip(path):
     """Reads line-separated text files, handles gzipped files and recognizes
-    universal newlines """
+    universal newlines. This can cause bytes to be lost when reading from a
+    pipe. """
+    if stat.S_ISFIFO(os.stat(path).st_mode):
+        raise OSError("this should not be used with named pipes")
+
     if is_gzip(path):
         with gzip.open(path, 'rb') as fp:
             data = fp.read().decode('utf-8')
