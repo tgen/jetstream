@@ -135,16 +135,27 @@ def get_jobs(*job_ids):
     return jobs
 
 
-def srun(cmd, *args):
+def srun(*args):
     """ Srun a command, additional args are added to srun prefix """
-    prefix = ['srun'] + list(args)
-    cmd_args = shlex.split(cmd)
-    return subprocess.check_output(prefix + cmd_args)
+    cmd_args = ('srun',) + args
+    log.debug('launching: {}'.format(cmd_args))
+    return subprocess.check_output(cmd_args)
 
 
-def sbatch(cmd, *args):
-    prefix = ['sbatch', '--parsable'] + list(args)
-    cmd_args = shlex.split(cmd)
-    job_info = subprocess.check_output(prefix + cmd_args).decode()
-    jid, _, cluster = job_info.partition(';')
+def sbatch(*args, stdin_data=None):
+    cmd_args = ('sbatch', '--parsable') + args
+
+    log.debug('launching: {}'.format(cmd_args))
+    p = subprocess.Popen(
+        cmd_args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE
+    )
+
+    stdout, stderr = p.communicate(input=stdin_data)
+
+    if p.returncode != 0:
+        raise subprocess.CalledProcessError(p.args)
+
+    jid, _, cluster = stdout.decode().partition(';')
     return SlurmJob(jid, cluster=cluster)
