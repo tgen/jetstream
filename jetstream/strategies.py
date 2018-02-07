@@ -191,6 +191,61 @@ def dry(plugin):
     """
     log.critical('Starting dry run for {}'.format(plugin['id']))
 
+    rnd = random.randrange(30, 45)
+    cmd = 'echo $(date) $(pwd) "{}" | tee logs{}.bam && sleep {}'.format(plugin['id'], rnd, rnd)
+    dry_script = ['bash', '-vx', '-c', cmd]
+    p = subprocess.Popen(
+        dry_script,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE
+    )
+    p.wait()
+
+    result = {
+        'id': plugin['id'],
+        'stdout': p.stdout.read().decode(),
+        'stderr': p.stderr.read().decode(),
+        'rc': p.returncode
+    }
+
+    return result
+
+
+def shell(plugin):
+    log.critical('Starting plugin {}'.format(plugin['id']))
+
+    # TODO How do we want to support scripts?
+    shebang = plugin['script'].splitlines()[0]
+    if 'python3' in shebang:
+        shell_cmd = ['python3']
+    elif 'python' in shebang:
+        shell_cmd = ['python']
+    else:
+        shell_cmd = ['bash', '-vx']
+
+    p = subprocess.Popen(
+        shell_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+    )
+
+    stdout, _ = p.communicate(input=plugin['script'].encode())
+
+    if p.returncode != 0:
+        raise subprocess.CalledProcessError(p)
+
+    result = {
+        'id': plugin['id'],
+        'logs': stdout.decode()
+    }
+
+    return result
+
+
+def beta_stageinout(plugin):
+    log.critical('Starting run for {}'.format(plugin['id']))
+
     # Setup phase
     work_dir = LocalFsDataStore()
     log.critical('Setup workspace in {}'.format(work_dir.path))
@@ -232,5 +287,4 @@ def dry(plugin):
         'stderr': p.stderr.read().decode(),
         'rc': p.returncode
     }
-
     return result
