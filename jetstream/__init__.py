@@ -1,7 +1,4 @@
-"""TODO: update main docstring
-
-
-"""
+"""Jetstream is a collection of tools for automating workflows at TGen."""
 import pkg_resources
 import logging
 
