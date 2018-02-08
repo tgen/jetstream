@@ -19,5 +19,5 @@ PLUGIN_ID_PATTERN = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0
 # see this https://gist.github.com/zdavkeos/1098474
 
 
-from . import formats, plugins, config, project
+from . import formats, plugins, config, project, launch
 from .workflow import Workflow
