@@ -3,7 +3,7 @@ import fnmatch
 import logging
 from os import path, walk, listdir
 
-from jetstream.batch_schedulers.slurm import SlurmJob, submission_pattern
+from jetstream.batch_schedulers.slurm import SlurmJob, submission_pattern, get_jobs
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +20,6 @@ class Project(object):
             raise AttributeError('Config file no found: %s' % self.config_path)
 
         # Check the status
-        self._jobs = None
         self.fails = None
         self.queues = None
         self.status = 'incomplete'
@@ -33,8 +32,7 @@ class Project(object):
         """ Returns a dictionary with the project attributes and all jobs """
         attrs = {k: v for k, v in self.__dict__.items() if
                  not k.startswith('_')}
-        if self._jobs is not None:
-            attrs['jobs'] = [j.properties for j in self._jobs]
+        attrs['jobs'] = [j.serialize() for j in self.jobs()]
         return attrs
 
     def update(self, deep=False):
@@ -60,7 +58,6 @@ class Project(object):
         elif self.queues:
             self.status = 'active'
 
-
         return self.status
 
     def logs(self):
@@ -77,25 +74,33 @@ class Project(object):
                 yield jid
         raise StopIteration
 
-    @property
     def jobs(self):
         jids = self.jids()
-        jobs = [SlurmJob(jid) for jid in jids]
-        return jobs
+
+        # Using this pattern here so that we batch request job info from
+        # sacct. We could just iterate over jobs calling job.update(),
+        # but each call to job.update() starts an sacct process. It's faster
+        # to batch them
+
+        if jids:
+            jobs = get_jobs(*jids)
+            return jobs
+        else:
+            return None
 
     @property
     def active_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_active]
+        active_jobs = [j for j in self.jobs(update=True) if j.is_active]
         return active_jobs
 
     @property
     def complete_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_complete]
+        active_jobs = [j for j in self.jobs(update=True) if j.is_complete]
         return active_jobs
 
     @property
     def failed_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_failed]
+        active_jobs = [j for j in self.jobs(update=True) if j.is_failed]
         return active_jobs
 
     @property

@@ -60,6 +60,9 @@ class SlurmJob(object):
     def __str__(self):
         return json.dumps(self.__dict__)
 
+    def serialize(self):
+        return self.__dict__
+
     @property
     def is_active(self):
         if self.sacct['State'] in active_states:
@@ -97,7 +100,7 @@ class SlurmJob(object):
         return self.sacct
 
 
-def query_sacct(*job_ids):
+def query_sacct(*job_ids, all=False):
     """ Run sacct query for given job_ids and returns a list of records """
     log.debug('query_sacct: {}'.format(str(job_ids)))
 
@@ -107,6 +110,8 @@ def query_sacct(*job_ids):
         job_ids = ' '.join(['-j %s' % jid for jid in job_ids if jid])
         cmd_args = cmd_prefix + shlex.split(job_ids)
     else:
+        if not all:
+            raise ValueError('must give job ids or specify all=True')
         cmd_args = cmd_prefix
 
     log.critical('Launching: %s' % ' '.join(cmd_args))
@@ -124,12 +129,12 @@ def query_sacct(*job_ids):
     return records
 
 
-def get_jobs(*job_ids):
+def get_jobs(*args, **kwargs):
     """ Run batch query for slurm jobs, returns a list of SlurmJobs """
     jobs = []
-    records = query_sacct(*job_ids)
-    for r in records:
-        s = SlurmJob(r['JobID'], r)
+    records = query_sacct(*args, **kwargs)
+    for rec in records:
+        s = SlurmJob(rec['JobID'], sacct=rec)
         jobs.append(s)
 
     return jobs
