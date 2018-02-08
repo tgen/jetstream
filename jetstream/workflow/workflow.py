@@ -59,15 +59,16 @@ class Workflow:
 
     def __next__(self):
         """ returns the next component available for launch and marks
-        the status as "pending" """
+        the node status as "pending" """
         pending = False
-        for node, node_data in self.graph.nodes(data=True):
+        for node_id, node_data in self.graph.nodes(data=True):
             if node_data['status'] == 'pending':
                 pending = True
-            if self.node_ready(node):
-                log.debug('Request for next task giving {}'.format(node))
-                self.update(node, 'pending')
-                return node, node_data
+            if self.node_ready(node_id):
+                log.debug('Node ready for execution {}'.format(node_id))
+                self.update(node_id, status='pending')
+                plugin = plugins.get_plugin(node_data['plugin_id'])
+                return node_id, plugin
         else:
             if pending:
                 log.debug('Request for next task but None available')
@@ -76,17 +77,16 @@ class Workflow:
                 log.debug('Request for next task but all complete')
                 raise StopIteration
 
-    def __send__(self, result):
+    def __send__(self, node_id, *results):
         """ Returns results to the workflow """
-        log.critical('Received results {}'.format(result))
-        node, result = result
+        log.critical('Received results for {}'.format(node_id))
 
         # TODO handle results better
         # this needs to recognized failures and set node status to new
         # but we might also want to only allow a limited number of retrys
         # per node or globally
 
-        self.update(node, 'complete')
+        self.update(node_id, status='complete', results=results)
 
     # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
@@ -156,9 +156,9 @@ class Workflow:
         return fn
 
     @_auto_notify
-    def update(self, node, status):
+    def update(self, node, **kwargs):
         """ Change the status of a node """
-        self.graph.nodes[node]['status'] = status
+        self.graph.nodes[node].update(**kwargs)
 
     @_auto_notify
     def _add_node(self, mapping):
