@@ -1,5 +1,5 @@
-from . import start, resume, config
-__all__ = ["start", "resume", "config"]
+from . import start, resume, config, launch, plugins
+__all__ = ["start", "resume", "config", "launch", "plugins"]
 
 
 # TODO add subparsers for plugins module
