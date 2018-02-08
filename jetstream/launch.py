@@ -5,10 +5,9 @@ import subprocess
 import hashlib
 import logging
 import random
+from datetime import datetime
+from jetstream.utils import fingerprint
 import abc
-from glob import glob
-
-from jetstream import utils
 
 log = logging.getLogger(__name__)
 
@@ -191,27 +190,19 @@ def dry(plugin):
     """
     log.critical('Starting dry run for {}'.format(plugin['id']))
 
-    rnd = random.randrange(30, 45)
-    cmd = 'echo $(date) $(pwd) "{}" | tee logs{}.bam && sleep {}'.format(plugin['id'], rnd, rnd)
-    dry_script = ['bash', '-vx', '-c', cmd]
-    p = subprocess.Popen(
-        dry_script,
-        stderr=subprocess.PIPE,
-        stdout=subprocess.PIPE
-    )
-    p.wait()
-
     result = {
         'id': plugin['id'],
-        'stdout': p.stdout.read().decode(),
-        'stderr': p.stderr.read().decode(),
-        'rc': p.returncode
+        'rc': 0,
+        'started': str(datetime.now()),
+        'completed': str(datetime.now()),
+        'fingerprint': fingerprint(),
+        'log': 'Dry run'
     }
 
     return result
 
 
-def shell(plugin):
+def default(plugin):
     log.critical('Starting plugin {}'.format(plugin['id']))
 
     # TODO How do we want to support scripts?
@@ -221,7 +212,7 @@ def shell(plugin):
     elif 'python' in shebang:
         shell_cmd = ['python']
     else:
-        shell_cmd = ['bash', '-vx']
+        shell_cmd = ['bash']
 
     p = subprocess.Popen(
         shell_cmd,
@@ -232,18 +223,18 @@ def shell(plugin):
 
     stdout, _ = p.communicate(input=plugin['script'].encode())
 
-    if p.returncode != 0:
-        raise subprocess.CalledProcessError(p)
-
     result = {
         'id': plugin['id'],
-        'logs': stdout.decode()
+        'rc': p.returncode,
+        'log': stdout.decode()
     }
 
     return result
 
 
 def beta_stageinout(plugin):
+    """ This is an early example of how we might stage project data in temporary
+    data stores for remote execution. """
     log.critical('Starting run for {}'.format(plugin['id']))
 
     # Setup phase
@@ -252,7 +243,8 @@ def beta_stageinout(plugin):
 
     stagein = plugin.get('stage_in')
     if stagein:
-        subprocess.check_call(['rsync', '--progress', '--exclude', '.jetstream', '-rtu', '.', work_dir.path])
+        subprocess.check_call(['rsync', '--progress', '--exclude',
+                               '.jetstream', '-rtu', '.', work_dir.path])
 
     try:
         work_dir.add('project.json')
@@ -262,7 +254,8 @@ def beta_stageinout(plugin):
     # Execution phase
     log.debug('Launching {}'.format(plugin['id']))
     rnd = random.randrange(30, 45)
-    cmd = 'echo $(date) $(pwd) "{}" | tee logs{}.bam && sleep {}'.format(plugin['id'], rnd, rnd)
+    cmd = 'echo $(date) $(pwd) "{}" | tee logs{}.bam && sleep {}'.format(
+        plugin['id'], rnd, rnd)
     dry_script = ['bash', '-vx', '-c', cmd]
     p = subprocess.Popen(
         dry_script,
@@ -277,7 +270,8 @@ def beta_stageinout(plugin):
     log.critical('Copying {} back from {}'.format(stageout, work_dir.path))
 
     if stageout:
-        subprocess.check_call(['rsync', '--progress', '--exclude', 'project.json', '-rtu', work_dir.path + '/', '.'])
+        subprocess.check_call(['rsync', '--progress', '--exclude',
+                               'project.json', '-rtu', work_dir.path + '/', '.'])
 
     # Generate results
     # TODO The structure of this object is determined by Workflow.__send__()
@@ -288,3 +282,4 @@ def beta_stageinout(plugin):
         'rc': p.returncode
     }
     return result
+
