@@ -54,32 +54,29 @@ class SlurmJob(object):
         self.sacct = sacct
         self.cluster = cluster
 
-    def __getattr__(self, item):
-        return self.properties[item]
-
     def __repr__(self):
-        return "SlurmJob(%s)" % self.JobID
+        return "SlurmJob(%s)" % self.jid
 
     def __str__(self):
         return json.dumps(self.__dict__)
 
     @property
     def is_active(self):
-        if self.State in active_states:
+        if self.sacct['State'] in active_states:
             return True
         else:
             return False
 
     @property
     def is_failed(self):
-        if self.State in failed_states:
+        if self.sacct['State'] in failed_states:
             return True
         else:
             return False
 
     @property
     def is_complete(self):
-        if self.State in completed_states:
+        if self.sacct['State'] in completed_states:
             return True
         else:
             return False
@@ -88,8 +85,11 @@ class SlurmJob(object):
         sacct_data = query_sacct(self.jid)
         matches = [r for r in sacct_data if r['JobID'] == self.jid]
 
-        if len(matches) != 1:
+        if len(matches) > 1:
             msg = "Sacct returned more than one record for {}".format(self.jid)
+            raise ValueError(msg)
+        elif len(matches) < 1:
+            msg = "Sacct returned less than one record for {}".format(self.jid)
             raise ValueError(msg)
         else:
             self.sacct = matches[0]
@@ -155,7 +155,7 @@ def sbatch(*args, stdin_data=None):
     stdout, stderr = p.communicate(input=stdin_data)
 
     if p.returncode != 0:
-        raise subprocess.CalledProcessError(p.args)
+        raise ChildProcessError(str(vars(p)))
 
     jid, _, cluster = stdout.decode().partition(';')
     return SlurmJob(jid, cluster=cluster)
