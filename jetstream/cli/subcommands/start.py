@@ -21,23 +21,14 @@ To keep things simple for now:
       application managing the runs.
 
 """
-import os
 import json
 import logging
 import jetstream
 
-from jetstream import strategies
+from jetstream import launch
 from jetstream.workflow.runner import run
 
 log = logging.getLogger(__name__)
-
-def validator(value):
-    """ Example argument validator function that can be applied with 'type='"""
-    if 'condition_is_met':
-        # TODO add validation to arguments using functions in utils
-        return value
-    else:
-        raise Exception('failed validation')
 
 
 def arg_parser(subparser):
@@ -45,8 +36,7 @@ def arg_parser(subparser):
     parser.set_defaults(action=main)
 
     parser.add_argument('workflow',
-                        help='Path to a workflow file',
-                        type=validator)
+                        help='Path to a workflow file')
 
     parser.add_argument('-s', '--strategy',
                         default='dry')
@@ -55,7 +45,7 @@ def main(args):
     log.critical(str(args))
     # Load the strategy (the function that will receive plugins when they're
     # ready to be executed).
-    strategy = getattr(strategies, args.strategy)
+    strategy = getattr(launch, args.strategy)
 
     # Load the workflow (built beforehand and saved to a file)
     with open(args.workflow, 'r') as fp:
@@ -64,5 +54,5 @@ def main(args):
 
     # Start the runner (there may be more than one of these if performance
     # becomes a concern)
-    run(wf=wf, project=os.getcwd(), strategy=strategy)
+    run(wf=wf, strategy=strategy)
 
