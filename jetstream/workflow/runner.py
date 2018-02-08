@@ -75,6 +75,13 @@ def _handle(tasks, wf):
         else:
             try:
                 res = thread.join(timeout=1)
+
+                if res is None:
+                    # This would be due to an exception occuring
+                    # in the launcher function.
+                    # TODO Is it necessary to allow recovery from these errors?
+                    raise RuntimeError(thread.args)
+
                 wf.__send__((node_id, res))
                 _save(wf)
             except TimeoutError:
@@ -107,11 +114,8 @@ def _threaded_run(wf, strategy):
             _save(wf)
 
 
-def run(wf, project, strategy):
+def run(wf, strategy):
     global _CURRENT_RUN
-
-    # Make sure we're working in a project dir
-    os.chdir(project)
     p = Project(os.getcwd())
 
     # Request a new run id
@@ -121,7 +125,7 @@ def run(wf, project, strategy):
     _threaded_run(wf, strategy)
 
 
-def resume(project, run_id):
-    # This will be for resuming a given
+def resume(run_id):
+    # TODO This will be for resuming a given run_id
     pass
 
