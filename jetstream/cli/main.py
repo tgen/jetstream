@@ -1,4 +1,3 @@
-import os
 import logging
 import argparse
 from types import ModuleType
@@ -36,7 +35,7 @@ def main(args=None):
 
     if args.action is None:
         parser.print_help()
-        print('jetstream -help and jetstream')
+        print('jetstream -h to see this message')
     else:
         log.debug(str(args))
         args.action(args)
