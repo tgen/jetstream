@@ -1,4 +1,5 @@
 import os
+import sys
 import stat
 import gzip
 import logging
@@ -112,7 +113,9 @@ def fingerprint():
     return {
         'datetime': str(datetime.now()),
         'user': getuser(),
-        'mac': hex(getnode()).upper(),
+        'sys.version': sys.version,
+        'sys.platform': sys.platform,
+        'sys.mac': hex(getnode()).upper(),
         'pid': os.getpid(),
         'hostname': gethostname(),
     }
