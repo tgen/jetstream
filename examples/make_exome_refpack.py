@@ -285,13 +285,13 @@ def make_vcf_filter(targets, refdict, gtf):
 
 
 def make_cna_filter(cna_template_bed, bed):
-    # First we need to changed X -> 24 and Y -> 25
+    # First we need to changed X -> 23 and Y -> 24
     bed = intervals.read_bed(bed)
     for i in bed:
         if i['seqname'] == 'X':
-            i['seqname'] = '24'
+            i['seqname'] = '23'
         elif i['seqname'] == 'Y':
-            i['seqname'] = '25'
+            i['seqname'] = '24'
 
     temp_bed = tempfile.NamedTemporaryFile()
     with open(temp_bed.name, 'w') as fp:
