@@ -114,7 +114,7 @@ def query_sacct(*job_ids, all=False):
             raise ValueError('must give job ids or specify all=True')
         cmd_args = cmd_prefix
 
-    log.critical('Launching: %s' % ' '.join(cmd_args))
+    log.debug('Launching: %s' % ' '.join(cmd_args))
     res = subprocess.check_output(cmd_args).decode()
 
     # Convert the sacct report to an object

@@ -9,67 +9,54 @@ log = logging.getLogger(__name__)
 
 
 class Project(object):
-    def __init__(self, project, deep=False):
-        # Resolve project path information
+    def __init__(self, project):
         self.path = path.realpath(project)
         self.name = path.basename(self.path)
         self.short_name = re.subn('_ps\d*$', '', self.name)[0]
 
-        # Load the config file
+        # Check for a config file
         self.config_path = path.join(self.path, self.short_name + '.config')
         if not path.exists(self.config_path):
-            raise AttributeError('Config file no found: %s' % self.config_path)
-
-        # Check the status
-        self.fail_files = None
-        self.queue_files = None
-        self.status = 'incomplete'
-        self.update(deep=deep)
+            raise FileNotFoundError('Config file not found: %s' % self.config_path)
 
     def __repr__(self):
-        return "Project(%s, %s)" % (self.name, self.status)
+        return "Project(%s)" % (self.name)
 
-    def serialize(self):
-        """ Returns a dictionary with the project attributes and all jobs """
-        attrs = {k: v for k, v in self.__dict__.items() if
-                 not k.startswith('_')}
-        attrs['jobs'] = [j.serialize() for j in self.jobs()]
-        return attrs
+    @property
+    def is_complete(self):
+        """ Faster than check_status """
+        return path.exists(path.join(self.path, 'project.finished'))
 
-    def update(self, deep=False):
-        """ There is no single source of truth when it comes to a project's
+    def check_status(self):
+        """ There is no single source of truth when it comes to a project
         status. The best we can do is make a guess based on:
 
         1) Whether or not a "project.finished" file exists
-        2) .Failed or .Queue files exist in the project directory
-        3) Checking the state of job ids recorded in the project logs
+        2) .Failed files exist in the project directory
+        3) .Queue files exist in the project directory
+        4) Checking the state of job ids recorded in the project logs
 
-        This method attempts to turn all of those clues into a single status
-        value """
+        This method only takes into account 1 and 2. Combined this
+        with Project.get_jobs() and you can get a full picture on the
+        status of a project """
         if path.exists(path.join(self.path, 'project.finished')):
-            self.status = 'complete'
+            return 'complete'
+        elif find_failed_signals(self.path):
+            # This operation can take quite a while
+            return 'failed'
+        else:
+            return 'incomplete'
 
-        if deep:
-            # These operations can take quite a while, so they're optional
-            self.fail_files = find_failed_signals(self.path)
-            self.queue_files = find_queued_signals(self.path)
-
-        if self.fail_files:
-            self.status = 'failed'
-        elif self.queue_files:
-            self.status = 'active'
-
-        self.update_jobs()
-
-        return self.status
-
-    def update_jobs(self):
-        # Using this pattern here so that we batch request job info from
+    def get_jobs(self):
+        # Using this pattern in order to batch request job info from
         # sacct. We could just iterate over jobs calling job.update(),
-        # but each call to job.update() starts an sacct process. It's faster
-        # to batch them
-        jids = self._jids()
-        self.jobs = get_jobs(*jids)
+        # but each call to job.update() starts a separate sacct process.
+        # It's faster to batch them together in a single request
+        jids = list(self._jids())
+        if jids:
+            return get_jobs(*jids)
+        else:
+            return []
 
     def _logs(self):
         log_dir = path.join(self.path, 'logs/')
@@ -85,34 +72,18 @@ class Project(object):
                 yield jid
         raise StopIteration
 
-    @property
     def active_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_active]
+        active_jobs = [j for j in self.get_jobs() if j.is_active]
         return active_jobs
 
-    @property
     def complete_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_complete]
-        return active_jobs
+        complete_jobs = [j for j in self.get_jobs() if j.is_complete]
+        return complete_jobs
 
-    @property
     def failed_jobs(self):
-        active_jobs = [j for j in self.jobs if j.is_failed]
-        return active_jobs
+        failed_jobs = [j for j in self.get_jobs() if j.is_failed]
+        return failed_jobs
 
-    @property
-    def is_complete(self):
-        if self.status == 'complete':
-            return True
-        else:
-            return False
-
-    @property
-    def is_active(self):
-        if self.status != 'complete':
-            return True
-        else:
-            return False
 
 
 def find_failed_signals(project_dir):
@@ -144,28 +115,41 @@ def find_jids_in_log(log_path, pat=submission_pattern):
     raise StopIteration
 
 
-def build_plain_text_report(project, col_size=20):
-    rep = "%s - %s\n" % (project.name, project.status)
-    rep += "%s\n" % project.path
+def build_plain_text_report(project, fast=False, all_jobs=False, col_size=20):
+    if fast:
+        if project.is_complete:
+            status = 'complete'
+        else:
+            status = 'incomplete'
 
-    # Build the header
-    h_id = "ID".ljust(col_size)
-    h_name = "Name".ljust(col_size)
-    h_state = "State".ljust(col_size)
-    h_start = "Start".ljust(col_size)
-    h_end = "End".ljust(col_size)
-    h_elapsed = "Elapsed".ljust(col_size)
-    header_values = (h_id, h_name, h_state, h_start, h_end, h_elapsed)
-    rep += " ".join(header_values) + '\n'
+        rep = "%s - %s\n" % (project.name, status)
+        rep += "%s\n" % project.path
 
-    for j in project.jobs():
-        d = j.sacct  # Use the sacct data for each job
-        job_id = d['JobID'][:12].ljust(12)
-        job_name = d['JobName'][:col_size].ljust(col_size)
-        job_state = d['State'][:col_size].ljust(col_size)
-        job_start = d['Start'][:col_size].ljust(col_size)
-        job_end = d['End'][:col_size].ljust(col_size)
-        job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
-        values = (job_id, job_name, job_state, job_start, job_end, job_elapsed)
-        rep += " ".join(values) + '\n'
+    else:
+        rep = "%s - %s\n" % (project.name, project.check_status())
+        rep += "%s\n" % project.path
+
+        # Build the header
+        h_id = "ID".ljust(col_size)
+        h_name = "Name".ljust(col_size)
+        h_state = "State".ljust(col_size)
+        h_start = "Start".ljust(col_size)
+        h_end = "End".ljust(col_size)
+        h_elapsed = "Elapsed".ljust(col_size)
+        header_values = (h_id, h_name, h_state, h_start, h_end, h_elapsed)
+        rep += " ".join(header_values) + '\n'
+
+        for j in project.get_jobs():
+            if j.is_complete and not all_jobs:
+                continue
+            d = j.sacct  # Use the sacct data for each job
+            job_id = d['JobID'][:12].ljust(12)
+            job_name = d['JobName'][:col_size].ljust(col_size)
+            job_state = d['State'][:col_size].ljust(col_size)
+            job_start = d['Start'][:col_size].ljust(col_size)
+            job_end = d['End'][:col_size].ljust(col_size)
+            job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
+            values = (job_id, job_name, job_state, job_start, job_end, job_elapsed)
+            rep += " ".join(values) + '\n'
+
     return rep
