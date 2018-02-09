@@ -14,10 +14,10 @@ def arg_parser(subparser):
 
     parser.add_argument('--all', action='store_true', default=False,
                         help='Report on all projects even if they\'re complete.'
-                             'Skips complete projects by default.')
+                             ' Skips complete projects by default.')
 
     parser.add_argument('--all-jobs', action='store_true', default=False,
-                        help='Report on all jobs even if they\'re complete'
+                        help='Report on all jobs even if they\'re complete. '
                              'Skips complete jobs by default.')
 
 def main(args):
@@ -27,7 +27,7 @@ def main(args):
     for proj in args.project:
         try:
             p = reports.legacy.Project(proj)
-            if p.is_complete and not args.all_jobs:
+            if p.is_complete and not args.all:
                 log.debug('Skipping complete {}'.format(proj))
                 continue
             projects.append(p)
