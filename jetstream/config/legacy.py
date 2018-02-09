@@ -51,8 +51,8 @@ class ConfigParsingException(Exception):
 
 
 def deserialize(data):
-    """Loads a legacy config file from data. Performs  several validation
-    steps, briefly:
+    """Loads a legacy config file from data. Performs several validation
+    steps. Briefly:
 
      - Leading and trailing whitespace is removed
      - Checks for single occurrence of "=START" and "=END" lines
@@ -148,10 +148,11 @@ def _parse_sample(lines):
 
     This diverges from the old structure a little bit:
 
-    The kit code, is associated with a sample in the config files. But the
+    The kit code is associated with a sample in the config files. But, the
     assay is not really a property of the sample itself, it's a property of
     the data object. For instance, one sample can be prepped multiple times
-    with different kits. So, here kit becomes a property of each data object
+    with different kits. Here, kit is taken from the sample line and added
+    as a property of each data object.
     """
     sample_line = lines[0]
     sample = {}
