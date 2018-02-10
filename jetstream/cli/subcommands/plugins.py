@@ -7,18 +7,18 @@ def arg_parser(subparser):
     parser.set_defaults(action=main)
 
     parser.add_argument('subaction',
-                        choices=['ls', 'list', 'update', 'add', 'rm', 'get',
-                                 'get-script'])
+                        choices=['ls', 'list', 'update', 'clone', 'rm', 'remove',
+                                 'get', 'get-script'])
 
     parser.add_argument('plugin_id', nargs='?')
 
 
 def main(args):
     if args.subaction in ('update',):
-        plugins.sync()
-    elif args.subaction in ('add',):
+        plugins.update()
+    elif args.subaction in ('clone',):
         plugins.clone(args.plugin_id)
-    elif args.subaction in ('rm',):
+    elif args.subaction in ('rm', 'remove'):
         plugins.remove(args.plugin_id)
     elif args.subaction in ('get',):
         plugin_data = plugins.get_plugin(args.plugin_id)
