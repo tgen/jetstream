@@ -18,3 +18,6 @@ PLUGIN_ID_PATTERN = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0
 
 from . import formats, plugins, config, project, launch
 from .workflow import Workflow
+
+# TODO: Move reports.legacy.Project into jetstream.project
+#

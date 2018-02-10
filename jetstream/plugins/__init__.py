@@ -67,7 +67,7 @@ def components():
                 yield utils.remove_prefix(os.path.join(p, f), PLUGIN_DIR)
 
 
-def _clone(repo='https://github.com/tgen/pegasusPipe.git'):
+def clone(repo='https://github.com/tgen/pegasusPipe.git'):
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
     # a collection of yaml files that describe plugins, we don't want to try
@@ -79,7 +79,7 @@ def _clone(repo='https://github.com/tgen/pegasusPipe.git'):
     )
 
 
-def _remove(plugin):
+def remove(plugin):
     """ Careful, this is essentially a shortcut to rm -rf """
     shutil.rmtree(os.path.join(PLUGIN_DIR, plugin))
 
