@@ -68,15 +68,15 @@ def components():
 
 
 def clone(repo='https://github.com/tgen/pegasusPipe.git'):
+    """ Attempts to clone a plugin repository. This will raise
+    subprocess.CalledProcessError if the requested plugin is not found.
+    And FileNotFound if git is not installed. """
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
     # a collection of yaml files that describe plugins, we don't want to try
     # loading files that are not plugins etc..
     log.critical('Cloning {} into {}'.format(repo, PLUGIN_DIR))
-    subprocess.run(
-        ['git', 'clone', repo],
-        cwd=PLUGIN_DIR
-    )
+    subprocess.check_call(['git', 'clone', repo], cwd=PLUGIN_DIR)
 
 
 def remove(plugin):
@@ -168,7 +168,7 @@ def parse_plugin_id(string):
         return (g.get('plugin'), g.get('path'), g.get('revision'))
 
 
-def sync():
+def update():
     for plugin in os.listdir(PLUGIN_DIR):
         git_repo = os.path.join(PLUGIN_DIR, plugin, '.git')
         if os.path.exists(git_repo) and os.path.isdir(git_repo):
