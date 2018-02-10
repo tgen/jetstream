@@ -67,10 +67,16 @@ def components():
                 yield utils.remove_prefix(os.path.join(p, f), PLUGIN_DIR)
 
 
-def clone(repo='https://github.com/tgen/pegasusPipe.git'):
+def clone(repo):
     """ Attempts to clone a plugin repository. This will raise
     subprocess.CalledProcessError if the requested plugin is not found.
     And FileNotFound if git is not installed. """
+
+    if repo.startswith(('https', 'git@github.com')):
+        pass
+    else:
+        repo = os.path.realpath(repo)
+
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
     # a collection of yaml files that describe plugins, we don't want to try
