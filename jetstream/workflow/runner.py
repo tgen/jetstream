@@ -1,8 +1,7 @@
-""" Runners operate on workflows to execute plugin components. They make use
+"""Runners operate on workflows to execute plugin components. They make use
 of workflow methods .__next__() and .__send__() to get tasks and return results
 They also require a strategy, which is the function that will be executed for
-each plugin component when it is time to launch that component.
-"""
+each plugin component when it is time to launch that component. """
 import os
 import time
 import logging
@@ -58,7 +57,7 @@ def _save(wf):
 
 
 def _handle(tasks, wf):
-    """ Cycle through the active tasks to check for completed threads.
+    """Cycle through the active tasks to check for completed threads.
 
     When a completed thread is found, a process record is created and
     sent back to the workflow as a tuple: (node_id, record).
