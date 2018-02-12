@@ -46,3 +46,18 @@ Heres an example of launching a slurm job over ssh:
 This would require the application to be configured with the address and
 potentially login credentials for the slurm head node.
 
+# Extra features
+
+There are several general purpose genomics modules included in this package.
+Here is an example of processing intervals files with functions included in
+`jetstream.formats.intervals`: 
+
+```python
+from jetstream.formats.intervals import read_gffv2, to_bed
+
+ints = intervals.read_gffv2('targets.gtf')
+ints = ints.filter(lambda i: i['feature'] == 'exon')  # Select only exons
+
+with open('filtered_targets.bed', 'w') as fp:
+    fp.write(intervals.to_bed(ints))
+```
