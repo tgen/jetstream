@@ -33,7 +33,6 @@ import os
 import re
 import shutil
 import subprocess
-import glob
 import logging
 
 from jetstream import utils, PLUGIN_DIR, PLUGIN_ID_PATTERN
@@ -51,43 +50,73 @@ class InvalidPluginId(Exception):
     """ Raised when a plugin id does not match format """
 
 
-def plugins():
-    for plugin in os.listdir(PLUGIN_DIR):
-        git_repo = os.path.join(PLUGIN_DIR, plugin, '.git')
-        if os.path.exists(git_repo) and os.path.isdir(git_repo):
-            yield utils.remove_prefix(plugin, PLUGIN_DIR)
-
-
-def components():
-    for p in plugins():
-        dirname = os.path.join(PLUGIN_DIR, p)
-        all_paths = glob.glob(dirname + '/**', recursive=True)
-        for f in all_paths:
-            if os.path.isfile(f):
-                yield utils.remove_prefix(os.path.join(p, f), PLUGIN_DIR)
-
-
 def clone(repo):
     """ Attempts to clone a plugin repository. This will raise
     subprocess.CalledProcessError if the requested plugin is not found.
     And FileNotFound if git is not installed. """
-
     if repo.startswith(('https', 'git@github.com')):
         pass
     else:
         repo = os.path.realpath(repo)
 
+    cmd_args = ['git', 'clone', '--bare', repo]
+
     # TODO Validate that the repo we want is actually a jetstream plugin repo
     # not sure yet about the best place to do this. Jetstream plugin repo is
     # a collection of yaml files that describe plugins, we don't want to try
     # loading files that are not plugins etc..
-    log.critical('Cloning {} into {}'.format(repo, PLUGIN_DIR))
-    subprocess.check_call(['git', 'clone', repo], cwd=PLUGIN_DIR)
+
+    log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), PLUGIN_DIR))
+    subprocess.check_call(cmd_args, cwd=PLUGIN_DIR)
+
+
+def plugins():
+    """Generator that yields paths in PLUGIN_DIR if they 1) are directories
+     and 2) end with '.git' """
+    log.debug('Plugin dir: {}'.format(PLUGIN_DIR))
+    for plugin in os.listdir(PLUGIN_DIR):
+        git_repo = os.path.join(PLUGIN_DIR, plugin)
+        if git_repo.endswith('.git') and os.path.isdir(git_repo):
+            yield utils.remove_prefix(plugin, PLUGIN_DIR)
+
+
+def components():
+    """Generator that yields components in all plugins as returned by plugins()
+    """
+    cmd_args = ['git', 'ls-tree', '--full-tree', '-r', '--name-only', 'HEAD']
+    for p in plugins():
+        repo_path = os.path.join(PLUGIN_DIR, p)
+        log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+        paths = subprocess.check_output(cmd_args, cwd=repo_path).decode()
+        for f in paths.splitlines():
+            yield  os.path.join(p, f)
+
+
+def ls():
+    """Returns a list of all available components"""
+    return list(components())
+
+
+def list_revisions(pid):
+    """Given a plugin id, returns a list of all revisions """
+    plugin, path, revision = parse_plugin_id(pid)
+    revs = _get_path_revisions(plugin, path)
+    return revs
+
+
+def update():
+    cmd_args = ['git', 'fetch', '-q', 'origin', 'master:master']
+    for p in plugins():
+        repo_path = os.path.join(PLUGIN_DIR, p)
+        log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+        subprocess.call(cmd_args, cwd=repo_path)
 
 
 def remove(plugin):
     """ Careful, this is essentially a shortcut to rm -rf """
-    shutil.rmtree(os.path.join(PLUGIN_DIR, plugin))
+    target = os.path.join(PLUGIN_DIR, plugin)
+    log.debug('Launching shutil.rmtree on {}'.format(target))
+    shutil.rmtree(target)
 
 
 def _get_path(plugin, path, revision):
@@ -100,15 +129,18 @@ def _get_path(plugin, path, revision):
 
     """
     identifier = '{}:{}'.format(revision, path)
+    cmd_args = ['git', 'show', identifier]
+    repo_path = os.path.join(PLUGIN_DIR, plugin)
+    log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
     try:
         p = subprocess.Popen(
-            ['git', 'show', identifier],
-            cwd=os.path.join(PLUGIN_DIR, plugin),
+            cmd_args,
+            cwd=repo_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
     except FileNotFoundError:
-        raise FileNotFoundError('Cant launch git executable') from None
+        raise FileNotFoundError('Cant find git executable') from None
 
     stdout, stderr = p.communicate()
 
@@ -128,10 +160,10 @@ def _get_path_revisions(plugin, path):
     git_log_format = '%x1f'.join(log_fields) + '%x1e'
     format_flag = '--format={}'.format(git_log_format)
 
-    data = subprocess.check_output(
-        ['git', 'log', format_flag, '--', path],
-        cwd=os.path.join(PLUGIN_DIR, plugin)
-    ).decode()
+    cmd_args = ['git', 'log', format_flag, '--', path]
+    repo_path = os.path.join(PLUGIN_DIR, plugin)
+    log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+    data = subprocess.check_output(cmd_args, cwd=repo_path).decode()
 
     git_log = data.strip('\n\x1e').strip().split('\x1e')
     git_log = [row.strip().split('\x1f') for row in git_log]
@@ -172,26 +204,6 @@ def parse_plugin_id(string):
     else:
         g = match.groupdict()
         return (g.get('plugin'), g.get('path'), g.get('revision'))
-
-
-def update():
-    for plugin in os.listdir(PLUGIN_DIR):
-        git_repo = os.path.join(PLUGIN_DIR, plugin, '.git')
-        if os.path.exists(git_repo) and os.path.isdir(git_repo):
-            subprocess.call([
-                'git', 'pull'
-            ], cwd=os.path.join(PLUGIN_DIR, plugin))
-
-
-def ls():
-    return list(components())
-
-
-def list_revisions(pid):
-    """ Given a plugin id, returns a list of all revisions """
-    plugin, path, revision = parse_plugin_id(pid)
-    revs = _get_path_revisions(plugin, path)
-    return revs
 
 
 def latest_revision(pid):
