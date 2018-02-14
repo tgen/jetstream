@@ -23,10 +23,8 @@ To keep things simple for now:
 """
 import json
 import logging
-import jetstream
 
-from jetstream import launch
-from jetstream.workflow.runner import run
+from jetstream import launch, workflow
 
 log = logging.getLogger(__name__)
 
@@ -50,9 +48,9 @@ def main(args):
     # Load the workflow (built beforehand and saved to a file)
     with open(args.workflow, 'r') as fp:
         data = json.load(fp)
-    wf = jetstream.workflow.from_json(data)
+    wf = workflow.from_json(data)
 
     # Start the runner (there may be more than one of these if performance
     # becomes a concern)
-    run(wf=wf, strategy=strategy)
+    workflow.run(wf=wf, strategy=strategy)
 
