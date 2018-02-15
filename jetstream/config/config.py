@@ -44,14 +44,4 @@ def write(config, path, *args, **kwargs):
 
 def validate(config):
     """ Validate the key-value pair against the schema"""
-    fails = []
-    for k, v in config['meta'].items():
-        if check(k, v):
-            pass
-        else:
-            fails.append((k, v))
-
-    if fails:
-        for k, v in fails:
-            log.warning('Validator failed for "{}: {}"!'.format(k, v))
-        raise ValueError(str(fails))
+    return check(config['meta'])

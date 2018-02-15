@@ -17,34 +17,36 @@ pipelineField = re.compile('(?i)(pegasus|medusa|pecan|chia)')
 
 
 def is_text(value):
-    """ True if value contains only alphanumeric, dash, and hyphens """
+    """ Valid if value contains only alphanumeric, dash, and hyphens """
     return bool(textField.match(value))
 
 
 def is_array(value):
-    """ Returns true if value contains only alphanumeric, dash, hyphens, space, semicolon, and comma"""
+    """ Valid if value contains only alphanumeric, dash, hyphens, space,
+    semicolon, and comma"""
     return bool(arrayField.match(value))
 
 
 def is_email(value):
-    """ True if value contains at one @ and one dot, loose email address matching"""
+    """Valid if value contains at least one @ and one dot, loose email
+    address matching. """
     return bool(emailField.match(value))
 
 
 def is_pipeline(value):
-    """ Returns True if value is a Pipeline name, case insensitive """
+    """Valid True if value is a Pipeline name, case insensitive """
     return bool(pipelineField.match(value))
 
 
 def is_path(value):
-    """ Returns True if value is a directory """
+    """Valid if value is a directory that exists"""
     return os.path.isdir(value)
 
 
 def is_bool(value):
-    """ Returns True if value is a valid lazy boolean.
+    """ Valid if value is a boolean.
     Lazy booleans are case insensitive matches (partial or whole) to
-    truthy or falsey values: true, false, yes, no, 1 or 0. """
+    truthy (true, yes, 1) or falsey (false, no, 0) values. """
     if isinstance(value, str):
         value = value.lower()
         for b in ('yes', 'true', 'no', 'false', '1', '0'):

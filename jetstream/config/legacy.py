@@ -69,6 +69,7 @@ def deserialize(data):
 
 
 def read(path):
+    """Reads a legacy config file from the given path, returns config object"""
     with open(path, 'r') as fp:
         return deserialize(fp.read())
 
@@ -181,5 +182,10 @@ def _parse_sample(lines):
         data['kit'] = kit
         data['assay'] = assay
         sample['data'].append(data)
+
+        # In the legacy config files, fastqs were always assumed to be
+        # paired-end.
+        if data['type'] == 'FQ':
+            data['read_style'] = 'paired-end'
 
     return sample
