@@ -36,8 +36,13 @@ def easy_launch(cmd, *args, module_load=None, docker_img=None):
     else:
         final = cmd
 
-    project_data = config.read(getcwd())
+    try:
+        project_data = config.read(getcwd())
+        project_name = project_data['name']
+    except FileNotFoundError:
+        project_name = None
+
     run_id = environ.get('JETSTREAM_RUN_ID')
-    job_name = 'jetstream-{}-{}'.format(project_data['name'], run_id)
+    job_name = 'jetstream-{}-{}'.format(project_name, run_id)
 
     return sbatch(*args, '-N', job_name, stdin_data=final.encode())
