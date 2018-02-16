@@ -29,6 +29,8 @@ RG_TAG = 'ID:{ID}\tCN:{CN}\tDS:{DS}\tDT:{DT}\tFO:{FO}\t' \
 
 def easy_launch(cmd, *args, module_load=None, docker_img=None):
     """Launch Slurm jobs with controlled environments via module or docker"""
+    cmd = '#!/bin/bash\n' + cmd
+
     if module_load:
         final = "module load {} && {}".format(module_load, cmd)
     elif docker_img:
