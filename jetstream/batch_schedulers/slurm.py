@@ -162,7 +162,7 @@ def sbatch(*args, stdin_data=None):
     if p.returncode != 0:
         raise ChildProcessError(str(vars(p)))
 
-    jid, _, cluster = stdout.decode().partition(';')
+    jid, _, cluster = stdout.decode().strip().partition(';')
     return SlurmJob(jid, cluster=cluster)
 
 

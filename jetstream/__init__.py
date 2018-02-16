@@ -27,16 +27,14 @@ RG_TAG = 'ID:{ID}\tCN:{CN}\tDS:{DS}\tDT:{DT}\tFO:{FO}\t' \
          'PM:{PM}\tPU:{PU}\tSM:{SM}'
 
 
-def easy_launch(cmd, *args, module_load=None, docker_img=None):
-    """Launch Slurm jobs with controlled environments via module or docker"""
-    cmd = '#!/bin/bash\n' + cmd
+def easy_launch(cmd, *args, module_load=None):
+    """Launch Slurm jobs with controlled environments via module """
+    shebang = '#!/bin/bash\nset -x'
 
     if module_load:
-        final = "module load {} && {}".format(module_load, cmd)
-    elif docker_img:
-        final = "docker run {} {}".format(docker_img, cmd)
+        final = "{}\nmodule load {} || exit 1\n{}".format(shebang, module_load, cmd)
     else:
-        final = cmd
+        final = "{}\n{}".format(cmd)
 
     try:
         project_data = config.read('project.yaml')
@@ -46,5 +44,5 @@ def easy_launch(cmd, *args, module_load=None, docker_img=None):
 
     run_id = environ.get('JETSTREAM_RUN_ID')
     job_name = 'jetstream-{}-{}'.format(project_name, run_id)
-
-    return sbatch(*args, '-N', job_name, stdin_data=final.encode())
+    
+    return sbatch(*args, '-J', job_name, stdin_data=final.encode())
