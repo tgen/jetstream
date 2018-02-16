@@ -164,3 +164,5 @@ def sbatch(*args, stdin_data=None):
 
     jid, _, cluster = stdout.decode().partition(';')
     return SlurmJob(jid, cluster=cluster)
+
+

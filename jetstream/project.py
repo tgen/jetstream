@@ -7,6 +7,8 @@ log = logging.getLogger(__name__)
 
 
 class Project:
+    """Internal representation of a project used for initiating new and
+    resuming old runs."""
     def __init__(self, path):
         self.path = path
         self.project_data = os.path.join(self.path, 'project.json')
