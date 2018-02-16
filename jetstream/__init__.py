@@ -22,9 +22,10 @@ PLUGIN_ID_PATTERN = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0
 from jetstream.batch_schedulers.slurm import sbatch
 from jetstream import config
 
-RG_TAG = 'ID:{ID}\tCN:{CN}\tDS:{DS}\tDT:{DT}\tFO:{FO}\t' \
-         'KS:{KS}\tLB:{LB}\tPG:{PG}\tPI:{PI}\tPL:{PL}\t' \
-         'PM:{PM}\tPU:{PU}\tSM:{SM}'
+
+RG_TEMPLATE = 'ID:{ID}\tCN:{CN}\tDS:{DS}\tDT:{DT}\tFO:{FO}\t' \
+              'KS:{KS}\tLB:{LB}\tPG:{PG}\tPI:{PI}\tPL:{PL}\t' \
+              'PM:{PM}\tPU:{PU}\tSM:{SM}'
 
 
 def easy_launch(cmd, *args, module_load=None):
@@ -44,5 +45,5 @@ def easy_launch(cmd, *args, module_load=None):
 
     run_id = environ.get('JETSTREAM_RUN_ID')
     job_name = 'jetstream-{}-{}'.format(project_name, run_id)
-    
+
     return sbatch(*args, '-J', job_name, stdin_data=final.encode())
