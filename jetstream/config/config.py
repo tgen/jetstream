@@ -18,7 +18,7 @@ def deserialize(data, format='yaml'):
     return config
 
 
-def read(path, *args, **kwargs):
+def load(path, *args, **kwargs):
     """ Read a config file from a path. Path can be "yaml", "json", or a
      function that takes data as its first argument and returns a config. """
     with open(path, 'r') as fp:
@@ -37,7 +37,7 @@ def serialize(config, format='yaml'):
     return data
 
 
-def write(config, path, *args, **kwargs):
+def dump(config, path, *args, **kwargs):
     with open(path, 'w') as fp:
         fp.write(serialize(config, *args, **kwargs))
 

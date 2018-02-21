@@ -15,6 +15,8 @@ log = logging.getLogger(__name__)
 # to break down utils.py into a subpackage
 
 def md5sum(filename, blocksize=65536):
+    """Returns a md5 checksum for a given file. This processes the data
+    in chunks set by 'blocksize'. """
     hash = hashlib.md5()
     with open(filename, "rb") as f:
         for block in iter(lambda: f.read(blocksize), b""):
@@ -23,12 +25,7 @@ def md5sum(filename, blocksize=65536):
 
 
 def safe_copy(source, dest):
-    # TODO how do we want to handle errors here? I have no idea
-    # how often it might happen, if at all. If it's extremely
-    # rare, then exception handling may not be necessary
-
-    # TODO logging might get too verbose, revisit this after using
-
+    """Copies a source to dest and verifies md5 checksum integrity"""
     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
     log.debug('Copy: {} -> {}'.format(source, dest))
@@ -97,14 +94,6 @@ class SharedFsDataStore(DataStore):
 
     def cleanup(self):
         self._temp.cleanup()
-
-
-# TODO allow different execution strategies here
-# they will essentially be a separate thread, but they can return results
-
-# TODO allow asynchronous strategies
-# These will be harder to code, but performance-wise they're better if that
-# becomes an issue
 
 
 def dry(plugin):
