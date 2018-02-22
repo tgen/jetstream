@@ -107,7 +107,7 @@ def deserialize(data):
 
 def _split_sections(source):
     """ Split the metadata lines from the sample lines """
-    lines = source.splitlines()
+    lines = [line for line in source.splitlines() if line]
 
     start_line = '=START'
     end_line = '=END'
@@ -211,9 +211,7 @@ def _group_sample_lines(lines):
 def _parse_sample(lines):
     """Create a structured sample from a list of sample lines"""
     sample_line = lines[0]
-    s = {}
-    s['data'] = []
-    s['line_number'] = sample_line.line_number
+    s = {'data': [], 'line_number': sample_line.line_number}
 
     # The fields are everything after 'SAMPLE='
     fields = sample_line.partition('SAMPLE=')[2]
@@ -227,8 +225,7 @@ def _parse_sample(lines):
 
 
     for line in lines[1:]:
-        d = {}
-        d['line_number'] = line.line_number
+        d = {'line_number': line.line_number}
         d['type'], _, data_fields = line.partition('=')  # ex: "FQ=..."
         d['rg_id'], d['path'] = data_fields.split(',')
 
