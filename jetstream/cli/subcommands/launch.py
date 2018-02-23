@@ -10,6 +10,10 @@ def arg_parser(subparser):
     parser.add_argument('plugin_id',
                         help='Plugin identifier in the format: "plugin/path<:revision>')
 
+    parser.add_argument('--file',
+                        action='store_true', default=False,
+                        help='Load plugin from file instead of repo')
+
     parser.add_argument('-s', '--strategy',
                         default='default',
                         choices=['dry', 'default'])
@@ -17,6 +21,11 @@ def arg_parser(subparser):
 
 def main(args):
     launcher = getattr(launch, args.strategy)
-    plugin = plugins.get_plugin(args.plugin_id)
+
+    if args.file:
+        plugin = plugins.load(args.file)
+    else:
+        plugin = plugins.get_plugin(args.plugin_id)
+
     result = launcher(plugin)
     print(json.dumps(result, indent=4))

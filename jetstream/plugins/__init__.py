@@ -227,12 +227,10 @@ def get_plugin(pid):
     if revision is None:
         revision = latest_revision(pid)
 
-    plugin_data = _get_path(plugin, path, revision)  # lookup id in repo
+    plugin_data = _get_path(plugin, path, revision)
+    plugin_obj = _load_plugin_from_data(plugin_data)
 
-    plugin_obj = _load_plugin_from_data(
-        plugin_data)  # Parse data pulled from repo
-    plugin_obj['id'] = plugin_id(plugin, path,
-                                 revision)  # Add some extra identifiers
+    plugin_obj['id'] = plugin_id(plugin, path, revision)
     plugin_obj['plugin'] = plugin
     plugin_obj['path'] = path
     plugin_obj['revision'] = revision
@@ -246,3 +244,16 @@ def is_available(plugin_id):
         return True
     except (FileNotFoundError, ValueError, ChildProcessError):
         return False
+
+
+def load(path):
+    """Load a plugin directly from a path"""
+    with open(path, 'r') as fp:
+        p = _load_plugin_from_data(fp.read())
+
+    p['id'] = r'file://' + path
+    p['plugin'] = None
+    p['path'] = path
+    p['revision'] = None
+
+    return p
