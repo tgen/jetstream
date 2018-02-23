@@ -63,7 +63,7 @@ def easy_launch(cmd, *args, module_load=None):
         final = "{}\n{}".format(cmd)
 
     try:
-        project_data = config.read('project.yaml')
+        project_data = config.load('project.yaml')
         project_name = project_data['name']
     except FileNotFoundError:
         project_name = None
