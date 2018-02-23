@@ -218,7 +218,7 @@ def latest_revision(pid):
     return revs[0]['id']
 
 
-def get_plugin(pid):
+def get_plugin(pid, raw=False):
     """ Given plugin_id returns loaded the plugin object.
     If the plugin_id does not contain revision information, the latest
     revision will be returned. """
@@ -228,6 +228,10 @@ def get_plugin(pid):
         revision = latest_revision(pid)
 
     plugin_data = _get_path(plugin, path, revision)
+
+    if raw:
+        return plugin_data
+
     plugin_obj = _load_plugin_from_data(plugin_data)
 
     plugin_obj['id'] = plugin_id(plugin, path, revision)

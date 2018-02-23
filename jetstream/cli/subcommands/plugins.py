@@ -1,5 +1,4 @@
 """Command line utility for managing plugins """
-import json
 from jetstream import plugins
 
 def arg_parser(subparser):
@@ -21,8 +20,7 @@ def main(args):
     elif args.subaction in ('rm', 'remove'):
         plugins.remove(args.plugin_id)
     elif args.subaction in ('get',):
-        plugin_data = plugins.get_plugin(args.plugin_id)
-        print(json.dumps(plugin_data, indent=4))
+        print(plugins.get_plugin(args.plugin_id, raw=True))
     elif args.subaction in ('get-script',):
         plugin_data = plugins.get_plugin(args.plugin_id)
         print(plugin_data['script'])
