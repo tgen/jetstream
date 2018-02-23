@@ -43,8 +43,10 @@ log = logging.getLogger(__name__)
 class PluginParserFail(Exception):
     """ Raised when a plugin is found but does not pass validation """
 
+
 class PluginLookup(Exception):
     """ Raised when plugin is not found """
+
 
 class InvalidPluginId(Exception):
     """ Raised when a plugin id does not match format """
@@ -86,7 +88,8 @@ def components():
     cmd_args = ['git', 'ls-tree', '--full-tree', '-r', '--name-only', 'HEAD']
     for p in plugins():
         repo_path = os.path.join(PLUGIN_DIR, p)
-        log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+        log.debug(
+            'Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
         paths = subprocess.check_output(cmd_args, cwd=repo_path).decode()
         for f in paths.splitlines():
             yield  os.path.join(p, f)
@@ -108,7 +111,8 @@ def update():
     cmd_args = ['git', 'fetch', '-q', 'origin', 'master:master']
     for p in plugins():
         repo_path = os.path.join(PLUGIN_DIR, p)
-        log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+        log.debug(
+            'Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
         subprocess.call(cmd_args, cwd=repo_path)
 
 
@@ -225,8 +229,10 @@ def get_plugin(pid):
 
     plugin_data = _get_path(plugin, path, revision)  # lookup id in repo
 
-    plugin_obj = _load_plugin_from_data(plugin_data)  # Parse data pulled from repo
-    plugin_obj['id'] = plugin_id(plugin, path, revision)  # Add some extra identifiers
+    plugin_obj = _load_plugin_from_data(
+        plugin_data)  # Parse data pulled from repo
+    plugin_obj['id'] = plugin_id(plugin, path,
+                                 revision)  # Add some extra identifiers
     plugin_obj['plugin'] = plugin
     plugin_obj['path'] = path
     plugin_obj['revision'] = revision

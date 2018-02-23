@@ -15,6 +15,7 @@ writer should return them.
 
 """
 
+
 def interval(_is_meta=False, **kwargs):
     """ All intervals require at least a seqname, start, and stop. Other
     properties are optional and can be given as kwargs. """

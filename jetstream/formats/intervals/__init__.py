@@ -9,6 +9,7 @@ from . import bed, gffv2, gatk_style_intervals
 # TODO think about how a coerce(obj, format) function might work when we have
 # data that does not meet all the requirements for a format, but want it anyway
 
+
 def _read_format(path, format):
     lines = [format.read(l) for l in read_lines_allow_gzip(path)]
     return IntervalFile(path, format, lines)

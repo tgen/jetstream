@@ -57,7 +57,7 @@ def write(interval):
         else:
             return None
     else:
-        res = []
+        res = list()
         res.append(interval['seqname'])
         res.append(interval['start'] - 1)  # Account for 0-based coordinates
         res.append(interval['stop'] - 1)
