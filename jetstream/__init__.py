@@ -1,6 +1,7 @@
 """Jetstream is a collection of tools for automating workflows at TGen."""
 import pkg_resources
-from os import environ
+import json
+from os import environ, getcwd
 
 # I'm adding some package wide variables here in order to cleanup the
 # namespace of some subpackages.
@@ -62,13 +63,7 @@ def easy_launch(cmd, *args, module_load=None):
     else:
         final = "{}\n{}".format(cmd)
 
-    try:
-        project_data = config.load('project.yaml')
-        project_name = project_data['name']
-    except FileNotFoundError:
-        project_name = None
-
     run_id = environ.get('JETSTREAM_RUN_ID')
-    job_name = 'jetstream-{}-{}'.format(project_name, run_id)
+    job_name = json.dumps({'jetstream': getcwd(), 'run_id': run_id})
 
     return sbatch(*args, '-J', job_name, stdin_data=final.encode())
