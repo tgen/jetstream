@@ -23,7 +23,7 @@ def main(args):
     launcher = getattr(launch, args.strategy)
 
     if args.file:
-        plugin = plugins.load(args.file)
+        plugin = plugins.load(args.plugin_id)
     else:
         plugin = plugins.get_plugin(args.plugin_id)
 
