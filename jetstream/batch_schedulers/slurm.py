@@ -65,6 +65,9 @@ class SlurmJob(object):
 
     @property
     def is_active(self):
+        if self.sacct is None:
+            self.update()
+
         if self.sacct['State'] in active_states:
             return True
         else:
@@ -72,6 +75,9 @@ class SlurmJob(object):
 
     @property
     def is_failed(self):
+        if self.sacct is None:
+            self.update()
+
         if self.sacct['State'] in failed_states:
             return True
         else:
@@ -79,6 +85,9 @@ class SlurmJob(object):
 
     @property
     def is_complete(self):
+        if self.sacct is None:
+            self.update()
+
         if self.sacct['State'] in completed_states:
             return True
         else:
