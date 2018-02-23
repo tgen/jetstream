@@ -94,7 +94,7 @@ def remove_prefix(string, prefix):
 
 
 def load_yaml_data(data):
-    return yaml.load(data, Loader=yaml.Loader)
+    return yaml.safe_load(data)
 
 
 def load_yaml(path):
