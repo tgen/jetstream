@@ -39,6 +39,7 @@ from jetstream import utils, PLUGIN_DIR, PLUGIN_ID_PATTERN
 
 log = logging.getLogger(__name__)
 
+log.debug('Plugin dir: {}'.format(PLUGIN_DIR))
 
 class PluginParserFail(Exception):
     """ Raised when a plugin is found but does not pass validation """
@@ -75,7 +76,6 @@ def clone(repo):
 def plugins():
     """Generator that yields paths in PLUGIN_DIR if they 1) are directories
      and 2) end with '.git' """
-    log.debug('Plugin dir: {}'.format(PLUGIN_DIR))
     for plugin in os.listdir(PLUGIN_DIR):
         git_repo = os.path.join(PLUGIN_DIR, plugin)
         if git_repo.endswith('.git') and os.path.isdir(git_repo):
@@ -109,11 +109,15 @@ def list_revisions(pid):
 
 def update():
     cmd_args = ['git', 'fetch', '-q', 'origin', 'master:master']
+    cmd_args2 = ['git', 'log', '-1']
     for p in plugins():
+        print('Updating {}'.format(p))
         repo_path = os.path.join(PLUGIN_DIR, p)
         log.debug(
             'Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
         subprocess.call(cmd_args, cwd=repo_path)
+        print('Latest commit:')
+        subprocess.call(cmd_args2, cwd=repo_path)
 
 
 def remove(plugin):

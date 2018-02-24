@@ -41,6 +41,7 @@ def arg_parser(subparser):
 
 def main(args):
     log.critical(str(args))
+
     # Load the strategy (the function that will receive plugins when they're
     # ready to be executed).
     strategy = getattr(launch, args.strategy)
@@ -48,6 +49,7 @@ def main(args):
     # Load the workflow (built beforehand and saved to a file)
     with open(args.workflow, 'r') as fp:
         data = json.load(fp)
+
     wf = workflow.from_json(data)
 
     # Start the runner (there may be more than one of these if performance

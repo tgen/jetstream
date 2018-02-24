@@ -17,14 +17,14 @@ class TestWorkflowModule(unittest.TestCase):
 
     def test_add_component(self):
         wf = jetstream.Workflow()
-        bwa_node = wf.add_component('test_components/bwa_mem.yaml')
+        bwa_node = wf.add_component('test_components.git/bwa_mem.yaml')
 
     def test_add_component_after(self):
         wf = jetstream.Workflow()
-        bwa_node = wf.add_component('test_components/bwa_mem.yaml')
-        md_node = wf.add_component_after('test_components/mark_duplicates.yaml', bwa_node)
+        bwa_node = wf.add_component('test_components.git/bwa_mem.yaml')
+        md_node = wf.add_component_after('test_components.git/mark_duplicates.yaml', bwa_node)
 
     def test_add_component_before(self):
         wf = jetstream.Workflow()
-        bwa_node = wf.add_component('test_components/bwa_mem.yaml')
-        md_node = wf.add_component_before('test_components/mark_duplicates.yaml', bwa_node)
+        bwa_node = wf.add_component('test_components.git/bwa_mem.yaml')
+        md_node = wf.add_component_before('test_components.git/mark_duplicates.yaml', bwa_node)

@@ -1,12 +1,21 @@
 from . import start, resume, config, launch, plugins, report
 __all__ = ["start", "resume", "config", "launch", "plugins", "report"]
 
-
-# TODO add subparsers for plugins module
-# Need to be able to sync plugins library, update, maybe add/remove
-
-
-# TODO add subparsers for other use cases of the app
-# For example, pure shell script plugins can use other
-# cli commands to make it easier for accessing project
-# data or transforming genomic data
+# Boilerplate for subcommands:
+#
+# import argparse
+# import logging
+#
+# log = logging.getLogger(__name__)
+#
+#
+# def build_parser():
+#     parser = argparse.ArgumentParser()
+#     return parser
+#
+#
+# def main(args):
+#     parser = build_parser()
+#     args = parser.parse_args(args)
+#     log.debug('{}: {}'.format(__name__, args))
+#

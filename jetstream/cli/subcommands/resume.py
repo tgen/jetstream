@@ -1,19 +1,19 @@
 """This module contains the functions that will used to resume a run
 that crashed without creating a new run object"""
+import argparse
+import logging
+
+log = logging.getLogger(__name__)
 
 
-def validator(value):
-    """ Example argument validator function that can be applied with 'type='"""
-    if 'condition_is_met':
-        return value
-    else:
-        raise Exception('failed validation')
-
-
-def arg_parser(subparser):
-    parser = subparser.add_parser('resume')
-    parser.set_defaults(action=main)
+def arg_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    return parser
 
 
 def main(args):
-    print(args)
+    parser = arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    raise NotImplementedError

@@ -1,11 +1,13 @@
 """Command line utility for launching a single plugin component """
+import argparse
 import json
+import logging
 from jetstream import launch, plugins
 
+log = logging.getLogger(__name__)
 
-def arg_parser(subparser):
-    parser = subparser.add_parser('launch', description=__doc__)
-    parser.set_defaults(action=main)
+def arg_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument('plugin_id',
                         help='Plugin identifier in the format: "plugin/path<:revision>')
@@ -17,9 +19,14 @@ def arg_parser(subparser):
     parser.add_argument('-s', '--strategy',
                         default='default',
                         choices=['dry', 'default'])
+    return parser
 
 
 def main(args):
+    parser = arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
     launcher = getattr(launch, args.strategy)
 
     if args.file:

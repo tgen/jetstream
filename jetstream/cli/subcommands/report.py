@@ -1,12 +1,12 @@
 """Command line utility for generating project reports """
+import argparse
 import logging
 from jetstream import reports
 
 log = logging.getLogger(__name__)
 
-def arg_parser(subparser):
-    parser = subparser.add_parser('report', description=__doc__)
-    parser.set_defaults(action=main)
+def arg_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument('project', nargs='+')
 
@@ -19,9 +19,13 @@ def arg_parser(subparser):
     parser.add_argument('--all-jobs', action='store_true', default=False,
                         help='Report on all jobs even if they\'re complete. '
                              'Skips complete jobs by default.')
+    return parser
+
 
 def main(args):
-    log.debug(str(args))
+    parser = arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
 
     projects = []
     for proj in args.project:
