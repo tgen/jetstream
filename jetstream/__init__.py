@@ -60,3 +60,4 @@ def easy_launch(cmd, *args, module_load=None):
     job_name = json.dumps({'jetstream': getcwd(), 'run_id': run_id})
 
     return slurm.sbatch(*args, '-J', job_name, stdin_data=final.encode())
+

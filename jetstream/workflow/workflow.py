@@ -43,7 +43,7 @@ class Workflow:
     # Utility methods
     def __str__(self):
         """ Gives better results when using print() """
-        return self.serialize()
+        return json.dumps(self.serialize(), indent=4)
 
     def serialize(self, serializer=None):
         if serializer is None:

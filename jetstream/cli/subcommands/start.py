@@ -22,6 +22,7 @@ To keep things simple for now:
 
 """
 import json
+import argparse
 import logging
 
 from jetstream import launch, workflow
@@ -29,8 +30,8 @@ from jetstream import launch, workflow
 log = logging.getLogger(__name__)
 
 
-def arg_parser(subparser):
-    parser = subparser.add_parser('start', )
+def arg_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.set_defaults(action=main)
 
     parser.add_argument('workflow',
@@ -39,8 +40,12 @@ def arg_parser(subparser):
     parser.add_argument('-s', '--strategy',
                         default='dry')
 
+    return parser
+
 def main(args):
-    log.critical(str(args))
+    parser = arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
 
     # Load the strategy (the function that will receive plugins when they're
     # ready to be executed).
