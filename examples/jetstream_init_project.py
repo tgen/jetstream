@@ -4,7 +4,7 @@ import sys
 import jetstream
 
 # Load the config file given as first argument
-config = jetstream.config.legacy.read(sys.argv[1])
+config = jetstream.config.legacy.load(sys.argv[1])
 
 # Create a project dir
 proj_dir = config['meta']['project']
