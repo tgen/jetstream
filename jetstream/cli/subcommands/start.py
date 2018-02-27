@@ -25,7 +25,7 @@ import json
 import argparse
 import logging
 
-from jetstream import launch, workflow
+from jetstream import launchers, workflow, Project
 
 log = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ def arg_parser():
                         help='Path to a workflow file')
 
     parser.add_argument('-s', '--strategy',
-                        default='dry')
+                        default='default')
 
     return parser
 
@@ -49,7 +49,7 @@ def main(args):
 
     # Load the strategy (the function that will receive plugins when they're
     # ready to be executed).
-    strategy = getattr(launch, args.strategy)
+    strategy = getattr(launchers, args.strategy)
 
     # Load the workflow (built beforehand and saved to a file)
     with open(args.workflow, 'r') as fp:
@@ -59,5 +59,6 @@ def main(args):
 
     # Start the runner (there may be more than one of these if performance
     # becomes a concern)
-    workflow.run(wf=wf, strategy=strategy)
+    p = Project()
+    p.run(wf, strategy=strategy)
 

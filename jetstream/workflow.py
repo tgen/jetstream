@@ -67,7 +67,7 @@ class Workflow:
             if self.node_ready(node_id):
                 log.debug('Node ready for execution {}'.format(node_id))
                 self.update(node_id, status='pending')
-                plugin = plugins.get_plugin(node_data['plugin_id'])
+                plugin = plugins.get_plugin(node_data['pid'])
                 return node_id, plugin
         else:
             if pending:
@@ -77,16 +77,20 @@ class Workflow:
                 log.debug('Request for next task but all complete')
                 raise StopIteration
 
-    def __send__(self, node_id, *results):
+    def __send__(self, node_id, result):
         """ Returns results to the workflow """
         log.critical('Received results for {}'.format(node_id))
 
-        # TODO handle results better
-        # this needs to recognized failures and set node status to new
-        # but we might also want to only allow a limited number of retrys
-        # per node or globally
+        if result.return_code != 0:
+            # TODO handle results better
+            # this needs to recognized failures and set node status to new
+            # but we might also want to only allow a limited number of retrys
+            # per node or globally
+            log.critical('Node returned non-zero, here we would decide'
+                         'how many times to try and repeat that node, or'
+                         'halt and inform the user. ')
 
-        self.update(node_id, status='complete', results=results)
+        self.update(node_id, status='complete', **result.serialize())
 
     # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
@@ -139,28 +143,10 @@ class Workflow:
                 res.add(node)
         return res
 
-    def freeze(self):
-        # TODO Test this out
-        g = self.graph.copy()
-        mapping = {n: plugins.freeze(n) for n in g.nodes()}
-        return mapping
-
-    # Methods for modifying the workflow
-    def _auto_notify(callback):
-        """ This decorator sends a tuple of useful data to Workflow.notify()
-        prior to the function being called """
-        def fn(self, *args, **kwargs):
-            if self.on_update is not None:
-                self.on_update((callback.__name__))
-            return callback(self, *args, **kwargs)
-        return fn
-
-    @_auto_notify
     def update(self, node, **kwargs):
         """ Change the status of a node """
         self.graph.nodes[node].update(**kwargs)
 
-    @_auto_notify
     def _add_node(self, mapping):
         """ Adding a node requires a mapping that includes "id" key. The id will
         be used to reference the node in the graph, the rest of the mapping will
@@ -169,7 +155,6 @@ class Workflow:
         self.graph.add_node(node_id, **mapping)
         return self.get_node(node_id)
 
-    @_auto_notify
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between components. Edges run
         FROM one node TO another node that the component depends upon. Nodes
@@ -194,7 +179,6 @@ class Workflow:
             g.remove_edge(from_node, to_node)
             raise NotDagError
 
-    @_auto_notify
     def add_component_before(self, pid, *before):
         """ Add a component and specify that it should run before some other
         component(s) """
@@ -208,7 +192,6 @@ class Workflow:
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return parent_id
 
-    @_auto_notify
     def add_component_after(self, pid, *after):
         """ Add a component and specify that it should run after some other
         component(s) """
@@ -221,17 +204,34 @@ class Workflow:
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return child_id
 
-    @_auto_notify
-    def add_component(self, pid):
+    def add_component(self, pid, file=False):
         _ = plugins.get_plugin(pid)
-
-        node_data = {
-            'pid': pid,
-            'status': 'new'
-        }
-
+        node_data = {'pid': pid, 'status': 'new'}
         return self._add_node(node_data)
 
+
+
+class Result(object):
+    """A common structure for the launchers to return to the workflow"""
+    def __init__(self, plugin_id, log, return_code, error=None):
+        self.plugin_id = str(plugin_id)
+        self.log = str(log)
+        self.return_code = int(return_code)
+        self.error = str(error)
+
+    def to_json(self):
+        return json.dumps(self.serialize())
+
+    def serialize(self):
+        """Returns a dictionary ready for json serialization. """
+        res = {
+            'plugin_id': str(self.plugin_id),
+            'log': str(self.log),
+            'return_code': int(self.return_code),
+            'error': str(self.error)
+        }
+
+        return res
 
 def load_json(path, *args, **kwargs):
     with open(path, 'r') as fp:

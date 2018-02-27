@@ -2,24 +2,15 @@ import sys
 import logging
 import argparse
 import importlib
+from jetstream.cli.subcommands import __all__ as SUBCOMMANDS
 
-import jetstream
 
 log = logging.getLogger(__name__)
 
-SUBCOMMANDS = (
-    'config',
-    'launch',
-    'plugins',
-    'report',
-    'resume',
-    'start',
-    'help'
-)
 
 def create_parser():
     main_parser = argparse.ArgumentParser(
-        description=jetstream.__doc__,
+        description='Jetstream automates workflows',
         epilog='Use \'jetstream <subcommand> -h/--help\' for help with a '
                'specific topic.',
         add_help=False)

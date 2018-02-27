@@ -16,6 +16,7 @@ PLUGIN_ID_PATTERN = r'(?P<plugin>[^\/]*)\/(?P<path>[^:]*):?(?P<revision>(?<=:)[0
 from . import workflow, formats, config
 from .batch_schedulers import slurm
 from .workflow import Workflow
+from .project import Project
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
                LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
