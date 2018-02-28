@@ -8,6 +8,7 @@ from socket import gethostname
 from getpass import getuser
 from uuid import getnode
 from datetime import datetime
+import json
 from ruamel import yaml
 
 
@@ -64,9 +65,6 @@ def read_lines_allow_gzip(path):
     """Reads line-separated text files, handles gzipped files and recognizes
     universal newlines. This can cause bytes to be lost when reading from a
     pipe. """
-    if stat.S_ISFIFO(os.stat(path).st_mode):
-        raise OSError("this should not be used with named pipes")
-
     if is_gzip(path):
         with gzip.open(path, 'rb') as fp:
             data = fp.read().decode('utf-8')
@@ -79,6 +77,9 @@ def read_lines_allow_gzip(path):
 
 def is_gzip(path, magic_number=b'\x1f\x8b'):
     """ Returns True if the path is gzipped """
+    if stat.S_ISFIFO(os.stat(path).st_mode):
+        raise OSError("this should not be used with named pipes")
+
     with open(path, 'rb') as fp:
         if fp.read(2) == magic_number:
             return True
@@ -93,20 +94,59 @@ def remove_prefix(string, prefix):
         return string
 
 
+#TODO Handle multi-document yaml files gracefully
+
+def yaml_load(*args, **kwargs):
+    return yaml.safe_load(*args, **kwargs)
+
+
+def yaml_loads(*args, **kwargs):
+    """It seems like ruamel.yaml.load is overloaded to handle data or fp"""
+    return yaml_load(*args, **kwargs)
+
+
+def yaml_dump(*args, **kwargs):
+    return yaml.dump(*args, **kwargs, default_flow_style=False)
+
+
 def load_yaml_data(data):
     return yaml.safe_load(data)
 
 
-def load_yaml(path):
+def load_yaml_file(path):
     with open(path, 'r') as fp:
         obj = load_yaml_data(fp.read())
     return obj
 
 
-def launch_module(module, cmd):
-    p = subprocess.Popen(['bash', '-l'], stdin=subprocess.PIPE)
-    rc = p.communicate('module load {}; {}'.format(module, cmd))
-    return rc
+def json_dump(*args, **kwargs):
+    return json.dump(*args, **kwargs, indent=4)
+
+
+def json_dumps(*args, **kwargs):
+    return json.dumps(*args, **kwargs, indent=4)
+
+
+def json_load(*args, **kwargs):
+    return json.loads(*args, **kwargs)
+
+
+def load_struct(path, format='yaml', *args, **kwargs):
+    if format == 'yaml':
+        return yaml_load(path, *args, **kwargs)
+    elif format == 'json':
+        return json_load(path, *args, **kwargs)
+    else:
+        raise ValueError("'format' should be 'yaml' or 'json'")
+
+
+def dump_struct(obj, format='yaml', *args, **kwargs):
+    if format == 'yaml':
+        return yaml_dump(obj, *args, **kwargs)
+    elif format == 'json':
+        return json_dumps(obj, *args, **kwargs)
+    else:
+        raise ValueError("'format' should be 'yaml' or 'json'")
 
 
 def fingerprint():
@@ -117,5 +157,6 @@ def fingerprint():
         'sys.platform': sys.platform,
         'sys.mac': hex(getnode()).upper(),
         'pid': os.getpid(),
+        'args': sys.argv,
         'hostname': gethostname(),
     }

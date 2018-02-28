@@ -2,11 +2,10 @@ import json
 import logging
 import networkx as nx
 from uuid import uuid4 as uuid
-import pydot
-from networkx.drawing.nx_pydot import to_pydot, from_pydot
+from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
 
-from jetstream import plugins
+from jetstream import plugins, utils
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +32,6 @@ class Workflow:
 
     """
     def __init__(self, *, on_update=None, graph=None):
-        self.serializer = to_json
         self.on_update = on_update or log.debug
         self.graph = graph or nx.DiGraph()
 
@@ -43,12 +41,27 @@ class Workflow:
     # Utility methods
     def __str__(self):
         """ Gives better results when using print() """
-        return json.dumps(self.serialize(), indent=4)
+        return utils.yaml_dump(self.serialize())
 
     def serialize(self, serializer=None):
-        if serializer is None:
-            serializer = self.serializer
-        return serializer(self)
+        """Serialize the workflow for dumping to json/yaml etc..."""
+        if serializer is not None:
+            return serializer(self.graph)
+        else:
+            data = nx.readwrite.json_graph.node_link_data(self.graph)
+            return data
+
+    def to_pydot(self, ):
+        """ Returns a pydot representation of the graph """
+        # Note Had to dig into the networkx source to find this, but it works..
+        graph = self.graph.copy()
+        return to_pydot(graph).__str__()
+
+    def to_yaml(self, *args, **kwargs):
+        return utils.dump_struct(self.serialize(), 'yaml', *args, **kwargs)
+
+    def to_json(self, *args, **kwargs):
+        return utils.dump_struct(self.serialize(), 'json', *args, **kwargs)
 
     # Methods for iterating over a workflow
     def __iter__(self):
@@ -139,6 +152,10 @@ class Workflow:
 
         res = set()
         for node in graph.nodes():
+            # Note: inspectors warn about calls to graph.out_degree, probably
+            # because it's an overloaded method. But this line seems to work
+            # as intended. We're trying to find nodes in the graph with an
+            # out_degree of 0.
             if graph.out_degree(node) == 0:
                 res.add(node)
         return res
@@ -204,11 +221,15 @@ class Workflow:
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return child_id
 
-    def add_component(self, pid, file=False):
-        _ = plugins.get_plugin(pid)
-        node_data = {'pid': pid, 'status': 'new'}
+    def add_component(self, plugin_id):
+        plugin = plugins.get_plugin(plugin_id)
+        node_data = dict(status='new', **plugin)
         return self._add_node(node_data)
 
+    def add_component_from_file(self, path):
+        plugin = plugins.load(path)
+        node_data = dict(status='new', **plugin)
+        return self._add_node(node_data)
 
 
 class Result(object):
@@ -233,29 +254,12 @@ class Result(object):
 
         return res
 
-def load_json(path, *args, **kwargs):
-    with open(path, 'r') as fp:
-        data = json.load(fp)
-        return from_json(data, *args, **kwargs)
 
-
-def from_json(data, *args, **kwargs):
+def from_node_link_data(data, *args, **kwargs):
     graph = json_graph.node_link_graph(data)
     return Workflow(graph=graph, *args, **kwargs)
 
 
-def to_json(wf):
+def to_node_link_data(wf):
     return json_graph.node_link_data(wf.graph)
 
-
-def serialize_json(wf):
-    """ Returns a json representation of the workflow """
-    data = json_graph.node_link_data(wf.graph)
-    return json.dumps(data, indent=4)
-
-
-def serialize_pydot(wf):
-    """ Returns a pydot representation of the graph """
-    # Note Had to dig into the networkx source to find this, but it works..
-    graph = wf.graph.copy()
-    return to_pydot(graph).__str__()
