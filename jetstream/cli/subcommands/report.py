@@ -36,7 +36,7 @@ def main(args):
                 continue
             projects.append(p)
         except FileNotFoundError as err:
-            log.critical('Error loading project: {}\n{}'.format(p, err))
+            log.critical('Error loading project: {}'.format( err))
 
     log.debug('Reporting on: {}'.format(str(projects)))
     for p in projects:
