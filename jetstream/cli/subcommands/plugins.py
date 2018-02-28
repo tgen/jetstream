@@ -28,7 +28,7 @@ def ls(plugin_id=None):
         [print(p) for p in plugins.ls()]
 
 
-def main(args):
+def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))

@@ -24,6 +24,10 @@ class ThreadWithReturnValue(Thread):
         return self._return
 
 
+class NotAProject(Exception):
+    pass
+
+
 class Project:
     """Internal representation of a project used for initiating new and
     resuming old runs."""
@@ -34,16 +38,29 @@ class Project:
         if path is None:
             path = os.getcwd()
 
+        log.critical('Loading project {}'.format(path))
+
+        if not os.path.exists(path):
+            raise NotAProject('Path does not exist: {}'.format(path))
+
+        if not os.path.isdir(path):
+            raise NotAProject('Path is not a directory: {}'.format(path))
+
         self.path = path
-        assert os.path.exists(self.path) and os.path.isdir(self.path)
-        # Jetstream projects must have a .jetstream dir
-        assert os.path.exists(self.run_data_dir)
+
+        if not os.path.exists(self.run_data_dir):
+            raise NotAProject('Project does not have .jetstream dir')
+
+        if not os.path.isdir(self.run_data_dir):
+            raise NotAProject('Project does not have .jetstream dir')
 
         if run_id is None:
             try:
                 self._run_id = self.latest_run()
             except IndexError:
-                self.new_run()
+                pass
+        else:
+            self.load_run(run_id)
 
     @property
     def run_id(self):
@@ -55,7 +72,7 @@ class Project:
 
     @property
     def project_data(self):
-        return utils.load_yaml(self.project_data_path)
+        return utils.load_struct(self.project_data_path, format='yaml')
 
     @property
     def run_data_dir(self):
@@ -69,7 +86,7 @@ class Project:
 
     @property
     def run_data(self):
-        return utils.load_yaml(self.run_data_path)
+        return utils.load_struct(self.project_data_path, format='yaml')
 
     def load_run(self, run_id):
         if run_id in self.runs():
@@ -139,9 +156,9 @@ class Project:
                         # This would be due to an exception occuring
                         # in the launcher function.
                         # TODO Is it necessary to recover from these errors?
-                        raise RuntimeError(thread.args)
+                        raise RuntimeError(getattr(thread, 'args'))
 
-                    workflow.__send__((node_id, res))
+                    workflow.__send__(node_id, res)
                     self.save()
 
                 except TimeoutError:
@@ -178,7 +195,7 @@ def is_run(path):
     """ Returns True if path is a valid run """
     if os.path.isfile(path) and is_valid_run_id(os.path.basename(path)):
         try:
-            utils.load_yaml(path)
+            utils.load_struct(path, format='yaml')
             return True
         except Exception as err:
             log.exception(err)

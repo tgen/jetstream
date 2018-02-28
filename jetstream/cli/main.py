@@ -2,10 +2,12 @@ import sys
 import logging
 import argparse
 import importlib
+import jetstream
 from jetstream.cli.subcommands import __all__ as SUBCOMMANDS
 
-
 log = logging.getLogger(__name__)
+
+default_log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
 def create_parser():
@@ -25,7 +27,8 @@ def create_parser():
 
     main_parser.add_argument('--log-filemode')
 
-    main_parser.add_argument('--log-format')
+    main_parser.add_argument('--log-format',
+                             default=default_log_format)
 
     main_parser.add_argument('--log-level', default='WARNING')
 

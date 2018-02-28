@@ -1,6 +1,7 @@
 import json
 import logging
 import networkx as nx
+from datetime import datetime
 from uuid import uuid4 as uuid
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
@@ -79,9 +80,12 @@ class Workflow:
                 pending = True
             if self.node_ready(node_id):
                 log.debug('Node ready for execution {}'.format(node_id))
-                self.update(node_id, status='pending')
-                plugin = plugins.get_plugin(node_data['pid'])
-                return node_id, plugin
+                self.update(
+                    node_id,
+                    status='pending',
+                    datetime_start=str(datetime.now())
+                )
+                return node_id, node_data
         else:
             if pending:
                 log.debug('Request for next task but None available')
@@ -103,7 +107,12 @@ class Workflow:
                          'how many times to try and repeat that node, or'
                          'halt and inform the user. ')
 
-        self.update(node_id, status='complete', **result.serialize())
+        self.update(
+            node_id,
+            status='complete',
+            datetime_end=datetime.now(),
+            **result.serialize()
+        )
 
     # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
@@ -196,27 +205,27 @@ class Workflow:
             g.remove_edge(from_node, to_node)
             raise NotDagError
 
-    def add_component_before(self, pid, *before):
+    def add_component_before(self, plugin_id, *before):
         """ Add a component and specify that it should run before some other
         component(s) """
         for child_id in before:
             if not child_id in self.nodes():
                 raise ValueError('Node: {} not in workflow'.format(child_id))
         else:
-            parent_id = self.add_component(pid)
+            parent_id = self.add_component(plugin_id)
             for node_id in before:
                 child_id = self.get_node(node_id)
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return parent_id
 
-    def add_component_after(self, pid, *after):
+    def add_component_after(self, plugin_id, *after):
         """ Add a component and specify that it should run after some other
         component(s) """
         for parent_id in after:
             if not parent_id in self.nodes():
                 raise ValueError('Node: {} not in workflow'.format(parent_id))
         else:
-            child_id = self.add_component(pid)
+            child_id = self.add_component(plugin_id)
             for parent_id in after:
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return child_id

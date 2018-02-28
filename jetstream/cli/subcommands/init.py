@@ -12,7 +12,7 @@ def arg_parser():
     return parser
 
 
-def main(args):
+def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))

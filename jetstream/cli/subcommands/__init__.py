@@ -22,7 +22,6 @@ def main(args):
 """
 
 __all__ = [
-    "start",
     "resume",
     "config",
     "launch",

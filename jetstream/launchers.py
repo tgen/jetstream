@@ -122,9 +122,10 @@ def default(plugin):
 
     shebang = plugin['script'].splitlines()[0]
 
-    assert shebang.startswith('#!')
-
-    if 'python3' in shebang:
+    if not shebang.startswith('#!'):
+        log.warning('Unable to parse shebang in {}'.format(plugin['id']))
+        shell_cmd = ['bash']
+    elif 'python3' in shebang:
         shell_cmd = ['python3']
     elif 'python' in shebang:
         shell_cmd = ['python']
