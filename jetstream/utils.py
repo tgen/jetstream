@@ -159,4 +159,5 @@ def fingerprint():
         'pid': os.getpid(),
         'args': sys.argv,
         'hostname': gethostname(),
+        'pwd': os.getcwd()
     }
