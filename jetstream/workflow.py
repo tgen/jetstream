@@ -52,17 +52,27 @@ class Workflow:
             data = nx.readwrite.json_graph.node_link_data(self.graph)
             return data
 
-    def to_pydot(self, ):
+    def to_dot(self):
         """ Returns a pydot representation of the graph """
         # Note Had to dig into the networkx source to find this, but it works..
         graph = self.graph.copy()
         return to_pydot(graph).__str__()
 
     def to_yaml(self, *args, **kwargs):
-        return utils.dump_struct(self.serialize(), 'yaml', *args, **kwargs)
+        return utils.struct(action='dumps', format='yaml', obj=self.serialize())
 
     def to_json(self, *args, **kwargs):
-        return utils.dump_struct(self.serialize(), 'json', *args, **kwargs)
+        return utils.struct(action='dumps', format='json', obj=self.serialize())
+
+    @staticmethod
+    def from_node_link_data(*args, **kwargs):
+        return from_node_link_data(*args, **kwargs)
+
+    def to_node_link_data(self, wf=None):
+        if wf is None:
+            return to_node_link_data(self)
+        else:
+            return to_node_link_data(wf)
 
     # Methods for iterating over a workflow
     def __iter__(self):
@@ -171,6 +181,7 @@ class Workflow:
 
     def update(self, node, **kwargs):
         """ Change the status of a node """
+        self.last_update = utils.fingerprint()
         self.graph.nodes[node].update(**kwargs)
 
     def _add_node(self, mapping):
@@ -254,14 +265,12 @@ class Result(object):
 
     def serialize(self):
         """Returns a dictionary ready for json serialization. """
-        res = {
+        return {
             'plugin_id': str(self.plugin_id),
             'log': str(self.log),
             'return_code': int(self.return_code),
             'error': str(self.error)
         }
-
-        return res
 
 
 def from_node_link_data(data, *args, **kwargs):
