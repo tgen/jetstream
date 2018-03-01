@@ -32,7 +32,7 @@ def main(args=None):
         try:
             p = reports.legacy.Project(proj)
             if p.is_complete and not args.all:
-                log.debug('Skipping complete {}'.format(proj))
+                log.critical('Project complete {}'.format(proj))
                 continue
             projects.append(p)
         except FileNotFoundError as err:
