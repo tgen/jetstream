@@ -115,6 +115,7 @@ class SlurmJob(object):
             else:
                 if timeout and elapsed > timeout:
                     raise TimeoutError
+            time.sleep(SlurmJob._update_frequency)
 
         return self.status
 
