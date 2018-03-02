@@ -1,4 +1,5 @@
 import re
+import time
 import json
 import shlex
 import subprocess
@@ -49,6 +50,8 @@ completed_states = {'COMPLETED',}
 
 
 class SlurmJob(object):
+    _update_frequency = 1
+
     def __init__(self, jid, sacct=None, cluster=None):
         self.jid = jid
         self.sacct = sacct
@@ -62,6 +65,16 @@ class SlurmJob(object):
 
     def serialize(self):
         return self.__dict__
+
+    @property
+    def status(self):
+        if self.sacct:
+            try:
+                return self.sacct['State']
+            except KeyError:
+                pass
+
+        return 'unknown'
 
     @property
     def is_active(self):
@@ -92,6 +105,18 @@ class SlurmJob(object):
             return True
         else:
             return False
+
+    def wait(self, timeout=None):
+        start = time.time()
+        while 1:
+            elapsed = time.time() - start
+            if self.is_complete:
+                break
+            else:
+                if timeout and elapsed > timeout:
+                    raise TimeoutError
+
+        return self.status
 
     def update(self):
         sacct_data = query_sacct(self.jid)
