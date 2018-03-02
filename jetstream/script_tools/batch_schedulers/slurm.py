@@ -50,15 +50,14 @@ inactive_states = {'BOOT_FAIL', 'CANCELLED', 'COMPLETED', 'FAILED',
 failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL',}
 completed_states = {'COMPLETED',}
 
+_update_frequency = profile.get('slurm_update_frequency', 1)
+_max_update_wait = profile.get('slurm_max_update_wait', 3600)
 
 class SacctOutput(Exception):
     pass
 
 
 class SlurmJob(object):
-    _update_frequency = profile.get('slurm_update_frequency', 1)
-    _max_update_wait = profile.get('slurm_max_update_wait', 3600)
-
     def __init__(self, jid, sacct=None, cluster=None):
         self.jid = int(jid)
         self.sacct = sacct
@@ -119,7 +118,6 @@ class SlurmJob(object):
             else:
                 if timeout and elapsed > timeout:
                     raise TimeoutError
-            time.sleep(SlurmJob._update_frequency)
 
         return self.status
 
@@ -134,19 +132,36 @@ class SlurmJob(object):
             msg = "Sacct returned no records for {}".format(self.jid)
             raise SacctOutput(msg)
         else:
-            self.sacct = matches[0]
+            return matches[0]
 
-    def update(self):
-        start = time.time()
-        while 1:
-            elapsed = time.time() - start
-            try:
-                self._get_sacct()
-                return self.sacct
-            except SacctOutput:
-                if elapsed > SlurmJob._max_update_wait:
-                    raise
-            time.sleep(SlurmJob._update_frequency)
+    def update(self, sacct=None):
+        if sacct is not None:
+            self.sacct = sacct
+        else:
+            start = time.time()
+            while 1:
+                elapsed = time.time() - start
+                try:
+                    self.sacct = self._get_sacct()
+                except SacctOutput:
+                    if elapsed > _max_update_wait:
+                        raise
+
+
+def wait(*jobs, timeout=None):
+    start = time.time()
+    tracker = {j: False for j in jobs}
+    while 1:
+        elapsed = time.time() - start
+        incomplete = {k: v for k, v in tracker if not v}
+
+        if not incomplete:
+            break
+        else:
+            for job in incomplete.keys():
+                tracker[job] = job.is_complete
+                if elapsed > timeout:
+                    raise TimeoutError
 
 
 def query_sacct(*job_ids, all=False):
@@ -165,6 +180,7 @@ def query_sacct(*job_ids, all=False):
 
     log.debug('Launching: %s' % ' '.join(cmd_args))
     res = subprocess.check_output(cmd_args).decode()
+    time.sleep(_update_frequency)
 
     # Convert the sacct report to an object
     records = []
