@@ -41,7 +41,7 @@ def easy_launch(cmd, *args, module_load=None):
     else:
         final = "{}\n{}".format(shebang, cmd)
 
-    run_id = environ.get('JETSTREAM_RUN_ID')
+    run_id = environ.get('JETSTREAM_RUN_ID', '')
     job_name = '{}\t{}'.format(getcwd(), run_id)
 
     return slurm.sbatch(*args, '-J', job_name, stdin_data=final.encode())
