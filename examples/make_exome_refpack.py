@@ -68,15 +68,15 @@ Glossary:
 
 
 """
-import os
-import tempfile
-import pkg_resources
-import subprocess
-import logging
 import argparse
+import logging
+import os
+import subprocess
+import tempfile
 
+import pkg_resources
 from jetstream.formats.refdict import refdict_to_bedtools_genome
-from jetstream.formats import intervals
+from jetstream.script_tools.formats import intervals
 
 log = logging.getLogger(__name__)
 
