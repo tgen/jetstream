@@ -68,13 +68,13 @@ class SlurmJob(object):
 
     @property
     def status(self):
-        if self.sacct:
-            try:
-                return self.sacct['State']
-            except KeyError:
-                pass
+        self.update()
 
-        return 'unknown'
+        try:
+            return self.sacct['State']
+        except KeyError:
+            return 'unknown'
+
 
     @property
     def is_active(self):
