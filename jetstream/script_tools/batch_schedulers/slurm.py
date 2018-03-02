@@ -143,6 +143,7 @@ class SlurmJob(object):
                 elapsed = time.time() - start
                 try:
                     self.sacct = self._get_sacct()
+                    break
                 except SacctOutput:
                     if elapsed > _max_update_wait:
                         raise
