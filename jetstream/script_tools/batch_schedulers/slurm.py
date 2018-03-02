@@ -128,8 +128,8 @@ class SlurmJob(object):
         if len(matches) > 1:
             msg = "Sacct returned more than one record for {}".format(self.jid)
             raise SacctOutput(msg)
-        elif len(matches) < 1:
-            msg = "Sacct returned less than one record for {}".format(self.jid)
+        elif len(matches) == 0:
+            msg = "Sacct returned no records for {}".format(self.jid)
             raise SacctOutput(msg)
         else:
             self.sacct = matches[0]
