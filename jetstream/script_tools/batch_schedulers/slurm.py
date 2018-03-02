@@ -58,7 +58,7 @@ class SlurmJob(object):
     _max_update_wait = 30
 
     def __init__(self, jid, sacct=None, cluster=None):
-        self.jid = jid
+        self.jid = int(jid)
         self.sacct = sacct
         self.cluster = cluster
         self.update()
@@ -123,7 +123,7 @@ class SlurmJob(object):
 
     def _get_sacct(self):
         sacct_data = query_sacct(self.jid)
-        matches = [r for r in sacct_data if r['JobID'] == self.jid]
+        matches = [r for r in sacct_data if int(r['JobID']) == self.jid]
 
         if len(matches) > 1:
             msg = "Sacct returned more than one record for {}".format(self.jid)
