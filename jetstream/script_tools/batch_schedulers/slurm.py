@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import json
@@ -232,3 +233,17 @@ def sbatch(*args, stdin_data=None):
     return SlurmJob(jid, cluster=cluster)
 
 
+def easy(cmd, *args, module_load=None):
+    """Launch shell scripts on slurm with controlled environments via module """
+    shebang = '#!/bin/bash'
+
+    if module_load:
+        final = "{}\nmodule load {} || exit 1\n{}".format(
+            shebang, module_load, cmd)
+    else:
+        final = "{}\n{}".format(shebang, cmd)
+
+    run_id = os.environ.get('JETSTREAM_RUN_ID', '')
+    job_name = '{}\t{}'.format(os.getcwd(), run_id)
+
+    return sbatch(*args, '-J', job_name, stdin_data=final.encode())

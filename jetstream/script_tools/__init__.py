@@ -30,19 +30,3 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
             final.append('{}:{}'.format(field, value))
 
     return '\t'.join(final)
-
-
-def easy_launch(cmd, *args, module_load=None):
-    """Launch Slurm jobs with controlled environments via module """
-    shebang = '#!/bin/bash'
-
-    if module_load:
-        final = "{}\nmodule load {} || exit 1\n{}".format(shebang, module_load, cmd)
-    else:
-        final = "{}\n{}".format(shebang, cmd)
-
-    run_id = environ.get('JETSTREAM_RUN_ID', '')
-    job_name = '{}\t{}'.format(getcwd(), run_id)
-
-    return slurm.sbatch(*args, '-J', job_name, stdin_data=final.encode())
-
