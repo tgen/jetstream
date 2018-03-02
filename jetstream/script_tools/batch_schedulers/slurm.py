@@ -49,13 +49,19 @@ failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL',}
 completed_states = {'COMPLETED',}
 
 
+class NoSacctResults(Exception):
+    pass
+
+
 class SlurmJob(object):
     _update_frequency = 1
+    _max_update_wait = 30
 
     def __init__(self, jid, sacct=None, cluster=None):
         self.jid = jid
         self.sacct = sacct
         self.cluster = cluster
+        self.update()
 
     def __repr__(self):
         return "SlurmJob(%s)" % self.jid
@@ -75,33 +81,29 @@ class SlurmJob(object):
         except KeyError:
             return 'unknown'
 
-
     @property
     def is_active(self):
-        if self.sacct is None:
-            self.update()
+        self.update()
 
-        if self.sacct['State'] in active_states:
+        if self.status in active_states:
             return True
         else:
             return False
 
     @property
     def is_failed(self):
-        if self.sacct is None:
-            self.update()
+        self.update()
 
-        if self.sacct['State'] in failed_states:
+        if self.status in failed_states:
             return True
         else:
             return False
 
     @property
     def is_complete(self):
-        if self.sacct is None:
-            self.update()
+        self.update()
 
-        if self.sacct['State'] in completed_states:
+        if self.status in completed_states:
             return True
         else:
             return False
@@ -119,7 +121,7 @@ class SlurmJob(object):
 
         return self.status
 
-    def update(self):
+    def _get_sacct(self):
         sacct_data = query_sacct(self.jid)
         matches = [r for r in sacct_data if r['JobID'] == self.jid]
 
@@ -132,7 +134,17 @@ class SlurmJob(object):
         else:
             self.sacct = matches[0]
 
-        return self.sacct
+    def update(self):
+        start = time.time()
+        while 1:
+            elapsed = time.time() - start
+            try:
+                self._get_sacct()
+                return self.sacct
+            except NoSacctResults:
+                if elapsed > SlurmJob._max_update_wait:
+                    raise
+            time.sleep(SlurmJob._update_frequency)
 
 
 def query_sacct(*job_ids, all=False):
