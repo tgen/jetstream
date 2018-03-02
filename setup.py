@@ -25,7 +25,7 @@ setup(
         "Topic :: Utilities",
     ],
     include_package_data=True,
-    package_data={'jetstream': ['etc/**', 'plugins/README']},
+    package_data={'jetstream': ['script_tools/etc/**', 'plugins/README']},
 
     # Eventually this will be replaced with cli entry-points but for now it
     # helps me prototype quickly
