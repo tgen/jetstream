@@ -34,7 +34,7 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
 def easy_launch(cmd, *args, module_load=None):
     """Launch Slurm jobs with controlled environments via module """
-    shebang = '#!/bin/bash\nset -x'
+    shebang = '#!/bin/bash'
 
     if module_load:
         final = "{}\nmodule load {} || exit 1\n{}".format(shebang, module_load, cmd)

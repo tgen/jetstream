@@ -13,7 +13,11 @@ log = logging.getLogger(__name__)
 
 
 # TODO: should project functions walk up the directory tree like git?
-# see this https://gist.github.com/zdavkeos/1098474
+# see this https://gist.github.com/zdavkeos/1098474 but also consider
+# this:
+# [rrichholt@dback-login1:~]$ git pull
+# fatal: Not a git repository (or any parent up to mount point /home)
+# Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
 
 class ThreadWithReturnValue(Thread):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None,

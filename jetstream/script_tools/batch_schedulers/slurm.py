@@ -6,6 +6,8 @@ import subprocess
 import logging
 from collections import OrderedDict
 
+from jetstream.settings import profile
+
 log = logging.getLogger(__name__)
 
 submission_pattern = re.compile("Submitted batch job (\d*)")
@@ -54,8 +56,8 @@ class SacctOutput(Exception):
 
 
 class SlurmJob(object):
-    _update_frequency = 1
-    _max_update_wait = 30
+    _update_frequency = profile.get('slurm_update_frequency', 1)
+    _max_update_wait = profile.get('slurm_max_update_wait', 3600)
 
     def __init__(self, jid, sacct=None, cluster=None):
         self.jid = int(jid)
