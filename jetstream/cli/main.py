@@ -10,7 +10,8 @@ default_log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(linen
 
 def create_parser():
     main_parser = argparse.ArgumentParser(
-        description='Jetstream automates workflows',
+        description='Jetstream automates workflows. Available subcommands '
+                    'are: {}'.format(get_subcommands()),
         epilog='Use \'jetstream <subcommand> -h/--help\' for help with a '
                'specific topic.',
         add_help=False)
@@ -78,5 +79,4 @@ def main(args=None):
             parser.print_help()
             if args.subcommand != 'help':
                 print('Error! Unknown subcommand: {}'.format(args.subcommand))
-                print('Available subcommands are: {}'.format(get_subcommands()))
             sys.exit(1)
