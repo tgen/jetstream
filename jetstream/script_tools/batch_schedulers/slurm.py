@@ -49,7 +49,7 @@ failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL',}
 completed_states = {'COMPLETED',}
 
 
-class NoSacctResults(Exception):
+class SacctOutput(Exception):
     pass
 
 
@@ -127,10 +127,10 @@ class SlurmJob(object):
 
         if len(matches) > 1:
             msg = "Sacct returned more than one record for {}".format(self.jid)
-            raise ValueError(msg)
+            raise SacctOutput(msg)
         elif len(matches) < 1:
             msg = "Sacct returned less than one record for {}".format(self.jid)
-            raise ValueError(msg)
+            raise SacctOutput(msg)
         else:
             self.sacct = matches[0]
 
@@ -141,7 +141,7 @@ class SlurmJob(object):
             try:
                 self._get_sacct()
                 return self.sacct
-            except NoSacctResults:
+            except SacctOutput:
                 if elapsed > SlurmJob._max_update_wait:
                     raise
             time.sleep(SlurmJob._update_frequency)
