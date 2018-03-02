@@ -40,7 +40,6 @@
 """
 import logging
 from collections import OrderedDict
-
 from jetstream.utils import Source
 
 log = logging.getLogger(__name__)
@@ -54,7 +53,7 @@ def load(path):
     """Reads a legacy config file from the given path, returns
     config object"""
     with open(path, 'r') as fp:
-        return deserialize(fp.read())
+        return loads(fp.read())
 
 
 def dump(*args, **kwargs):
@@ -63,7 +62,7 @@ def dump(*args, **kwargs):
     raise NotImplementedError
 
 
-def deserialize(data):
+def loads(data):
     """Generates a legacy config file from data. Performs several validation
     steps and adds some additional attributes. Briefly:
 

@@ -1,10 +1,11 @@
 """Command line utility for launching plugins and workflows"""
-import sys
 import argparse
 import json
 import logging
-from jetstream import launchers, workflow, Project, utils
+import sys
 
+from jetstream import utils
+from jetstream.projects import launchers, Project, Workflow
 
 log = logging.getLogger(__name__)
 
@@ -24,16 +25,10 @@ def arg_parser():
     parser.add_argument('-f', '--file', nargs='+',
                         help='Launch plugins directly from files.')
 
-    parser.add_argument('-F', '--format',
-                        default='yaml', choices=['yaml', 'json'],
-                        help='Workflow/Plugin file format')
-
-    parser.add_argument('-s', '--strategy',
+    parser.add_argument('-l', '--launcher',
                         default='default',
                         help=argparse.SUPPRESS,
                         choices=['dry', 'default'])
-
-
 
     return parser
 
@@ -49,7 +44,7 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    strategy = getattr(launchers, args.strategy)
+    launcher = getattr(launchers, args.launcher)
 
     # TODO This subcommand could use some work, what if we want to launch
     # plugins from a file AND a repo for example...
@@ -66,40 +61,33 @@ def main(args=None):
         print(opts_err)
         sys.exit(1)
 
+    # Load the project
+    p = Project()
+
+    # fh = logging.FileHandler("test.log")
+    # fh.setLevel(logging.INFO)
+    # log.addHandler(fh)
+
     if args.file:
         # Generate a new workflow
-        wf = workflow.Workflow()
+        wf = Workflow()
         for file_path in args.file:
-            wf.add_component_from_file(file_path)
-
-        # Load the project
-        p = Project()
-
-        # Run the workflow
-        p.run(wf, strategy)
+            plugin_id = 'file://' + file_path
+            wf.add_node(plugin_id)
 
     elif args.plugin:
         # Generate a new workflow
-        wf = workflow.Workflow()
+        wf = Workflow()
         for plugin_id in args.plugin:
-            wf.add_component(plugin_id)
-
-        # Load the project
-        p = Project()
-
-        # Run the workflow
-        p.run(wf, strategy)
+            wf.add_node(plugin_id)
 
     elif args.workflow:
         # Load the workflow (built beforehand and saved to a file)
-        data = utils.load_struct(args.path, args.format)
-        wf = workflow.from_node_link_data(data)
-
-        # Load the project
-        p = Project()
-
-        # Run the workflow
-        p.run(wf, strategy=strategy)
+        data = utils.yaml_load(args.workflow)
+        wf = Workflow.from_node_link_data(data)
 
     else:
         raise ValueError(opts_err)
+
+    # Run the workflow
+    p.run(wf, launcher=launcher)

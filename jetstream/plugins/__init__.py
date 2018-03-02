@@ -140,6 +140,10 @@ def _get_path(plugin, path, revision):
     cmd_args = ['git', 'show', identifier]
     repo_path = os.path.join(PLUGIN_DIR, plugin)
     log.debug('Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
+
+    if not os.path.isdir(repo_path):
+        raise FileNotFoundError('Plugin repo not found {}'.format(repo_path))
+
     try:
         p = subprocess.Popen(
             cmd_args,
@@ -182,8 +186,11 @@ def _get_path_revisions(plugin, path):
 
 def _load_plugin_from_data(data):
     # TODO This is the only plugin validation, do we need more?
+    if not data:
+        raise PluginParserFail('Empty plugin!') from None
+
     try:
-        plugin = utils.load_yaml_data(data)
+        plugin = utils.yaml_loads(data)
     except utils.yaml.YAMLError as err:
         raise PluginParserFail(str(err)) from None
 
@@ -222,26 +229,31 @@ def latest_revision(pid):
     return revs[0]['id']
 
 
-def get_plugin(pid, raw=False):
+def get_plugin(pid, script_only=False):
     """ Given plugin_id returns loaded the plugin object.
     If the plugin_id does not contain revision information, the latest
     revision will be returned. """
-    plugin, path, revision = parse_plugin_id(pid)  # Validate the id
+    if pid.startswith('file://'):
+        plugin = revision = None
+        path = utils.remove_prefix(pid, 'file://')
+        with open(path, 'r') as fp:
+            plugin_data = fp.read()
+    else:
+        plugin, path, revision = parse_plugin_id(pid)  # Validate the id
 
-    if revision is None:
-        revision = latest_revision(pid)
+        if revision is None:
+            revision = latest_revision(pid)
 
-    plugin_data = _get_path(plugin, path, revision)
-
-    if raw:
-        return plugin_data
+        plugin_data = _get_path(plugin, path, revision)
 
     plugin_obj = _load_plugin_from_data(plugin_data)
-
-    plugin_obj['id'] = plugin_id(plugin, path, revision)
+    plugin_obj['plugin_id'] = pid
     plugin_obj['plugin'] = plugin
     plugin_obj['path'] = path
     plugin_obj['revision'] = revision
+
+    if script_only:
+        return plugin_obj['script']
 
     return plugin_obj
 
@@ -253,15 +265,3 @@ def is_available(plugin_id):
     except (FileNotFoundError, ValueError, ChildProcessError):
         return False
 
-
-def load(path):
-    """Load a plugin directly from a path"""
-    with open(path, 'r') as fp:
-        p = _load_plugin_from_data(fp.read())
-
-    p['id'] = r'file://' + path
-    p['plugin'] = None
-    p['path'] = path
-    p['revision'] = None
-
-    return p

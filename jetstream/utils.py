@@ -3,12 +3,11 @@ import sys
 import stat
 import gzip
 import logging
-import subprocess
+from pkg_resources import get_distribution
 from socket import gethostname
 from getpass import getuser
 from uuid import getnode
 from datetime import datetime
-import json
 from ruamel import yaml
 
 
@@ -95,64 +94,43 @@ def remove_prefix(string, prefix):
 
 
 #TODO Handle multi-document yaml files gracefully
-
-def yaml_load(*args, **kwargs):
-    return yaml.safe_load(*args, **kwargs)
-
-
-def yaml_loads(*args, **kwargs):
-    """It seems like ruamel.yaml.load is overloaded to handle data or fp"""
-    return yaml_load(*args, **kwargs)
+def yaml_load(path):
+    with open(path, 'r') as fp:
+        return yaml.safe_load(fp)
 
 
-def yaml_dump(*args, **kwargs):
-    return yaml.dump(*args, **kwargs, default_flow_style=False)
-
-
-def load_yaml_data(data):
+def yaml_loads(data):
     return yaml.safe_load(data)
 
 
-def load_yaml_file(path):
-    with open(path, 'r') as fp:
-        obj = load_yaml_data(fp.read())
-    return obj
+def yaml_dump(obj, path):
+    with open(path, 'w') as fp:
+        return yaml.dump(obj, stream=fp, default_flow_style=False)
 
 
-def json_dump(*args, **kwargs):
-    return json.dump(*args, **kwargs, indent=4)
+def yaml_dumps(obj):
+    return yaml.dump(obj, default_flow_style=False)
 
 
-def json_dumps(*args, **kwargs):
-    return json.dumps(*args, **kwargs, indent=4)
+def struct(*, action, format, **kwargs):
+    dispatcher = {
+        'yaml': {
+            'load': yaml_load,
+            'loads': yaml_loads,
+            'dump': yaml_dump,
+            'dumps': yaml_dumps
+        },
+    }
 
-
-def json_load(*args, **kwargs):
-    return json.loads(*args, **kwargs)
-
-
-def load_struct(path, format='yaml', *args, **kwargs):
-    if format == 'yaml':
-        return yaml_load(path, *args, **kwargs)
-    elif format == 'json':
-        return json_load(path, *args, **kwargs)
-    else:
-        raise ValueError("'format' should be 'yaml' or 'json'")
-
-
-def dump_struct(obj, format='yaml', *args, **kwargs):
-    if format == 'yaml':
-        return yaml_dump(obj, *args, **kwargs)
-    elif format == 'json':
-        return json_dumps(obj, *args, **kwargs)
-    else:
-        raise ValueError("'format' should be 'yaml' or 'json'")
+    return dispatcher[format][action](**kwargs)
 
 
 def fingerprint():
+    """Gather system info for recording changes made to projects."""
     return {
         'datetime': str(datetime.now()),
         'user': getuser(),
+        'version': str(get_distribution(__package__)),
         'sys.version': sys.version,
         'sys.platform': sys.platform,
         'sys.mac': hex(getnode()).upper(),
@@ -161,3 +139,4 @@ def fingerprint():
         'hostname': gethostname(),
         'pwd': os.getcwd()
     }
+

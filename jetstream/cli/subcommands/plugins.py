@@ -2,7 +2,7 @@
 import sys
 import argparse
 import logging
-from jetstream import plugins
+from jetstream import plugins, utils
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +14,13 @@ def arg_parser():
 
     parser.add_argument('action',
                         choices=['ls', 'list', 'update', 'clone', 'rm',
-                                 'remove', 'get', 'get-script'])
+                                 'remove', 'get'])
+
+    parser.add_argument('-s', '--script-only',
+                        action='store_true', default=False)
+
+    parser.add_argument('-f', '--format',
+                        default='yaml', help=argparse.SUPPRESS)
 
     parser.add_argument('plugin_id', nargs='?')
 
@@ -23,9 +29,10 @@ def arg_parser():
 
 def ls(plugin_id=None):
     if plugin_id is not None:
-        print(plugins.list_revisions(plugin_id))
+        revs = plugins.list_revisions(plugin_id)
+        print(utils.yaml_dumps(revs))
     else:
-        [print(p) for p in plugins.ls()]
+        print(utils.yaml_dumps(plugins.ls()))
 
 
 def main(args=None):
@@ -44,20 +51,19 @@ def main(args=None):
 
     elif args.action in ('get',):
         if args.plugin_id:
-            print(plugins.get_plugin(args.plugin_id, raw=True))
+            plugin = plugins.get_plugin(
+                args.plugin_id,
+                script_only=args.script_only
+            )
+            if args.script_only:
+                print(plugin)
+            else:
+                text = utils.yaml_dumps(plugin)
+                print(text)
+
         else:
             print('No plugin id given, available plugins: ')
             ls(args.plugin_id)
             sys.exit(1)
-
-    elif args.action in ('get-script',):
-        if args.plugin_id:
-            plugin_data = plugins.get_plugin(args.plugin_id)
-            print(plugin_data['script'])
-        else:
-            print('No plugin id given, available plugins: ')
-            ls(args.plugin_id)
-            sys.exit(1)
-
     else:
         ls(args.plugin_id)

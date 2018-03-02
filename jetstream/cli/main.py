@@ -2,10 +2,8 @@ import sys
 import logging
 import argparse
 import importlib
-import jetstream
-from jetstream.cli.subcommands import __all__ as SUBCOMMANDS
 
-log = logging.getLogger(__name__)
+log = logging.getLogger()
 
 default_log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
@@ -17,7 +15,7 @@ def create_parser():
                'specific topic.',
         add_help=False)
 
-    main_parser.add_argument('subcommand', nargs='?', choices=SUBCOMMANDS)
+    main_parser.add_argument('subcommand', nargs='?')
 
     main_parser.add_argument('-v', '--version', action='store_true')
 
@@ -33,6 +31,11 @@ def create_parser():
     main_parser.add_argument('--log-level', default='WARNING')
 
     return main_parser
+
+
+def get_subcommands():
+    from jetstream.cli.subcommands import __all__ as subcommands
+    return subcommands
 
 
 def main(args=None):
@@ -54,6 +57,7 @@ def main(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     if args.version:
+        import jetstream
         print(jetstream.__version__)
         sys.exit(0)
     else:
@@ -74,4 +78,5 @@ def main(args=None):
             parser.print_help()
             if args.subcommand != 'help':
                 print('Error! Unknown subcommand: {}'.format(args.subcommand))
+                print('Available subcommands are: {}'.format(get_subcommands()))
             sys.exit(1)

@@ -6,7 +6,7 @@ import hashlib
 import logging
 import random
 from datetime import datetime
-from jetstream.workflow import Result
+from jetstream.projects import Result
 from jetstream.utils import fingerprint
 import abc
 
@@ -118,12 +118,12 @@ def dry(plugin):
 def default(plugin):
     """Launches plugin by guessing the interpreter to use from shebang. This
     currently supports Python2/3 and Bash. """
-    log.critical('Starting plugin {}'.format(plugin['id']))
+    log.critical('Starting plugin {}'.format(plugin['plugin_id']))
 
     shebang = plugin['script'].splitlines()[0]
 
     if not shebang.startswith('#!'):
-        log.warning('Unable to parse shebang in {}'.format(plugin['id']))
+        log.warning('Unable to parse shebang in {}'.format(plugin['plugin_id']))
         shell_cmd = ['bash']
     elif 'python3' in shebang:
         shell_cmd = ['python3']
@@ -136,15 +136,16 @@ def default(plugin):
         shell_cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy()
     )
 
     stdout, _ = p.communicate(input=plugin['script'].encode())
 
     result = Result(
-        plugin_id=plugin['id'],
+        plugin=plugin,
         return_code=p.returncode,
-        log=stdout.decode()
+        logs=stdout.decode()
     )
 
     return result
