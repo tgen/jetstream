@@ -2,7 +2,7 @@
 import argparse
 import logging
 
-from jetstream.legacy import reports
+from jetstream import legacy
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def main(args=None):
     projects = []
     for proj in args.project:
         try:
-            p = reports.Project(proj)
+            p = legacy.Project(proj)
             if p.is_complete and not args.all:
                 log.critical('Project complete {}'.format(proj))
                 continue
@@ -41,8 +41,4 @@ def main(args=None):
 
     log.debug('Reporting on: {}'.format(str(projects)))
     for p in projects:
-        print(reports.build_plain_text_report(
-            p,
-            fast=args.fast,
-            all_jobs=args.all_jobs
-        ))
+        print(p.report(fast=args.fast, all_jobs=args.all_jobs))

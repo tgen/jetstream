@@ -59,11 +59,31 @@ class SacctOutput(Exception):
 
 
 class SlurmJob(object):
-    def __init__(self, jid, sacct=None, cluster=None):
+    def __init__(self, jid, cluster=None, sacct=None):
+        """Tracks a Slurm job and provides some utility methods like wait() and
+        update().
+
+        If sacct is None, the job record will be requested with 'sacct'. An
+        existing sacct record can be used instead by giving a mapping as sacct.
+        This was added so that batches of job records can be requested from
+        Slurm manually.
+
+        For example:
+
+            jids = [j.jid for j in slurm_jobs]
+            records = query_sacct(*jids)
+            slurm_jobs = [SlurmJob(sacct=r) for r in records]
+
+        This concept is implemented in the get_jobs() function.
+        """
+
         self.jid = int(jid)
-        self.sacct = sacct
         self.cluster = cluster
-        self.update()
+
+        if sacct is not None:
+            self.sacct = sacct
+        else:
+            self.update()
 
     def __repr__(self):
         return "SlurmJob(%s)" % self.jid
@@ -76,8 +96,6 @@ class SlurmJob(object):
 
     @property
     def status(self):
-        self.update()
-
         try:
             return self.sacct['State']
         except KeyError:
@@ -85,8 +103,6 @@ class SlurmJob(object):
 
     @property
     def is_active(self):
-        self.update()
-
         if self.status in active_states:
             return True
         else:
@@ -94,8 +110,6 @@ class SlurmJob(object):
 
     @property
     def is_failed(self):
-        self.update()
-
         if self.status in failed_states:
             return True
         else:
@@ -103,8 +117,6 @@ class SlurmJob(object):
 
     @property
     def is_complete(self):
-        self.update()
-
         if self.status in completed_states:
             return True
         else:
@@ -114,6 +126,7 @@ class SlurmJob(object):
         start = time.time()
         while 1:
             elapsed = time.time() - start
+            self.update()
             if self.is_complete:
                 break
             else:
@@ -135,19 +148,28 @@ class SlurmJob(object):
         else:
             return matches[0]
 
-    def update(self, sacct=None):
-        if sacct is not None:
-            self.sacct = sacct
-        else:
-            start = time.time()
-            while 1:
-                elapsed = time.time() - start
-                try:
-                    self.sacct = self._get_sacct()
-                    break
-                except SacctOutput:
-                    if elapsed > _max_update_wait:
-                        raise
+    def update(self):
+        """Request a status update from Slurm. """
+        start = time.time()
+        while 1:
+            elapsed = time.time() - start
+            try:
+                self.sacct = self._get_sacct()
+                break
+            except SacctOutput:
+                if elapsed > _max_update_wait:
+                    raise
+
+
+def get_jobs(*args, **kwargs):
+    """ Run batch query for slurm jobs, returns a list of SlurmJobs """
+    jobs = []
+    records = query_sacct(*args, **kwargs)
+    for rec in records:
+        s = SlurmJob(rec['JobID'], sacct=rec)
+        jobs.append(s)
+
+    return jobs
 
 
 def wait(*jobs, timeout=None):
@@ -155,14 +177,15 @@ def wait(*jobs, timeout=None):
     tracker = {j: False for j in jobs}
     while 1:
         elapsed = time.time() - start
-        incomplete = {k: v for k, v in tracker if not v}
+        incomplete = {k: v for k, v in tracker.items() if not v}
 
         if not incomplete:
             break
         else:
             for job in incomplete.keys():
+                job.update()
                 tracker[job] = job.is_complete
-                if elapsed > timeout:
+                if timeout and elapsed > timeout:
                     raise TimeoutError
 
 
@@ -181,30 +204,20 @@ def query_sacct(*job_ids, all=False):
         cmd_args = cmd_prefix
 
     log.debug('Launching: %s' % ' '.join(cmd_args))
+
+
     res = subprocess.check_output(cmd_args).decode()
-    time.sleep(_update_frequency)
+    time.sleep(_update_frequency)  # Premature optimization is the root of all evil
 
     # Convert the sacct report to an object
     records = []
     lines = res.splitlines()
     header = lines.pop(0).strip().split('|')
-
     for line in lines:
         row = OrderedDict(zip(header, line.strip().split('|')))
         records.append(row)
 
     return records
-
-
-def get_jobs(*args, **kwargs):
-    """ Run batch query for slurm jobs, returns a list of SlurmJobs """
-    jobs = []
-    records = query_sacct(*args, **kwargs)
-    for rec in records:
-        s = SlurmJob(rec['JobID'], sacct=rec)
-        jobs.append(s)
-
-    return jobs
 
 
 def srun(*args):

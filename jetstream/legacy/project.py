@@ -85,6 +85,46 @@ class Project(object):
         failed_jobs = [j for j in self.get_jobs() if j.is_failed]
         return failed_jobs
 
+    def report(self, fast=False, all_jobs=False,
+                                col_size=20):
+        if fast:
+            if self.is_complete:
+                status = 'complete'
+            else:
+                status = 'incomplete'
+
+            rep = "%s - %s\n" % (self.name, status)
+            rep += "%s\n" % self.path
+
+        else:
+            rep = "%s - %s\n" % (self.name, self.check_status())
+            rep += "%s\n" % self.path
+
+            # Build the header
+            h_id = "ID".ljust(col_size)
+            h_name = "Name".ljust(col_size)
+            h_state = "State".ljust(col_size)
+            h_start = "Start".ljust(col_size)
+            h_end = "End".ljust(col_size)
+            h_elapsed = "Elapsed".ljust(col_size)
+            header_values = (h_id, h_name, h_state, h_start, h_end, h_elapsed)
+            rep += " ".join(header_values) + '\n'
+
+            for j in self.get_jobs():
+                if j.is_complete and not all_jobs:
+                    continue
+                d = j.sacct  # Use the sacct data for each job
+                job_id = d['JobID'][:12].ljust(12)
+                job_name = d['JobName'][:col_size].ljust(col_size)
+                job_state = d['State'][:col_size].ljust(col_size)
+                job_start = d['Start'][:col_size].ljust(col_size)
+                job_end = d['End'][:col_size].ljust(col_size)
+                job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
+                values = (
+                job_id, job_name, job_state, job_start, job_end, job_elapsed)
+                rep += " ".join(values) + '\n'
+
+        return rep
 
 
 def find_failed_signals(project_dir):
@@ -115,42 +155,3 @@ def find_jids_in_log(log_path, pat=submission_pattern):
 
     raise StopIteration
 
-
-def build_plain_text_report(project, fast=False, all_jobs=False, col_size=20):
-    if fast:
-        if project.is_complete:
-            status = 'complete'
-        else:
-            status = 'incomplete'
-
-        rep = "%s - %s\n" % (project.name, status)
-        rep += "%s\n" % project.path
-
-    else:
-        rep = "%s - %s\n" % (project.name, project.check_status())
-        rep += "%s\n" % project.path
-
-        # Build the header
-        h_id = "ID".ljust(col_size)
-        h_name = "Name".ljust(col_size)
-        h_state = "State".ljust(col_size)
-        h_start = "Start".ljust(col_size)
-        h_end = "End".ljust(col_size)
-        h_elapsed = "Elapsed".ljust(col_size)
-        header_values = (h_id, h_name, h_state, h_start, h_end, h_elapsed)
-        rep += " ".join(header_values) + '\n'
-
-        for j in project.get_jobs():
-            if j.is_complete and not all_jobs:
-                continue
-            d = j.sacct  # Use the sacct data for each job
-            job_id = d['JobID'][:12].ljust(12)
-            job_name = d['JobName'][:col_size].ljust(col_size)
-            job_state = d['State'][:col_size].ljust(col_size)
-            job_start = d['Start'][:col_size].ljust(col_size)
-            job_end = d['End'][:col_size].ljust(col_size)
-            job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
-            values = (job_id, job_name, job_state, job_start, job_end, job_elapsed)
-            rep += " ".join(values) + '\n'
-
-    return rep
