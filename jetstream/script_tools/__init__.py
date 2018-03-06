@@ -1,6 +1,5 @@
-from os import environ, getcwd
 from jetstream.script_tools.batch_schedulers import slurm
-
+from jetstream.projects import Project
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
                LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
