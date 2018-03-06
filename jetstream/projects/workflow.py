@@ -2,8 +2,9 @@ import json
 import logging
 import shutil
 import networkx as nx
-from datetime import datetime
+import random
 from uuid import uuid4 as uuid
+from datetime import datetime
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
 
@@ -187,19 +188,51 @@ class Workflow:
         self.last_update = utils.fingerprint()
         self.graph.nodes[node].update(**kwargs)
 
-    def _add_node(self, mapping):
-        """ Adding a node requires a mapping that includes "id" key. The id will
-        be used to reference the node in the graph, the rest of the mapping will
-        be added as data """
-        node_id = str(uuid())
-        self.graph.add_node(node_id, **mapping)
-        return self.get_node(node_id)
+    def _add_node(self, node_data):
+        """ Adding a node requires a mapping that includes "plugin_id" key. The
+        id will be used to build a unique id for the node, the rest of the
+        mapping will be added as data """
+
+        # All nodes must include plugin_id
+        node_id = node_data['plugin_id']
+
+        # Make sure the node_id is unique
+        max_attempts = 1000
+        for attempt in range(max_attempts):
+            if self.get_node(node_id):
+                suffix = '-{:X}'.format(attempt)
+                node_id = node_data['plugin_id'] + suffix
+            else:
+                break
+        else:
+            node_id = uuid()
+            msg = 'Failed to generate unique node id after {} attempts and' \
+                  ' fell back to uuid for node data: {}'.format(
+                max_attempts, node_data)
+            log.critical(msg)
+
+        if self.get_node(node_id):
+            raise RuntimeError('Duplicate node id: {} in\n{}'.format(
+                node_id, self))
+
+        # All nodes get a status attribute that the workflow uses to identify
+        # nodes that are ready to be executed.
+        node_data['status'] = 'new'
+        self.graph.add_node(node_id, **node_data)
+
+        return node_id
 
     def add_node(self, plugin_id):
         log.critical('Add plugin: {}'.format(plugin_id))
-        plugin = plugins.get_plugin(plugin_id)
-        node_data = dict(status='new', plugin_id=plugin['plugin_id'])
-        return self._add_node(node_data)
+
+        # Checks that plugin_id is valid
+        plugins.get_plugin(plugin_id)
+
+        # Adds a node to the graph with the plugin_id in node data
+        node_data = {'plugin_id': plugin_id}
+        node_id = self._add_node(node_data)
+
+        return node_id
 
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between components. Edges run
