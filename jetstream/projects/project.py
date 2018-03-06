@@ -7,7 +7,7 @@ from threading import Thread
 from jetstream import utils, profile
 from jetstream.projects import exc
 from jetstream.projects.launchers import default
-from jetstream.projects.runs import new_run_id
+from jetstream.projects.runs import new_run_id, load_run
 
 log = logging.getLogger(__name__)
 
@@ -64,17 +64,14 @@ class Project:
         return {'name': self.name, 'path': self.path}
 
     @property
-    def data_path(self):
+    def _data_path(self):
         return os.path.join(self.path, 'project.yaml')
 
+    @property
     def data(self):
         data = None
         try:
-            data = utils.struct(
-                action='load',
-                format='yaml',
-                path=self.data_path
-            )
+            data = utils.yaml_load(path=self._data_path)
         except FileNotFoundError as err:
             log.warning(err)
         finally:
@@ -97,9 +94,7 @@ class Project:
         os.mkdir(path)
 
         record = {'created': utils.fingerprint()}
-        utils.struct(
-            action='dump',
-            format='yaml',
+        utils.yaml_dump(
             obj=record,
             path=os.path.join(path, 'created')
         )
@@ -139,9 +134,19 @@ class Project:
 
         log.critical('Run complete!')
 
+        # TODO this should return something
         # for node in workflow.nodes():
         #     if node['return code']
-        # TODO this should return something
+
+    def load_run(self, run_id=None):
+        run_dirs = os.path.join(self.path, '.jetstream')
+
+        if run_id is None:
+            latest = self.latest_run()
+            return load_run(os.path.join(run_dirs, latest))
+        else:
+            load_run(os.path.join(run_dirs, run_id))
+
 
     def _find_completed(self, tasks):
         """Cycle through the active tasks queue and return completed tasks. """
