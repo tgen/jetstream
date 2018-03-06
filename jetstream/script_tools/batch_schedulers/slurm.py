@@ -88,9 +88,6 @@ class SlurmJob(object):
     def __repr__(self):
         return "SlurmJob(%s)" % self.jid
 
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
     def serialize(self):
         return self.__dict__
 
