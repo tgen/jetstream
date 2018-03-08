@@ -72,9 +72,11 @@ import argparse
 import logging
 import os
 import subprocess
-import tempfile
-
+import tempstore
+import shutil
 import pkg_resources
+
+from jetstream.utils import fingerprint
 from jetstream.script_tools.formats.refdict import refdict_to_bedtools_genome
 from jetstream.script_tools.formats import intervals
 
@@ -87,11 +89,11 @@ BEDTOOLS = 'bedtools'  # TODO im stumped how to add bedtools source in, maybe it
 # complexity to the development process.
 
 
-def parse_args(args=None):
+def arg_parser():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawTextHelpFormatter,
-        description="Generate a reference pack for a new exome kit. See epilog "
-                    "for detailed usage instructions.",
+        description='Generate a reference pack for a new exome kit. See epilog '
+                    'for detailed usage instructions.',
         epilog=__doc__
     )
 
@@ -115,37 +117,52 @@ def parse_args(args=None):
     parser.add_argument(
         '-r', '--refdict',
         required=True,
-        help="Path to the reference dictionary"
+        help='Path to the reference dictionary'
     )
 
     parser.add_argument(
         '-c', '--cna-template',
-        default='/home/tgenref/binaries/capture_specific_jetstream_file_creation/Copy_Number_100bp_Interval_Template.bed',
-        help="Path to the CNA template bed file. "
+        default='/home/tgenref/binaries/capture_specific_jetstream_file_creatio'
+                'n/Copy_Number_100bp_Interval_Template.bed',
+        help='Path to the CNA template bed file.'
         # TODO: This should be replaced in the future with code that
         # that generates the template from a given refdict
     )
 
-    args = parser.parse_args(args)
-    return args
+    parser.add_argument(
+        '--save-temp', action='store_true', default=False,
+        help='Also saves all temp files created during the process'
+    )
+
+    return parser
 
 
 def check_java_version():
-    return subprocess.check_call(['java', '-version'])
+    ver = subprocess.check_output(
+        ['java', '-version'],
+        stderr=subprocess.STDOUT
+    ).decode()
+    return ver
 
 
-class DeconstructedPath:
-    def __init__(self, path):
-        self.path = path
-        self.size = os.path.getsize(path)  # This also verifies the path exists
-        self.dir = os.path.dirname(path)
-        self.base = os.path.basename(path)
-        self.root, self.ext = os.path.splitext(self.base)
+def external_proc(cmd_args, out_path):
+    """Launch external process that writes to out_path"""
+    cmd_string = ' '.join(cmd_args)
+    log.critical('Starting external process: {}'.format(cmd_string))
+
+    with open(out_path, 'w') as fp:
+        p = subprocess.Popen(cmd_args, stdout=fp)
+        p.wait()
+
+    if p.returncode != 0:
+        raise ChildProcessError(cmd_string)
+
+    return p.returncode
 
 
-def make_picard_intervals_list(bed, refdict):
-    """ Starts a Picard BedToIntervalList process and returns tempfile """
-    check_java_version()
+def picard_bedtointervallist(bed, refdict, out_path):
+    """Starts a Picard BedToIntervalList process that writes to out_path"""
+    log.critical(check_java_version())
 
     cmd_args = [
         'java',
@@ -158,20 +175,12 @@ def make_picard_intervals_list(bed, refdict):
     ]
 
     log.debug('Starting Picard: {}'.format(' '.join(cmd_args)))
-
-    temp = tempfile.NamedTemporaryFile()
-    picard = subprocess.Popen(cmd_args, stdout=temp)
-    picard.wait()
-
-    if picard.returncode != 0:
-        raise ChildProcessError(' '.join(picard.args))
-
-    return temp
+    return external_proc(cmd_args, out_path)
 
 
-def bedtools_intersect(a, b):
-    """ Returns a tempfile that includes all intervals in a which intersect
-    any interval in b. """
+def bedtools_intersect(a, b, out_path):
+    """ Writes bedfile to out_path that includes all intervals in a which
+    intersect any interval in b. """
     cmd_args = [
         BEDTOOLS,
         'intersect',
@@ -181,50 +190,10 @@ def bedtools_intersect(a, b):
         '-b', b
     ]
 
-    log.debug('Starting Bedtools intersect: {}'.format(' '.join(cmd_args)))
-
-    temp = tempfile.NamedTemporaryFile()
-    bedtools = subprocess.Popen(cmd_args, stdout=temp)
-    bedtools.wait()
-
-    if bedtools.returncode != 0:
-        raise ChildProcessError(' '.join(bedtools.args))
-
-    return temp
+    return external_proc(cmd_args, out_path)
 
 
-def bedtools_merge(a):
-    cmd_args_sort = [
-        BEDTOOLS,
-        'sort',
-        '-header',
-        '-i', a
-    ]
-
-    log.debug('Starting Bedtools sort: {}'.format(' '.join(cmd_args_sort)))
-
-    bedtools_sort = subprocess.Popen(cmd_args_sort, stdout=subprocess.PIPE)
-
-    cmd_args = [
-        BEDTOOLS,
-        'merge',
-        '-header',
-        '-i', 'stdin'
-    ]
-
-    log.debug('Starting Bedtools merge: {}'.format(' '.join(cmd_args)))
-
-    temp = tempfile.NamedTemporaryFile()
-    bedtools = subprocess.Popen(cmd_args, stdout=temp, stdin=bedtools_sort.stdout)
-    bedtools.wait()
-
-    if bedtools.returncode != 0:
-        raise ChildProcessError(' '.join(bedtools.args))
-
-    return temp
-
-
-def bedtools_slop(bed, genome, b=100):
+def bedtools_slop(bed, genome, out_path, b=100):
     """ bed can be path to a BED/GFF/VCF """
     cmd_args = [
         BEDTOOLS,
@@ -235,67 +204,117 @@ def bedtools_slop(bed, genome, b=100):
         '-g', genome
     ]
 
-    log.debug('Starting Bedtools slop: {}'.format(' '.join(cmd_args)))
+    return external_proc(cmd_args, out_path)
 
-    temp = tempfile.NamedTemporaryFile()
-    bedtools = subprocess.Popen(cmd_args, stdout=temp)
-    bedtools.wait()
+
+def bedtools_merge(a, out_path):
+    """Starts a bedtools sort and bedtools merge process, writes to out_path"""
+    cmd_args_sort = [
+        BEDTOOLS,
+        'sort',
+        '-header',
+        '-i', a
+    ]
+
+    log.debug('Starting external process: {}'.format(' '.join(cmd_args_sort)))
+
+    bedtools_sort = subprocess.Popen(cmd_args_sort, stdout=subprocess.PIPE)
+
+    cmd_args = [
+        BEDTOOLS,
+        'merge',
+        '-header',
+        '-i', 'stdin'
+    ]
+
+    log.debug('Starting external process: {}'.format(' '.join(cmd_args)))
+
+    with open(out_path, 'w') as fp:
+        bedtools = subprocess.Popen(
+            cmd_args,
+            stdout=fp,
+            stdin=bedtools_sort.stdout)
+        bedtools.wait()
 
     if bedtools.returncode != 0:
         raise ChildProcessError(' '.join(bedtools.args))
 
-    return temp
+    return bedtools.returncode
 
 
-def gtf_to_bed(path):
-    exon_bed = tempfile.NamedTemporaryFile()
-    ints = intervals.read_gffv2(path)
+def gtf_to_bed(gtf_path, out_path):
+    ints = intervals.read_gffv2(gtf_path)
     ints = ints.filter(lambda i: i['feature'] == 'exon')  # Select only exons
-    with open(exon_bed.name, 'w') as fp:
+
+    with open(out_path, 'w') as fp:
         fp.write(intervals.to_bed(ints))
-    return exon_bed
 
 
-def make_vcf_filter(targets, refdict, gtf):
+def make_vcf_filter(targets, refdict, gtf, out_path):
     # A: Make an exon bed file from the GTF
-    exon_bed = gtf_to_bed(gtf)
+    gtf_to_bed(gtf, out_path=TEMPFILES.create('exons.bed'))
 
     # B: Make padded bed for generating filter files
-    genome_file = refdict_to_bedtools_genome(refdict)
-    padded_targets = bedtools_slop(bed=targets, genome=genome_file.name, b=100)
+    # First create a "bedtools genome" file from the refdict
+    refdict_to_bedtools_genome(
+        refdict,
+        out_path=TEMPFILES.create('refdict.genome')
+    )
 
-    # C: Intersection A and B, keep A
-    exons_in_targets = bedtools_intersect(exon_bed.name, padded_targets.name)
+    # Now pad the targets file
+    bedtools_slop(
+        bed=targets,
+        genome=TEMPFILES.paths['refdict.genome'],
+        b=100,
+        out_path=TEMPFILES.create('padded100_targets.bed')
+    )
+
+    # C: Intersect A and B, keep A
+    # This keeps only those exons which intersect a target in the
+    # padded targets file
+    bedtools_intersect(
+        a=TEMPFILES.paths['exons.bed'],
+        b=TEMPFILES.paths['padded100_targets.bed'],
+        out_path=TEMPFILES.create('captured_exons.bed')
+    )
 
     # D: Generate Union of A and C
-    # This is ugly, here is what it would look like in bash:
-    # "cat {padded_targets} {exons_in_targets} | {BEDTOOLS} sort -i stdin
-    # | {BEDTOOLS} merge -i {} > {union}"
+    # Create a new file to store all the ints
+    all_ints_path = TEMPFILES.create('all_intervals.bed')
+    with open(all_ints_path, 'w') as ai:
 
-    all_ints = tempfile.NamedTemporaryFile()
-    with open(all_ints.name, 'w') as all_ints_fp:
-        with open(padded_targets.name, 'r') as padded_targets_fp:
-            for line in padded_targets_fp:
-                all_ints_fp.write(line)
-        with open(exons_in_targets.name, 'r') as exons_in_targets_fp:
-            for line in exons_in_targets_fp:
-                all_ints_fp.write(line)
-    union = bedtools_merge(all_ints.name)
+        # Write padded100_targets
+        with open(TEMPFILES.paths['padded100_targets.bed'], 'r') as pt:
+            for line in pt:
+                ai.write(line)
 
-    return union
+        # And write captured exons
+        with open(TEMPFILES.paths['captured_exons.bed'], 'r') as ce:
+            for line in ce:
+                ai.write(line)
+
+    # Finally, merge all the intervals in all_intervals and return
+    bedtools_merge(
+        a=TEMPFILES.paths['all_intervals.bed'],
+        out_path=out_path
+    )
+
+    return out_path
 
 
-def make_cna_filter(cna_template_bed, bed):
-    # First we need to changed X -> 23 and Y -> 24
-    bed = intervals.read_bed(bed)
+def make_cna_index(cna_template_bed, filter_bed, out_path, x='23', y='24'):
+    """Generates a CNA index from template and filter bed files."""
+    bed = intervals.read_bed(filter_bed)
+
+    # First we need to chang X Y to integers in order to match template
     for i in bed:
         if i['seqname'] == 'X':
-            i['seqname'] = '23'
+            i['seqname'] = x
         elif i['seqname'] == 'Y':
-            i['seqname'] = '24'
+            i['seqname'] = y
 
-    temp_bed = tempfile.NamedTemporaryFile()
-    with open(temp_bed.name, 'w') as fp:
+    tmp_bed_path = TEMPFILES.create('temp_23_24.bed')
+    with open(tmp_bed_path, 'w') as fp:
         print(intervals.to_bed(bed), file=fp)
 
     cmd_args = [
@@ -304,66 +323,99 @@ def make_cna_filter(cna_template_bed, bed):
         '-header',
         '-c',
         '-a', cna_template_bed,
-        '-b', temp_bed.name
+        '-b', tmp_bed_path
     ]
 
-    log.debug('Starting Bedtools intersect count: {}'.format(' '.join(cmd_args)))
-
-    temp = tempfile.NamedTemporaryFile()
-    bedtools = subprocess.Popen(cmd_args, stdout=temp)
-    bedtools.wait()
-
-    if bedtools.returncode != 0:
-        raise ChildProcessError(' '.join(bedtools.args))
-
-    return temp
+    return external_proc(cmd_args, out_path=out_path)
 
 
-def save_tempfile(tempfile, path):
-    log.debug('Saving: {} to: {}'.format(tempfile.name, path))
+def save_results(targets_path, baits_path, save_temp):
+    # Save the targets.interval_list
+    targets_base = os.path.basename(targets_path)
+    targets_root, targets_ext = os.path.splitext(targets_base)
+    out_path = targets_root + '.interval_list'
 
-    if os.path.exists(path):
-        raise OSError("{} already exists".format(path))
-    else:
-        with open(tempfile.name, 'r') as temp_fp:
-            with open(path, 'w') as fp:
-                for line in temp_fp:
-                    fp.write(line)
+    log.critical("Saving targets.intervals_list to {}".format(out_path))
+    shutil.copy(TEMPFILES.paths['targets.interval_list'], out_path)
 
+    # Save the baits.interval_list if it was created
+    if baits_path is not None:
+        baits_base = os.path.basename(baits_path)
+        baits_root, baits_ext = os.path.splitext(baits_base)
+        out_path = baits_root + '.interval_list'
 
-def main(baits, targets, refdict, gtf, cna_template):
-    # Make Picard targets/baits interval list files
-    picard_targets_intervals = make_picard_intervals_list(targets, refdict)
-    if baits is not None:
-        picard_baits_intervals = make_picard_intervals_list(baits, refdict)
+        log.critical("Saving baits.interval_list to {}".format(out_path))
+        shutil.copy(TEMPFILES.paths['baits.interval_list'], out_path)
 
-    # Make VCF bed file
-    vcf_filter = make_vcf_filter(targets, refdict, gtf)
-
-    # Make CNA bed file
-    cna_filter = make_cna_filter(cna_template, vcf_filter.name)
-
-
-    # Now save the targets/baits
-    targets_dp = DeconstructedPath(targets)
-    targets_out = os.path.join(targets_dp.dir, targets_dp.root + '.interval_list')
-    save_tempfile(picard_targets_intervals, targets_out)
-
-    if baits is not None:
-        baits_dp = DeconstructedPath(baits)
-        baits_out = os.path.join(baits_dp.dir, baits_dp.root + '.interval_list')
-        save_tempfile(picard_baits_intervals, baits_out)
-
-    # Save VCF bed file
-    vcf_filter_out = os.path.join(targets_dp.dir, targets_dp.root + '.filter.bed')
-    save_tempfile(vcf_filter, vcf_filter_out)
+    # Save VCF filter bed file
+    out_path = targets_root + '.filter.bed'
+    log.critical("Saving vcf_filter.bed to {}".format(out_path))
+    shutil.copy(TEMPFILES.paths['vcf_filter.bed'], out_path)
 
     # Save CNA bed file
-    cna_filter_out = os.path.join(targets_dp.dir, targets_dp.root + '.cna.bed')
-    save_tempfile(cna_filter, cna_filter_out)
+    out_path = targets_root + '.cna.bed'
+    log.critical("Saving vcf_filter.bed to {}".format(out_path))
+    shutil.copy(TEMPFILES.paths['vcf_filter.bed'], out_path)
+
+    if save_temp:
+        log.critical("Saving all tempfiles {}".format(TEMPFILES.paths))
+        TEMPFILES.copy('./', exist_ok=True)
+    return
+
+
+def main(args=None):
+    parser = arg_parser()
+    args = parser.parse_args(args)
+    log.critical(fingerprint(to_json=True))
+    log.critical(args)
+
+
+    # Make Picard targets/baits interval list files
+    picard_bedtointervallist(
+        bed=args.targets,
+        refdict=args.refdict,
+        out_path=TEMPFILES.create('targets.interval_list')
+    )
+
+    if args.baits is not None:
+        picard_bedtointervallist(
+            bed=args.baits,
+            refdict=args.refdict,
+            out_path=TEMPFILES.create('baits.interval_list')
+        )
+
+
+    # Make VCF bed file
+    make_vcf_filter(
+        targets=args.targets,
+        refdict=args.refdict,
+        gtf=args.gtf,
+        out_path=TEMPFILES.create('vcf_filter.bed')
+    )
+
+
+    # Make CNA index bed file
+    make_cna_index(
+        cna_template_bed=args.cna_template,
+        filter_bed=TEMPFILES.paths['vcf_filter.bed'],
+        out_path=TEMPFILES.create('cna_index.bed')
+    )
+
+
+    # Now save results to the cwd
+    save_results(args.targets, args.baits, args.save_temp)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    args = parse_args()
-    main(**vars(args))
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] %(message)s",
+        handlers=[logging.FileHandler("log.txt"), logging.StreamHandler()]
+    )
+
+    TEMPFILES = tempstore.TempStore(name='temp')
+
+    try:
+        main()
+    finally:
+        TEMPFILES.cleanup()
