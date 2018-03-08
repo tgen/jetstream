@@ -5,6 +5,7 @@ from collections import deque
 from threading import Thread
 
 from jetstream import utils, profile
+from jetstream.plugins import get_plugin
 from jetstream.projects import exc
 from jetstream.projects.launchers import default
 from jetstream.projects.runs import new_run_id, load_run
@@ -123,8 +124,11 @@ class Project:
                     workflow.__send__(node_id, result)
                     workflow.save(workflow_path)
                 time.sleep(1)
+
             else:
-                node_id, plugin = task
+                node_id, plugin_id = task
+                plugin = get_plugin(plugin_id)
+
                 thread = ThreadWithReturnValue(
                     target=launcher,
                     args=(plugin,)

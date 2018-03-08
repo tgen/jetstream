@@ -23,9 +23,8 @@ def main(args):
 
 __all__ = [
     "resume",
-    "config",
+    "project",
     "launch",
     "plugins",
     "report",
-    "init",
 ]

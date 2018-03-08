@@ -251,6 +251,7 @@ def get_plugin(pid, script_only=False):
     plugin_obj['plugin'] = plugin
     plugin_obj['path'] = path
     plugin_obj['revision'] = revision
+    plugin_obj['freeze'] = plugin_id(plugin, path, revision)
 
     if script_only:
         return plugin_obj['script']

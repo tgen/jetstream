@@ -3,6 +3,7 @@ import sys
 import stat
 import gzip
 import logging
+import json
 from pkg_resources import get_distribution
 from socket import gethostname
 from getpass import getuser
@@ -125,9 +126,9 @@ def struct(*, action, format, **kwargs):
     return dispatcher[format][action](**kwargs)
 
 
-def fingerprint():
+def fingerprint(to_json=False):
     """Gather system info for recording changes made to projects."""
-    return {
+    fp = {
         'datetime': str(datetime.now()),
         'user': getuser(),
         'version': str(get_distribution(__package__)),
@@ -140,3 +141,7 @@ def fingerprint():
         'pwd': os.getcwd()
     }
 
+    if to_json:
+        return json.dumps(fp)
+    else:
+        return fp

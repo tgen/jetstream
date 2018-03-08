@@ -10,16 +10,17 @@ def read(fname):
 
 
 setup(
-    name = "jetstream",
-    version = "0.1.0a1",
-    author = "Ryan Richholt",
-    author_email = "rrichholt@tgen.org",
-    description = "NGS analysis pipeline at TGen.",
+    name="jetstream",
+    version="0.1.0a1",
+    author="Ryan Richholt",
+    author_email="rrichholt@tgen.org",
+    description="NGS analysis pipeline at TGen.",
     long_description=read('README.md'),
-    keywords = "ngs pipeline automation",
+    keywords="ngs pipeline automation",
     packages=find_packages(),
     python_requires='>=3.5',
-    install_requires=['networkx', 'pydot', 'ruamel.yaml', 'ulid-py'],
+    install_requires=['networkx', 'pydot', 'ruamel.yaml', 'ulid-py',
+                      'tempstore'],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",

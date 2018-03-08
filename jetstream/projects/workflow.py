@@ -102,8 +102,8 @@ class Workflow:
                     datetime_start=str(datetime.now())
                 )
 
-                plugin = plugins.get_plugin(node_data['plugin_id'])
-                return node_id, plugin
+                plugin_id = node_data['plugin_id']
+                return node_id, plugin_id
         else:
             if pending:
                 log.debug('Request for next task but None available')
