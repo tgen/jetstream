@@ -123,7 +123,7 @@ class SlurmJob(object):
         while 1:
             elapsed = time.time() - start
             self.update()
-            if self.is_complete:
+            if not self.is_active:
                 break
             else:
                 if timeout and elapsed > timeout:
@@ -170,17 +170,17 @@ def get_jobs(*args, **kwargs):
 
 def wait(*jobs, timeout=None):
     start = time.time()
-    tracker = {j: False for j in jobs}
+    tracker = {j: True for j in jobs}
     while 1:
         elapsed = time.time() - start
-        incomplete = {k: v for k, v in tracker.items() if not v}
+        incomplete = {k: v for k, v in tracker.items() if v}
 
         if not incomplete:
             break
         else:
             for job in incomplete.keys():
                 job.update()
-                tracker[job] = job.is_complete
+                tracker[job] = job.is_active
                 if timeout and elapsed > timeout:
                     raise TimeoutError
 
