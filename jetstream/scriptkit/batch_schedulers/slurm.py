@@ -244,18 +244,22 @@ def sbatch(*args, stdin_data=None):
 
 def easy(cmd, *args, module_load=None):
     """Launch shell scripts on slurm with controlled environments via module """
-    shebang = """#!/bin/bash
-    echo 'Submitted with jetstream.scriptkit.slurm.easy()'
-    echo '{}' 
-    """.format(cmd)
-
-    if module_load:
-        final = "{}\nmodule load {} || exit 1\n{}".format(
-            shebang, module_load, cmd)
-    else:
-        final = "{}\n{}".format(shebang, cmd)
-
     run_id = os.environ.get('JETSTREAM_RUN_ID', '')
     job_name = '{}\t{}'.format(os.getcwd(), run_id)
+    sbatch_args = args + ('-J', job_name)
 
-    return sbatch(*args, '-J', job_name, stdin_data=final.encode())
+    if module_load:
+        "module load {} || exit 1".format(module_load)
+    else:
+        "echo 'No extra modules loaded'"
+
+    script = """#!/bin/bash
+    echo 'Submitted with jetstream.scriptkit.slurm.easy()'
+    echo '{}'
+    echo '{}'
+    module load {}
+    echo '---'
+    {}
+    """.format(' '.join(sbatch_args), cmd, module_load, cmd)
+
+    return sbatch(*sbatch_args, stdin_data=script.encode())

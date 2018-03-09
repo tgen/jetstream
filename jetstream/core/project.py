@@ -168,7 +168,8 @@ class Project:
                         raise RuntimeError(getattr(thread, 'args'))
 
                     log_path = os.path.join(self._run_path, node_id) + '.log'
-                    print('would write log to ', log_path)
+                    print('Eventually will write log to ', log_path)
+                    print('For now, here\'s the log:\n', res.logs)
                     yield (node_id, res)
 
                 except TimeoutError:
