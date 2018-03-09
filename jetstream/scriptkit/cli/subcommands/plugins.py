@@ -1,7 +1,8 @@
 """Command line utility for managing plugins """
-import sys
 import argparse
 import logging
+import sys
+
 from jetstream import plugins, utils
 
 log = logging.getLogger(__name__)

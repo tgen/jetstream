@@ -1,9 +1,10 @@
 """ This module contains the cli interface code for the project data utility."""
 import argparse
 import logging
+
 from jetstream import utils
-import jetstream.projects as projects
-from jetstream.legacy import config
+from jetstream.core import project
+from jetstream.core.legacy import config
 
 log = logging.getLogger(__name__)
 
@@ -17,6 +18,8 @@ def arg_parser():
 
     return parser
 
+# TODO Iter samples
+# TODO Iter data
 
 def main(args=None):
     parser = arg_parser()
@@ -24,7 +27,7 @@ def main(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     if args.action in ('init',):
-        projects.init()
+        project.init()
 
     elif args.action in ('legacy',):
         c = config.load(args.path)

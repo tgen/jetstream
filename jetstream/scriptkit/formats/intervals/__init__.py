@@ -1,6 +1,8 @@
 from jetstream.utils import read_lines_allow_gzip
-from .generic import IntervalFile
+
 from . import bed, gffv2, gatk_style_intervals
+from .generic import IntervalFile
+
 
 # TODO test GTF/GFF -> BED dumps
 # TODO Do we want to allow for bedtools style functions on generic intervals?

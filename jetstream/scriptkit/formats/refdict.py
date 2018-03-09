@@ -1,6 +1,5 @@
-import tempfile
-
-
+"""Picard sequence dictionary format
+https://broadinstitute.github.io/picard/command-line-overview.html"""
 def read(path):
     with open(path, 'r') as fp:
         data = fp.read()

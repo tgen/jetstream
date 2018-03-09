@@ -1,7 +1,7 @@
-import sys
-import logging
 import argparse
 import importlib
+import logging
+import sys
 
 log = logging.getLogger()
 
@@ -10,10 +10,10 @@ default_log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(linen
 
 def create_parser():
     main_parser = argparse.ArgumentParser(
-        description='Jetstream automates workflows. Available subcommands '
+        description='Available subcommands '
                     'are: {}'.format(get_subcommands()),
-        epilog='Use \'jetstream <subcommand> -h/--help\' for help with a '
-               'specific topic.',
+        epilog='Use \'jetstream-workflows <subcommand> -h/--help\' for help '
+               'specific commands.',
         add_help=False)
 
     main_parser.add_argument('subcommand', nargs='?')
@@ -35,7 +35,7 @@ def create_parser():
 
 
 def get_subcommands():
-    from jetstream.cli.subcommands import __all__ as subcommands
+    from jetstream.workflows.cli.subcommands import __all__ as subcommands
     return subcommands
 
 

@@ -4,14 +4,15 @@ import time
 from collections import deque
 from threading import Thread
 
-from jetstream import utils, profile
+from jetstream import exc, utils
+from jetstream.core import run
+from jetstream.core.settings import profile
 from jetstream.plugins import get_plugin
-from jetstream.projects import exc
-from jetstream.projects.launchers import default
-from jetstream.projects.runs import new_run_id, load_run
+from jetstream.workflows.launchers import default
 
 log = logging.getLogger(__name__)
 
+RUN_DATA_DIR = profile['RUN_DATA_DIR']
 
 # TODO: should project functions walk up the directory tree like git?
 # see this https://gist.github.com/zdavkeos/1098474 but also consider
@@ -53,11 +54,11 @@ class Project:
 
         self.path = path
 
-        target = os.path.join(self.path, profile['RUN_DATA_DIR'])
+        target = os.path.join(self.path, RUN_DATA_DIR)
         if not os.path.exists(target):
             raise exc.NotAProject('Data dir does not exist {}'.format(target))
 
-        target = os.path.join(self.path, profile['RUN_DATA_DIR'])
+        target = os.path.join(self.path, RUN_DATA_DIR)
         if not os.path.isdir(target):
             raise exc.NotAProject('Data dir is not a dir {}'.format(target))
 
@@ -79,7 +80,7 @@ class Project:
             return data
 
     def runs(self):
-        run_data_dir = os.path.join(self.path, profile['RUN_DATA_DIR'])
+        run_data_dir = os.path.join(self.path, RUN_DATA_DIR)
         return os.listdir(run_data_dir)
 
     def latest_run(self):
@@ -90,8 +91,8 @@ class Project:
             return None
 
     def new_run(self):
-        run_id = new_run_id()
-        path = os.path.join(self.path, profile['RUN_DATA_DIR'], run_id)
+        run_id = run.new_run_id()
+        path = os.path.join(self.path, RUN_DATA_DIR, run_id)
         os.mkdir(path)
 
         record = {'created': utils.fingerprint()}
@@ -103,13 +104,21 @@ class Project:
         log.critical('Created new run record {}'.format(run_id))
         return run_id, path
 
+    def load_run(self, run_id=None):
+        run_dirs = os.path.join(self.path, '.jetstream')
+
+        if run_id is None:
+            latest = self.latest_run()
+            return run.load_run(os.path.join(run_dirs, latest))
+        else:
+            run.load_run(os.path.join(run_dirs, run_id))
+
     def run(self, workflow, launcher=default):
-        run_id, run_path = self.new_run()
+        self._run_id, self._run_path = self.new_run()
 
-        os.environ['JETSTREAM_RUN_PATH'] = run_path
-        os.environ['JESTREAM_RUN_ID'] = run_id
-
-        workflow_path = os.path.join(run_path, 'workflow')
+        os.environ['JETSTREAM_RUN_PATH'] = self._run_path
+        os.environ['JESTREAM_RUN_ID'] = self._run_id
+        workflow_path = os.path.join(self._run_path, 'workflow')
 
         tasks = deque()
         while 1:
@@ -138,20 +147,6 @@ class Project:
 
         log.critical('Run complete!')
 
-        # TODO this should return something
-        # for node in workflow.nodes():
-        #     if node['return code']
-
-    def load_run(self, run_id=None):
-        run_dirs = os.path.join(self.path, '.jetstream')
-
-        if run_id is None:
-            latest = self.latest_run()
-            return load_run(os.path.join(run_dirs, latest))
-        else:
-            load_run(os.path.join(run_dirs, run_id))
-
-
     def _find_completed(self, tasks):
         """Cycle through the active tasks queue and return completed tasks. """
         sentinel = object()
@@ -171,6 +166,9 @@ class Project:
                         # in the launcher function.
                         # TODO Is it necessary to recover from these errors?
                         raise RuntimeError(getattr(thread, 'args'))
+
+                    log_path = os.path.join(self._run_path, node_id) + '.log'
+                    print('would write log to ', log_path)
                     yield (node_id, res)
 
                 except TimeoutError:
@@ -184,6 +182,6 @@ class Project:
 
 
 def init():
-    os.mkdir('.jetstream')
+    os.makedirs('.jetstream', exist_ok=True)
     log.critical('Initialized project {}'.format(os.getcwd()))
 

@@ -1,14 +1,15 @@
-import os
-import shutil
-import tempfile
-import subprocess
+import abc
 import hashlib
 import logging
+import os
 import random
+import shutil
+import subprocess
+import tempfile
 from datetime import datetime
-from jetstream.projects import Result
+
 from jetstream.utils import fingerprint
-import abc
+from jetstream.workflows import Result
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +118,8 @@ def dry(plugin):
 
 def default(plugin):
     """Launches plugin by guessing the interpreter to use from shebang. This
-    currently supports Python2/3 and Bash. """
+    currently supports Python2/3 and Bash. "id" should be a unique identifier
+    which will be used to name log files. """
     log.critical('Starting plugin {}'.format(plugin['plugin_id']))
 
     shebang = plugin['script'].splitlines()[0]

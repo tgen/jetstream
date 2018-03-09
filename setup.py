@@ -13,7 +13,8 @@ setup(
     name="jetstream",
     version="0.1.0a1",
     author="Ryan Richholt",
-    author_email="rrichholt@tgen.org",
+    author_email="ryan@tgen.org",
+    url="https://github.com/tgen/jetstream",
     description="NGS analysis pipeline at TGen.",
     long_description=read('README.md'),
     keywords="ngs pipeline automation",
@@ -34,7 +35,8 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'jetstream=jetstream.cli.main:main',
+            'jetstream=jetstream.scriptkit.cli.main:main',
+            'jetstream-workflows=jetstream.workflows.cli.main:main'
         ],
     }
 

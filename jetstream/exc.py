@@ -1,5 +1,6 @@
 """Projects module exceptions"""
 
+
 class NotAProject(Exception):
     pass
 

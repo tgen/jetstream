@@ -1,15 +1,13 @@
 import json
 import logging
 import shutil
-import networkx as nx
-import random
-from uuid import uuid4 as uuid
 from datetime import datetime
+from uuid import uuid4 as uuid
+
+import networkx as nx
+from jetstream import plugins, utils, exc
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
-
-from jetstream import plugins, utils
-from jetstream.projects import exc
 
 log = logging.getLogger(__name__)
 

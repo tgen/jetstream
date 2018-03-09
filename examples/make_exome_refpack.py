@@ -71,22 +71,34 @@ Glossary:
 import argparse
 import logging
 import os
-import subprocess
-import tempstore
 import shutil
-import pkg_resources
+import subprocess
 
+import pkg_resources
+import tempstore
+from jetstream.scriptkit.formats import intervals
+from jetstream.scriptkit.formats.refdict import refdict_to_bedtools_genome
 from jetstream.utils import fingerprint
-from jetstream.script_tools.formats.refdict import refdict_to_bedtools_genome
-from jetstream.script_tools.formats import intervals
 
 log = logging.getLogger(__name__)
 
-PICARD_PATH = pkg_resources.resource_filename('jetstream', 'script_tools/etc/picard.jar')
-BEDTOOLS = 'bedtools'  # TODO im stumped how to add bedtools source in, maybe it
-# needs to be built first and then distributed with a bdist? In that case we'll
-# need to create setup a build tool/script for the project and it adds some
-# complexity to the development process.
+CNA_TEMPLATE = '/home/tgenref/binaries/capture_specific_jetstream_file_creatio'\
+               'n/Copy_Number_100bp_Interval_Template.bed'
+
+KNOWN_SV = '/home/tgenref/homo_sapiens/grch37_hg19/hs37d5/tool_specific_re' \
+             'sources/tconut/nonmatched_tumor_normal/NA12878_specific/Merged' \
+             '_SV_DGV_1kg.bed'
+
+PICARD_PATH = pkg_resources.resource_filename(
+    'jetstream',
+    'script_tools/etc/picard.jar'
+)
+
+BEDTOOLS_PATH = 'bedtools'
+# TODO im stumped how to add bedtools source in,
+# maybe it needs to be built first and then distributed with a bdist? In that
+# case we'll need to create setup a build tool/script for the project and it
+# adds some complexity to the development process.
 
 
 def arg_parser():
@@ -122,11 +134,16 @@ def arg_parser():
 
     parser.add_argument(
         '-c', '--cna-template',
-        default='/home/tgenref/binaries/capture_specific_jetstream_file_creatio'
-                'n/Copy_Number_100bp_Interval_Template.bed',
-        help='Path to the CNA template bed file.'
+        default=CNA_TEMPLATE,
+        help='Path to the CNA template bed file. [{}]'.format(CNA_TEMPLATE)
         # TODO: This should be replaced in the future with code that
         # that generates the template from a given refdict
+    )
+
+    parser.add_argument(
+        '-k', '--known-sv',
+        default='',
+        help='Path to the known SVs bed file. [{}]'.format(KNOWN_SV)
     )
 
     parser.add_argument(
@@ -182,7 +199,7 @@ def bedtools_intersect(a, b, out_path):
     """ Writes bedfile to out_path that includes all intervals in a which
     intersect any interval in b. """
     cmd_args = [
-        BEDTOOLS,
+        BEDTOOLS_PATH,
         'intersect',
         '-header',
         '-wa',
@@ -193,10 +210,23 @@ def bedtools_intersect(a, b, out_path):
     return external_proc(cmd_args, out_path)
 
 
+def bedtools_intersect_v(a, b, out_path):
+    cmd_args = [
+        BEDTOOLS_PATH,
+        'intersect',
+        '-header',
+        '-v',
+        '-a', a,
+        '-b', b
+    ]
+
+    return external_proc(cmd_args, out_path)
+
+
 def bedtools_slop(bed, genome, out_path, b=100):
     """ bed can be path to a BED/GFF/VCF """
     cmd_args = [
-        BEDTOOLS,
+        BEDTOOLS_PATH,
         'slop',
         '-b', str(b),
         '-header',
@@ -210,7 +240,7 @@ def bedtools_slop(bed, genome, out_path, b=100):
 def bedtools_merge(a, out_path):
     """Starts a bedtools sort and bedtools merge process, writes to out_path"""
     cmd_args_sort = [
-        BEDTOOLS,
+        BEDTOOLS_PATH,
         'sort',
         '-header',
         '-i', a
@@ -221,7 +251,7 @@ def bedtools_merge(a, out_path):
     bedtools_sort = subprocess.Popen(cmd_args_sort, stdout=subprocess.PIPE)
 
     cmd_args = [
-        BEDTOOLS,
+        BEDTOOLS_PATH,
         'merge',
         '-header',
         '-i', 'stdin'
@@ -302,9 +332,9 @@ def make_vcf_filter(targets, refdict, gtf, out_path):
     return out_path
 
 
-def make_cna_index(cna_template_bed, filter_bed, out_path, x='23', y='24'):
+def make_cna_index(bed_path, cna_template_bed, out_path, x='23', y='24'):
     """Generates a CNA index from template and filter bed files."""
-    bed = intervals.read_bed(filter_bed)
+    bed = intervals.read_bed(bed_path)
 
     # First we need to chang X Y to integers in order to match template
     for i in bed:
@@ -313,12 +343,12 @@ def make_cna_index(cna_template_bed, filter_bed, out_path, x='23', y='24'):
         elif i['seqname'] == 'Y':
             i['seqname'] = y
 
-    tmp_bed_path = TEMPFILES.create('temp_23_24.bed')
+    tmp_bed_path = TEMPFILES.create(bed_path + '_temp_23_24.bed')
     with open(tmp_bed_path, 'w') as fp:
         print(intervals.to_bed(bed), file=fp)
 
     cmd_args = [
-        BEDTOOLS,
+        BEDTOOLS_PATH,
         'intersect',
         '-header',
         '-c',
@@ -327,6 +357,20 @@ def make_cna_index(cna_template_bed, filter_bed, out_path, x='23', y='24'):
     ]
 
     return external_proc(cmd_args, out_path=out_path)
+
+
+def make_unmatched_cna_index(intervals, known_sv, cna_template_bed, out_path):
+    ints_not_in_sv = TEMPFILES.create('ints_not_in_sv.bed')
+    bedtools_intersect_v(
+        a=intervals,
+        b=known_sv,
+        out_path=ints_not_in_sv
+    )
+    return make_cna_index(
+        bed_path=ints_not_in_sv,
+        cna_template_bed=cna_template_bed,
+        out_path=out_path
+    )
 
 
 def save_results(targets_path, baits_path, save_temp):
@@ -354,8 +398,13 @@ def save_results(targets_path, baits_path, save_temp):
 
     # Save CNA bed file
     out_path = targets_root + '.cna.bed'
-    log.critical("Saving vcf_filter.bed to {}".format(out_path))
-    shutil.copy(TEMPFILES.paths['vcf_filter.bed'], out_path)
+    log.critical("Saving cna_index.bed to {}".format(out_path))
+    shutil.copy(TEMPFILES.paths['cna_index.bed'], out_path)
+
+    # Save Unmatched CNA bed file
+    out_path = targets_root + '.unmatched_cna.bed'
+    log.critical("Saving unmatched_cna_index.bed")
+    shutil.copy(TEMPFILES.paths['unmatched_cna_index.bed'], out_path)
 
     if save_temp:
         log.critical("Saving all tempfiles {}".format(TEMPFILES.paths))
@@ -376,7 +425,6 @@ def main(args=None):
         refdict=args.refdict,
         out_path=TEMPFILES.create('targets.interval_list')
     )
-
     if args.baits is not None:
         picard_bedtointervallist(
             bed=args.baits,
@@ -396,9 +444,18 @@ def main(args=None):
 
     # Make CNA index bed file
     make_cna_index(
+        bed_path=TEMPFILES.paths['vcf_filter.bed'],
         cna_template_bed=args.cna_template,
-        filter_bed=TEMPFILES.paths['vcf_filter.bed'],
         out_path=TEMPFILES.create('cna_index.bed')
+    )
+
+
+    # Make unmatched CNA index bed file
+    make_unmatched_cna_index(
+        intervals=TEMPFILES.paths['vcf_filter.bed'],
+        known_sv=args.known_sv,
+        cna_template_bed=args.cna_template,
+        out_path=TEMPFILES.create('unmatched_cna_index.bed')
     )
 
 

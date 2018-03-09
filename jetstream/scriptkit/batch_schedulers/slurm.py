@@ -1,13 +1,12 @@
+import logging
 import os
 import re
-import time
-import json
 import shlex
 import subprocess
-import logging
+import time
 from collections import OrderedDict
 
-from jetstream.settings import profile
+from jetstream.core.settings import profile
 
 log = logging.getLogger(__name__)
 
@@ -245,7 +244,10 @@ def sbatch(*args, stdin_data=None):
 
 def easy(cmd, *args, module_load=None):
     """Launch shell scripts on slurm with controlled environments via module """
-    shebang = '#!/bin/bash'
+    shebang = """#!/bin/bash
+    echo 'Submitted with jetstream.scriptkit.slurm.easy()'
+    echo '{}' 
+    """.format(cmd)
 
     if module_load:
         final = "{}\nmodule load {} || exit 1\n{}".format(

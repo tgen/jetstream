@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import os
-import unittest
-import jetstream.projects as projects
-import jetstream.plugins as plugins
 import tempfile
+import unittest
+
+from jetstream import workflows, plugins
+from jetstream.core import Project, init
 
 class TestWorkflowModule(unittest.TestCase):
     @classmethod
@@ -15,21 +16,21 @@ class TestWorkflowModule(unittest.TestCase):
             plugins.update()
 
     def test_create_workflow(self):
-        wf = projects.Workflow()
+        workflows.Workflow()
 
     def test_add_component(self):
-        wf = projects.Workflow()
-        bwa_node = wf.add_node('test_components.git/bwa_mem.yaml')
+        wf = workflows.Workflow()
+        wf.add_node('test_components.git/bwa_mem.yaml')
 
     def test_add_component_after(self):
-        wf = projects.Workflow()
+        wf = workflows.Workflow()
         bwa_node = wf.add_node('test_components.git/bwa_mem.yaml')
-        md_node = wf.add_node_after('test_components.git/mark_duplicates.yaml', bwa_node)
+        wf.add_node_after('test_components.git/mark_duplicates.yaml', bwa_node)
 
     def test_add_component_before(self):
-        wf = projects.Workflow()
+        wf = workflows.Workflow()
         bwa_node = wf.add_node('test_components.git/bwa_mem.yaml')
-        md_node = wf.add_node_before('test_components.git/mark_duplicates.yaml', bwa_node)
+        wf.add_node_before('test_components.git/mark_duplicates.yaml', bwa_node)
 
 
 class TestWorkflowRun(unittest.TestCase):
@@ -49,13 +50,13 @@ class TestWorkflowRun(unittest.TestCase):
         print(tmp_dir.name)
         os.chdir(tmp_dir.name)
 
-        workflow = projects.Workflow()
+        workflow = workflows.Workflow()
         node1 = workflow.add_node('test_components.git/bwa_mem.yaml')
         node2 = workflow.add_node_after('test_components.git/bwa_mem.yaml', node1)
-        node3 = workflow.add_node_after('test_components.git/bwa_mem.yaml', node2)
+        workflow.add_node_after('test_components.git/bwa_mem.yaml', node2)
 
-        projects.init()
-        p = projects.Project()
+        init()
+        p = Project()
         p.run(workflow)
         p.latest_run()
         tmp_dir.cleanup()

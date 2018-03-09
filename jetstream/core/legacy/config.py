@@ -40,6 +40,7 @@
 """
 import logging
 from collections import OrderedDict
+
 from jetstream.utils import Source
 
 log = logging.getLogger(__name__)
@@ -56,10 +57,10 @@ def load(path):
         return loads(fp.read())
 
 
-def dump(*args, **kwargs):
-    """ There is no dumper for legacy config files. You shouldn't be
-     converting to the old format """
-    raise NotImplementedError
+# def dump(*args, **kwargs):
+#     """ There is no dumper for legacy config files. You shouldn't be
+#      converting to the old format """
+#     raise NotImplementedError
 
 
 def loads(data):

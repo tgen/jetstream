@@ -2,7 +2,7 @@
 import argparse
 import logging
 
-from jetstream import legacy
+from jetstream.core import legacy
 
 log = logging.getLogger(__name__)
 

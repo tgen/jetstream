@@ -1,11 +1,10 @@
-from jetstream.script_tools.batch_schedulers import slurm
-from jetstream.projects import Project
+from jetstream.scriptkit.batch_schedulers import slurm
+from jetstream.scriptkit import formats
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
                LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
                SM=None, strict=True, **unknown):
-    """
-    Returns a SAM group header line. This function takes a set of keyword
+    """Returns a SAM group header line. This function takes a set of keyword
     arguments that are known tags listed in the SAM specification:
 
         https://samtools.github.io/hts-specs/

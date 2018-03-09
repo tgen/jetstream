@@ -1,9 +1,10 @@
 """Run records get saved every time a workflow or plugin is launched in a
 project. This module contains functions for examining those records."""
 import os
+
 import ulid
-from jetstream.projects import exc
-from jetstream import utils, profile
+from jetstream import exc, utils
+from jetstream.core import settings
 
 
 class Run(object):
@@ -65,7 +66,7 @@ def load_run(path):
 
 
 def new_run_id():
-    return profile['RUN_DATA_PREFIX'] + ulid.new().str
+    return settings.profile['RUN_DATA_PREFIX'] + ulid.new().str
 
 
 def is_run(path):
@@ -78,7 +79,7 @@ def is_run(path):
 
 def is_valid_run_id(run_id):
     """ Returns True if id is a valid run id """
-    prefix = profile['RUN_DATA_PREFIX']
+    prefix = settings.profile['RUN_DATA_PREFIX']
     try:
         if run_id.startswith(prefix):
             ulid.from_str(run_id[len(prefix):])

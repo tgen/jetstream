@@ -3,8 +3,7 @@ import logging
 import re
 from os import path, walk, listdir
 
-from jetstream.script_tools.batch_schedulers.slurm import submission_pattern, \
-    get_jobs
+from jetstream.scriptkit import slurm
 
 log = logging.getLogger(__name__)
 
@@ -18,10 +17,11 @@ class Project(object):
         # Check for a config file
         self.config_path = path.join(self.path, self.short_name + '.config')
         if not path.exists(self.config_path):
-            raise FileNotFoundError('Config file not found: %s' % self.config_path)
+            raise FileNotFoundError('Config file not found: {}'.format(
+                self.config_path))
 
     def __repr__(self):
-        return "Project(%s)" % (self.name)
+        return "Project({})".format(self.name)
 
     @property
     def is_complete(self):
@@ -55,21 +55,21 @@ class Project(object):
         # It's faster to batch them together in a single request
         jids = list(self._jids())
         if jids:
-            return get_jobs(*jids)
+            return slurm.get_jobs(*jids)
         else:
             return []
 
     def _logs(self):
         log_dir = path.join(self.path, 'logs/')
-        for log in listdir(log_dir):
-            log_path = path.join(log_dir, log)
+        for l in listdir(log_dir):
+            log_path = path.join(log_dir, l)
             if path.isfile(log_path) and log_path.endswith('.txt'):
                 yield log_path
         raise StopIteration
 
     def _jids(self):
-        for log in self._logs():
-            for jid in find_jids_in_log(log):
+        for l in self._logs():
+            for jid in find_jids_in_log(l):
                 yield jid
         raise StopIteration
 
@@ -85,8 +85,7 @@ class Project(object):
         failed_jobs = [j for j in self.get_jobs() if j.is_failed]
         return failed_jobs
 
-    def report(self, fast=False, all_jobs=False,
-                                col_size=20):
+    def report(self, fast=False, all_jobs=False, col_size=20):
         if fast:
             if self.is_complete:
                 status = 'complete'
@@ -120,8 +119,8 @@ class Project(object):
                 job_start = d['Start'][:col_size].ljust(col_size)
                 job_end = d['End'][:col_size].ljust(col_size)
                 job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
-                values = (
-                job_id, job_name, job_state, job_start, job_end, job_elapsed)
+                values = (job_id, job_name, job_state, job_start, job_end,
+                          job_elapsed)
                 rep += " ".join(values) + '\n'
 
         return rep
@@ -143,7 +142,7 @@ def find_queued_signals(project_dir):
     return queues
 
 
-def find_jids_in_log(log_path, pat=submission_pattern):
+def find_jids_in_log(log_path, pat=slurm.submission_pattern):
     """ Given path to a log file, search the log file for job ids """
     log.debug('Searching for job ids in: %s' % log_path)
 
@@ -154,4 +153,3 @@ def find_jids_in_log(log_path, pat=submission_pattern):
                 yield match.groups()[0]
 
     raise StopIteration
-
