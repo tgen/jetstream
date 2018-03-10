@@ -139,7 +139,7 @@ def arg_parser():
 
     parser.add_argument(
         '-k', '--known-sv',
-        default='',
+        default=KNOWN_SV,
         help='Path to the known SVs bed file. [{}]'.format(KNOWN_SV)
     )
 
