@@ -52,6 +52,7 @@ log = logging.getLogger(__name__)
 
 log.debug('Plugin dir: {}'.format(PLUGIN_DIR))
 
+
 class PluginParserFail(Exception):
     """ Raised when a plugin is found but does not pass validation """
 
@@ -103,7 +104,7 @@ def components():
             'Launching "{}" in "{}"'.format(' '.join(cmd_args), repo_path))
         paths = subprocess.check_output(cmd_args, cwd=repo_path).decode()
         for f in paths.splitlines():
-            yield  os.path.join(p, f)
+            yield os.path.join(p, f)
 
 
 def ls():
@@ -229,7 +230,7 @@ def parse_plugin_id(string):
         raise InvalidPluginId(string)
     else:
         g = match.groupdict()
-        return (g.get('plugin'), g.get('path'), g.get('revision'))
+        return g.get('plugin'), g.get('path'), g.get('revision')
 
 
 def latest_revision(pid):

@@ -43,15 +43,16 @@ states = {
     'TIMEOUT': 'Job terminated upon reaching its time limit.'
 }
 active_states = {'CONFIGURING', 'COMPLETING', 'RUNNING', 'SPECIAL_EXIT',
-                 'PENDING',}
+                 'PENDING'}
 inactive_states = {'BOOT_FAIL', 'CANCELLED', 'COMPLETED', 'FAILED',
                    'NODE_FAIL', 'PREEMPTED', 'REVOKED',
-                   'STOPPED', 'SUSPENDED', 'TIMEOUT',}
-failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL',}
-completed_states = {'COMPLETED',}
+                   'STOPPED', 'SUSPENDED', 'TIMEOUT'}
+failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL'}
+completed_states = {'COMPLETED'}
 
 _update_frequency = profile.get('slurm_update_frequency', 1)
 _max_update_wait = profile.get('slurm_max_update_wait', 3600)
+
 
 class SacctOutput(Exception):
     pass
@@ -169,6 +170,7 @@ def get_jobs(*args, **kwargs):
 
 
 def wait(*jobs, timeout=None):
+    # TODO batch query job status
     start = time.time()
     tracker = {j: True for j in jobs}
     while 1:
@@ -201,9 +203,8 @@ def query_sacct(*job_ids, all=False):
 
     log.debug('Launching: %s' % ' '.join(cmd_args))
 
-
     res = subprocess.check_output(cmd_args).decode()
-    time.sleep(_update_frequency)  # Premature optimization is the root of all evil
+    time.sleep(_update_frequency)  # Premature optimization
 
     # Convert the sacct report to an object
     records = []

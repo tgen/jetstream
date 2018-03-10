@@ -28,7 +28,7 @@ replace_mistakes = {
 # out of the first column. Prints lines that match the pattern in
 # a three-column bed format.
 with open(sys.argv[1], 'r') as fp:
-    header = fp.readline().strip().split('\t')
+    header = fp.readline().strip('\n').split('\t')
     if not 'Coordinates' in header:
         raise ValueError('Unable to find "Coordinates" col in header')
 
@@ -36,7 +36,7 @@ with open(sys.argv[1], 'r') as fp:
 
     for i, line in enumerate(fp):
         try:
-            coords_string = line.strip().split('\t')[coords_col_num]
+            coords_string = line.strip('\n').split('\t')[coords_col_num]
             match = pat.match(coords_string)
         except IndexError:
             log.critical('Not enough fields in line {}: {}'.format(i, line))

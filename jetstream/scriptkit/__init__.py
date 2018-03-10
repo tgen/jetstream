@@ -1,5 +1,7 @@
 from jetstream.scriptkit.batch_schedulers import slurm
 from jetstream.scriptkit import formats
+from jetstream.scriptkit.formats.refdict import parse_refdict_line
+
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
                LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
@@ -28,3 +30,18 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
             final.append('{}:{}'.format(field, value))
 
     return '\t'.join(final)
+
+
+# def cna_index_template(refdict):
+#     with open(refdict, 'r') as fp:
+#         lines = fp.readlines()
+#
+#     seqs_to_print = {i: None for i in range(1, 25)}
+#
+#     for l in lines:
+#         groups = parse_refdict_line(l)
+#
+#         if groups is None:
+#             continue
+#
+#     lines = [parse_refdict_line(l) for l in lines]

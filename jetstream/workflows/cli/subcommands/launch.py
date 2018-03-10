@@ -10,6 +10,7 @@ from jetstream.workflows import Workflow, launchers
 
 log = logging.getLogger(__name__)
 
+
 def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)
 

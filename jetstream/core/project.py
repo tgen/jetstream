@@ -21,11 +21,13 @@ RUN_DATA_DIR = profile['RUN_DATA_DIR']
 # fatal: Not a git repository (or any parent up to mount point /home)
 # Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
 
+
 class ThreadWithReturnValue(Thread):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs=None,
                  *, daemon=None):
         Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
         self._return = None
+
 
     def run(self):
         if self._target is not None:
@@ -61,6 +63,9 @@ class Project:
         target = os.path.join(self.path, RUN_DATA_DIR)
         if not os.path.isdir(target):
             raise exc.NotAProject('Data dir is not a dir {}'.format(target))
+
+        self._run_id = ''
+        self._run_path = ''
 
     def serialize(self):
         return {'name': self.name, 'path': self.path}

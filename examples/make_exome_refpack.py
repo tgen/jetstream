@@ -89,10 +89,7 @@ KNOWN_SV = '/home/tgenref/homo_sapiens/grch37_hg19/hs37d5/tool_specific_re' \
              'sources/tconut/nonmatched_tumor_normal/NA12878_specific/Merged' \
              '_SV_DGV_1kg.bed'
 
-PICARD_PATH = pkg_resources.resource_filename(
-    'jetstream',
-    'script_tools/etc/picard.jar'
-)
+PICARD_PATH = pkg_resources.resource_filename('jetstream', 'etc/picard.jar')
 
 BEDTOOLS_PATH = 'bedtools'
 # TODO im stumped how to add bedtools source in,
@@ -208,6 +205,7 @@ def bedtools_intersect(a, b, out_path):
     ]
 
     return external_proc(cmd_args, out_path)
+
 
 
 def bedtools_intersect_v(a, b, out_path):

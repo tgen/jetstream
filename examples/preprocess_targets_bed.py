@@ -188,8 +188,8 @@ def preprocess_bed(path, replace_underscores=False, replace_mt=False,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Preprocess bed files prior to exome kit refpack creation. "
-                    "This will remove 'chr' prefixes from chromosome names and "
-                    "replace chromosome 'M' with 'MT'"
+                    "Specify any of the options below to apply processing "
+                    "steps. This drops optional bed columns, only keeps 1-3."
     )
 
     parser.add_argument('bed', help='path to a bed file to preprocess')
@@ -205,7 +205,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--ucsc-to-ensembl',
                         action='store_true', default=False,
-                        help="replace UCSC sequence names with Ensembl.")
+                        help="Replace UCSC sequence names with Ensembl.")
 
     args = parser.parse_args()
 

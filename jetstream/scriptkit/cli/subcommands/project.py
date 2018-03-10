@@ -8,6 +8,7 @@ from jetstream.core.legacy import config
 
 log = logging.getLogger(__name__)
 
+
 def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)
 
@@ -20,6 +21,7 @@ def arg_parser():
 
 # TODO Iter samples
 # TODO Iter data
+
 
 def main(args=None):
     parser = arg_parser()

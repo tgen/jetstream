@@ -11,8 +11,8 @@ from uuid import getnode
 from datetime import datetime
 from ruamel import yaml
 
-
 log = logging.getLogger(__name__)
+
 
 class Source(str):
     """String subclass that includes a "line_numbers" property for tracking
@@ -94,7 +94,7 @@ def remove_prefix(string, prefix):
         return string
 
 
-#TODO Handle multi-document yaml files gracefully
+# TODO Handle multi-document yaml files gracefully
 def yaml_load(path):
     with open(path, 'r') as fp:
         return yaml.safe_load(fp)

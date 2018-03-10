@@ -6,6 +6,7 @@ from jetstream.core import legacy
 
 log = logging.getLogger(__name__)
 
+
 def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)
 
@@ -37,7 +38,7 @@ def main(args=None):
                 continue
             projects.append(p)
         except FileNotFoundError as err:
-            log.critical('Error loading project: {}'.format( err))
+            log.critical('Error loading project: {}'.format(err))
 
     log.debug('Reporting on: {}'.format(str(projects)))
     for p in projects:

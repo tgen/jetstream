@@ -6,6 +6,7 @@ import unittest
 from jetstream import workflows, plugins
 from jetstream.core import Project, init
 
+
 class TestWorkflowModule(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -43,7 +44,6 @@ class TestWorkflowRun(unittest.TestCase):
             plugins.clone('https://github.com/ryanrichholt/test_components.git')
         except Exception:
             plugins.update()
-
 
     def test_wf_run(self):
         tmp_dir = tempfile.TemporaryDirectory()

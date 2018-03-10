@@ -3,12 +3,11 @@ import argparse
 import json
 import logging
 import sys
-
 from jetstream.core import Project
 from jetstream.workflows import Workflow, launchers
 
-
 log = logging.getLogger(__name__)
+
 
 def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)

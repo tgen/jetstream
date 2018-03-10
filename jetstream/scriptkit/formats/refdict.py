@@ -1,5 +1,7 @@
 """Picard sequence dictionary format
 https://broadinstitute.github.io/picard/command-line-overview.html"""
+
+
 def read(path):
     with open(path, 'r') as fp:
         data = fp.read()
@@ -8,7 +10,7 @@ def read(path):
 
 def parse_refdict_line(line):
     if line.startswith('@SQ'):
-        groups = line.split('\t')[1:]
+        groups = line.strip('\n').split('\t')[1:]
         groups = [g.split(':', 1) for g in groups]
         fields = {k: v for k, v in groups}
         return fields

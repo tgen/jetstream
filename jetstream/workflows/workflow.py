@@ -6,6 +6,7 @@ from uuid import uuid4 as uuid
 
 import networkx as nx
 from jetstream import plugins, utils, exc
+
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
 
@@ -28,6 +29,7 @@ class Workflow:
     from_pydot() method.
 
     """
+
     def __init__(self, *, on_update=None, graph=None):
         self.on_update = on_update or log.debug
         self.last_update = dict()
@@ -206,7 +208,7 @@ class Workflow:
             node_id = uuid()
             msg = 'Failed to generate unique node id after {} attempts and' \
                   ' fell back to uuid for node data: {}'.format(
-                max_attempts, node_data)
+                  max_attempts, node_data)
             log.critical(msg)
 
         if self.get_node(node_id):
@@ -284,6 +286,7 @@ class Workflow:
 
 class Result(object):
     """A common structure for the launchers to return to the workflow"""
+
     def __init__(self, plugin, logs, return_code, error=None):
         self.fingerprint = utils.fingerprint()
         self.plugin = plugin

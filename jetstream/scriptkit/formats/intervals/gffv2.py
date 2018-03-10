@@ -1,6 +1,6 @@
-"""Line-separated, tab-delimited, text file. 1-based coordinates, 9 required columns,
-0 optional columns. Allows intervals to be grouped into tracks by including track-lines.
-https://www.ensembl.org/info/website/upload/gff.html """
+"""Line-separated, tab-delimited, text file. 1-based coordinates, 9 required
+columns, 0 optional columns. Allows intervals to be grouped into tracks by
+including track-lines. https://www.ensembl.org/info/website/upload/gff.html"""
 from .generic import interval
 
 required_fields = ('seqname', 'source', 'feature', 'start', 'stop', 'score',

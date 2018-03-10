@@ -12,13 +12,14 @@ from . import fns
 from .schema import SCHEMA
 
 # SCHEMA keys are case insensitive
-SCHEMA = {k.lower():v for k,v in SCHEMA.items()}
+SCHEMA = {k.lower(): v for k, v in SCHEMA.items()}
 
 log = logging.getLogger(__name__)
 
 
 class KeyNotInSchema(Exception):
     """Raised when a key cant be found in schema"""
+
 
 class FailedValidation(Exception):
     """Raised when a key-value pair failed validation"""
@@ -82,7 +83,6 @@ def check(*args):
 
         if not good:
             raise FailedValidation
-
 
     elif len(args) == 2:
         check_kv(*args)

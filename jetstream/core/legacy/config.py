@@ -223,7 +223,6 @@ def _parse_sample(lines):
         # Medusa
         s['kit'], s['name'], s['assay'] = fields.split(',')
 
-
     for line in lines[1:]:
         d = {'line_number': line.line_number}
         d['type'], _, data_fields = line.partition('=')  # ex: "FQ=..."

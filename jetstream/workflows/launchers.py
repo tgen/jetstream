@@ -209,11 +209,11 @@ def beta_stageinout(plugin):
 def md5sum(filename, blocksize=65536):
     """Returns a md5 checksum for a given file. This processes the data
     in chunks set by 'blocksize'. """
-    hash = hashlib.md5()
+    h = hashlib.md5()
     with open(filename, "rb") as f:
         for block in iter(lambda: f.read(blocksize), b""):
-            hash.update(block)
-    return hash.hexdigest()
+            h.update(block)
+    return h.hexdigest()
 
 
 def safe_copy(source, dest):
