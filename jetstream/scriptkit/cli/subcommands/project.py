@@ -12,14 +12,11 @@ def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument('action',
-                        choices=['data', 'init', 'legacy'])
+                        choices=['data', 'init'])
 
     parser.add_argument('path', nargs='?')
 
     return parser
-
-# TODO Iter samples
-# TODO Iter data
 
 
 def main(args=None):
@@ -31,6 +28,9 @@ def main(args=None):
         project.init()
 
     elif args.action in ('data',):
+        # TODO Iter samples
+        # TODO Iter data
+
         raise NotImplementedError
 
     else:

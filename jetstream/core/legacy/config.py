@@ -214,25 +214,29 @@ def _parse_sample(lines):
     s = {'data': [], 'line_number': sample_line.line_number}
 
     # The fields are everything after 'SAMPLE='
+    # Collect data from the sample line and store it as key:values
+    # in the sample dict.
     fields = sample_line.partition('SAMPLE=')[2]
-
     try:
-        # Pegasus
+        # Pegasus has 4 fields in sample line
         s['kit'], s['name'], s['assay'], s['library'] = fields.split(',')
     except ValueError:
-        # Medusa
+        # Medusa has only 3
         s['kit'], s['name'], s['assay'] = fields.split(',')
 
+    # Every line after 'SAMPLE=' is a data object
+    # Collect data information from the data line in a dictionary
+    # and append it to sample['data'] array
     for line in lines[1:]:
-        d = {'line_number': line.line_number}
+        d = {'sample_name': s['name'], 'line_number': line.line_number}
         d['type'], _, data_fields = line.partition('=')  # ex: "FQ=..."
         d['rg_id'], d['path'] = data_fields.split(',')
 
         try:
-            # Pegasus
+            # Pegasus has 3 fields in the rg field
             d['fcid'], d['lane'], d['library'] = d['rg_id'].split('_')
         except ValueError:
-            # Medusa
+            # Medusa has only 2
             d['fcid'], _, d['lane'] = d['rg_id'].partition('_')
             d['library'] = s['library']
 
