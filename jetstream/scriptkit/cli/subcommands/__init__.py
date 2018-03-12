@@ -21,4 +21,4 @@ def main(args):
     log.debug('{}: {}'.format(__name__, args))
 """
 
-__all__ = ["project", "plugins", "launch"]
+__all__ = ["project", "plugins", "launch", "legacy"]

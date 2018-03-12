@@ -2,9 +2,8 @@
 import argparse
 import logging
 
-from jetstream import utils
 from jetstream.core import project
-from jetstream.core.legacy import config
+
 
 log = logging.getLogger(__name__)
 
@@ -30,10 +29,6 @@ def main(args=None):
 
     if args.action in ('init',):
         project.init()
-
-    elif args.action in ('legacy',):
-        c = config.load(args.path)
-        print(utils.yaml_dumps(c))
 
     elif args.action in ('data',):
         raise NotImplementedError
