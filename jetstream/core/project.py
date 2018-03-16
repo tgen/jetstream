@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import subprocess
 from collections import deque
 from threading import Thread
 
@@ -8,7 +9,6 @@ from jetstream import exc, utils
 from jetstream.core import run
 from jetstream.core.settings import profile
 from jetstream.plugins import get_plugin
-from jetstream.workflows.launchers import default
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ class Project:
         else:
             run.load_run(os.path.join(run_dirs, run_id))
 
-    def run(self, workflow, launcher=default):
+    def run(self, workflow):
         self._run_id, self._run_path = self.new_run()
 
         os.environ['JETSTREAM_RUN_PATH'] = self._run_path
@@ -144,7 +144,7 @@ class Project:
                 plugin = get_plugin(plugin_id)
 
                 thread = ThreadWithReturnValue(
-                    target=launcher,
+                    target=execute_plugin,
                     args=(plugin,)
                 )
                 thread.start()
@@ -185,6 +185,47 @@ class Project:
             next_task = tasks.popleft()
 
         return
+
+
+def execute_plugin(plugin):
+    """Launches plugin by guessing the interpreter to from shebang. This
+    currently supports Python2/3 and Bash."""
+    log.critical('Starting plugin {}'.format(plugin['plugin_id']))
+
+    # We could add explicit shell options to plugins
+    # but this just looks for a shebang
+    shebang = plugin['script'].splitlines()[0]
+
+    if not shebang.startswith('#!'):
+        log.warning('Unable to parse shebang in {}'.format(plugin['plugin_id']))
+        shell_cmd = ['bash']
+    elif 'python3' in shebang:
+        shell_cmd = ['python3']
+    elif 'python' in shebang:
+        shell_cmd = ['python']
+    else:
+        shell_cmd = ['bash']
+
+    p = subprocess.Popen(
+        shell_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy()
+    )
+
+    stdout, _ = p.communicate(input=plugin['script'].encode())
+
+    log.critical('Plugin complete {}'.format(plugin['plugin_id']))
+    log.critical('Logs\n{}'.format(stdout.decode()))
+
+    result = Result(
+        plugin=plugin,
+        return_code=p.returncode,
+        logs=stdout.decode()
+    )
+
+    return result
 
 
 def init():

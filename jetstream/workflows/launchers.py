@@ -117,9 +117,8 @@ def dry(plugin):
 
 
 def default(plugin):
-    """Launches plugin by guessing the interpreter to use from shebang. This
-    currently supports Python2/3 and Bash. "id" should be a unique identifier
-    which will be used to name log files. """
+    """Launches plugin by guessing the interpreter to from shebang. This
+    currently supports Python2/3 and Bash."""
     log.critical('Starting plugin {}'.format(plugin['plugin_id']))
 
     shebang = plugin['script'].splitlines()[0]
@@ -143,6 +142,9 @@ def default(plugin):
     )
 
     stdout, _ = p.communicate(input=plugin['script'].encode())
+
+    log.critical('Plugin complete {}'.format(plugin['plugin_id']))
+    log.critical('Logs\n{}'.format(stdout.decode()))
 
     result = Result(
         plugin=plugin,

@@ -2,13 +2,13 @@ import json
 import logging
 import shutil
 from datetime import datetime
-from uuid import uuid4 as uuid
 
 import networkx as nx
-from jetstream import plugins, utils, exc
-
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
+
+from jetstream import plugins, utils, exc
+
 
 log = logging.getLogger(__name__)
 
@@ -30,10 +30,9 @@ class Workflow:
 
     """
 
-    def __init__(self, *, on_update=None, graph=None):
-        self.on_update = on_update or log.debug
+    def __init__(self, *, data=None, **attr):
         self.last_update = dict()
-        self.graph = graph or nx.DiGraph()
+        self.graph = data or nx.DiGraph(**attr)
 
         if not nx.is_directed_acyclic_graph(self.graph):
             raise exc.NotDagError
@@ -63,10 +62,10 @@ class Workflow:
         return to_pydot(graph).__str__()
 
     def to_yaml(self):
-        return utils.struct(action='dumps', format='yaml', obj=self.serialize())
+        return utils.yaml_dumps(obj=self.serialize())
 
     def to_json(self):
-        return utils.struct(action='dumps', format='json', obj=self.serialize())
+        return json.dumps(self.serialize(), indent=4)
 
     @staticmethod
     def from_node_link_data(*args, **kwargs):
@@ -188,49 +187,29 @@ class Workflow:
         self.last_update = utils.fingerprint()
         self.graph.nodes[node].update(**kwargs)
 
-    def _add_node(self, node_data):
-        """ Adding a node requires a mapping that includes "plugin_id" key. The
-        id will be used to build a unique id for the node, the rest of the
-        mapping will be added as data """
+    def _add_node(self, id, data):
+        """ Adding a node requires a mapping that includes "name" key. A
+        RuntimeError will be raised if the name already exists in the graph"""
 
-        # All nodes must include plugin_id
-        node_id = node_data['plugin_id']
-
-        # Make sure the node_id is unique
-        max_attempts = 1000
-        for attempt in range(max_attempts):
-            if self.get_node(node_id):
-                suffix = '-{:X}'.format(attempt)
-                node_id = node_data['plugin_id'] + suffix
-            else:
-                break
-        else:
-            node_id = uuid()
-            msg = 'Failed to generate unique node id after {} attempts and' \
-                  ' fell back to uuid for node data: {}'.format(
-                  max_attempts, node_data)
-            log.critical(msg)
-
-        if self.get_node(node_id):
-            raise RuntimeError('Duplicate node id: {} in\n{}'.format(
-                node_id, self))
+        if self.get_node(id):
+            raise RuntimeError('Duplicate node name: {} in\n{}'.format(
+                id, self))
 
         # All nodes get a status attribute that the workflow uses to identify
         # nodes that are ready to be executed.
-        node_data['status'] = 'new'
-        self.graph.add_node(node_id, **node_data)
+        data['status'] = 'new'
+        return self.graph.add_node(id, **data)
 
-        return node_id
-
-    def add_node(self, plugin_id):
-        log.critical('Add plugin: {}'.format(plugin_id))
+    def add_node(self, id, plugin_id, validate=True):
+        log.critical('Add node: {}: {}'.format(id, plugin_id))
 
         # Checks that plugin_id is valid
-        plugins.get_plugin(plugin_id)
+        if validate:
+            plugins.get_plugin(plugin_id)
 
         # Adds a node to the graph with the plugin_id in node data
         node_data = {'plugin_id': plugin_id}
-        node_id = self._add_node(node_data)
+        node_id = self._add_node(id, node_data)
 
         return node_id
 
@@ -258,30 +237,34 @@ class Workflow:
             g.remove_edge(from_node, to_node)
             raise exc.NotDagError
 
-    def add_node_before(self, plugin_id, *before):
+    def add_node_before(self, parent_id, plugin_id, *before):
         """ Add a component and specify that it should run before some other
         component(s) """
         for child_id in before:
             if child_id not in self.nodes():
                 raise ValueError('Node: {} not in workflow'.format(child_id))
         else:
-            parent_id = self.add_node(plugin_id)
+            self.add_node(parent_id, plugin_id)
             for node_id in before:
                 child_id = self.get_node(node_id)
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return parent_id
 
-    def add_node_after(self, plugin_id, *after):
+    def add_node_after(self, child_id, plugin_id, *after):
         """ Add a component and specify that it should run after some other
         component(s) """
         for parent_id in after:
             if parent_id not in self.nodes():
                 raise ValueError('Node: {} not in workflow'.format(parent_id))
         else:
-            child_id = self.add_node(plugin_id)
+            self.add_node(child_id, plugin_id)
             for parent_id in after:
                 self._add_edge(from_node=child_id, to_node=parent_id)
             return child_id
+
+    def compose(self, wf):
+        res = nx.algorithms.binary.compose(self.graph, wf.graph)
+        self.graph = res
 
 
 class Result(object):
@@ -309,9 +292,9 @@ class Result(object):
         }
 
 
-def from_node_link_data(data, *args, **kwargs):
+def from_node_link_data(data):
     graph = json_graph.node_link_graph(data)
-    return Workflow(graph=graph, *args, **kwargs)
+    return Workflow(data=graph)
 
 
 def to_node_link_data(wf):

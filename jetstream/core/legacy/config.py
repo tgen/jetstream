@@ -90,19 +90,18 @@ def loads(data):
 
     # Parse sample lines
     sample_line_groups = _group_sample_lines(sample_lines)
-    samples = []
+    data_objects = []
     for group in sample_line_groups:
         try:
-            s = _parse_sample(group)
-            samples.append(s)
+            data_objects += _parse_sample(group)
         except Exception as err:
             msg = '{} while parsing group:\n{}'.format(err, '\n'.join(group))
             raise ConfigParsingException(msg)
 
-    samples = [_parse_sample(group) for group in sample_line_groups]
-    samples = _add_extra_data(samples)
+    # Add rg and assumed read style
+    data_objects = _add_extra_data(data_objects)
 
-    return {'meta': meta, 'samples': samples}
+    return {'meta': meta, 'data': data_objects}
 
 
 def _split_sections(source):
@@ -186,10 +185,10 @@ def _group_sample_lines(lines):
 
 
 # The following functions convert the sample lines in a config file into
-# sample and data objects (nested dictionary/list structure). This causes
-# a couple small changes in the structure:
+# data objects (nested dictionary/list structure). This causes a couple small
+# changes in the structure:
 #
-#    1) Data objects will inherit 'kit' and 'assay' properties from their SAMPLE
+#    1) Data objects inherit 'kit' and 'assay' attributes from their SAMPLE
 #
 #    The kit code and assay are associated with a sample in the config files.
 #    But, the assay is not really a property of the sample itself, it's a
@@ -198,20 +197,19 @@ def _group_sample_lines(lines):
 #    each data object.
 #
 #
-#    2) Samples SOMETIMES have a library property, and data will ALWAYS have a
-#    library property.
+#    2) Data will ALWAYS have a library property.
 #
 #    Dilution ID is part of the sample data for Medusa config files. This
 #    was later changed in Pegasus. The dilution ID is also called a library,
 #    and is eventually used for making read groups. This parser always adds
-#    dilution id (library) as a property of the data. But, it also keeps
-#    the dilution id as a sample property if given a medusa config file.
+#    dilution id (library) as a property of the data.
 #
 
 def _parse_sample(lines):
-    """Create a structured sample from a list of sample lines"""
+    """Create a list of data objects from a list of sample lines"""
+    data_objects = []
     sample_line = lines[0]
-    s = {'data': [], 'line_number': sample_line.line_number}
+    s = {'line_number': sample_line.line_number}
 
     # The fields are everything after 'SAMPLE='
     # Collect data from the sample line and store it as key:values
@@ -228,7 +226,12 @@ def _parse_sample(lines):
     # Collect data information from the data line in a dictionary
     # and append it to sample['data'] array
     for line in lines[1:]:
-        d = {'sample_name': s['name'], 'line_number': line.line_number}
+        d = {
+            'line_number': line.line_number,
+            'sample_name': s['name'],
+            'kit': s['kit'],
+            'assay': s['assay']
+        }
         d['type'], _, data_fields = line.partition('=')  # ex: "FQ=..."
         d['rg_id'], d['path'] = data_fields.split(',')
 
@@ -240,32 +243,28 @@ def _parse_sample(lines):
             d['fcid'], _, d['lane'] = d['rg_id'].partition('_')
             d['library'] = s['library']
 
-        s['data'].append(d)
+        data_objects.append(d)
 
-    return s
+    return data_objects
 
 
-def _add_extra_data(samples):
+def _add_extra_data(data):
     """Copies some data from the sample properties to all of its data
     objects. Also generates read group data. Note this follows the TGen
     convention of PU: FCID_LANE and ID:FCID_LANE[_LIBRARY] where LIBRARY
     may not be present in all RG:ID tags. This is generally unimportant
     unless you are considering merging SAMs. """
-    for sample in samples:
-        for data in sample['data']:
-            data['kit'] = sample['kit']
-            data['assay'] = sample['assay']
+    for obj in data:
+        if obj['type'] == 'FQ':
+            obj['read_style'] = 'paired-end'
 
-            if data['type'] == 'FQ':
-                data['read_style'] = 'paired-end'
+        obj['read_group'] = {
+            'ID': obj['rg_id'],
+            'CN': 'TGen',
+            'LB': obj['library'],
+            'PL': 'ILLUMINA',
+            'PU': '{}_{}'.format(obj['fcid'], obj['lane']),
+            'SM': obj['sample_name']
+        }
 
-            data['read_group'] = {
-                'ID': data['rg_id'],
-                'CN': 'TGen',
-                'LB': data['library'],
-                'PL': 'ILLUMINA',
-                'PU': '{}_{}'.format(data['fcid'], data['lane']),
-                'SM': sample['name']
-            }
-
-    return samples
+    return data

@@ -59,6 +59,8 @@ class SacctOutput(Exception):
 
 
 class SlurmJob(object):
+    _instances = set()
+
     def __init__(self, jid, cluster=None, sacct=None):
         """Tracks a Slurm job and provides some utility methods like wait() and
         update().
@@ -84,6 +86,8 @@ class SlurmJob(object):
             self.sacct = sacct
         else:
             self.update()
+
+        SlurmJob._instances.add(self)
 
     def __repr__(self):
         return "SlurmJob(%s)" % self.jid
@@ -169,7 +173,7 @@ def get_jobs(*args, **kwargs):
     return jobs
 
 
-def wait(*jobs, timeout=None):
+def wait_for(*jobs, timeout=None):
     # TODO batch query job status
     start = time.time()
     tracker = {j: True for j in jobs}
@@ -240,6 +244,7 @@ def sbatch(*args, stdin_data=None):
         raise ChildProcessError(str(vars(p)))
 
     jid, _, cluster = stdout.decode().strip().partition(';')
+    log.critical("Submitted batch job {}".format(jid))
     return SlurmJob(jid, cluster=cluster)
 
 
@@ -263,4 +268,5 @@ def easy(cmd, *args, module_load=None):
     {}
     """.format(' '.join(sbatch_args), cmd, module_load, cmd)
 
-    return sbatch(*sbatch_args, stdin_data=script.encode())
+    job = sbatch(*sbatch_args, stdin_data=script.encode())
+    return job
