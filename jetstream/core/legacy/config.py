@@ -142,16 +142,35 @@ def _parse_meta_lines(lines):
     dict will be converted to lower-case.
 
     """
-    kv_tuples = []
+    meta = OrderedDict()
+
+    kv_tuples = list()
     for line in lines:
         try:
             key, value = line.split('=')
-            key = key.lower()
-            kv_tuples.append((key, value))
+            kv_tuples.append((key.lower(), value))
         except ValueError:
             msg = 'Error parsing metadata: "{}"'.format(line.print_ln())
             raise ConfigParsingException(msg) from None
-    meta = OrderedDict(kv_tuples)
+
+    # NOTE: Here I could have dynamically assigned values as
+    # arrays (lists) if the key was found multiple times. But,
+    # This would cause the value for a particular key to be
+    # an array in cases with mutiple values, and strings when
+    # only a single value was present. I've chosen to predetermine
+    # the fields which can be arrays, therefore the results are
+    # more predictable
+
+    for k, v in kv_tuples:
+        if k in ('jirset', 'dnapair', 'triplet4allelecount'):
+            # Predetermined which fields can be arrays
+            if not k in meta:
+                meta[k] = list()
+            meta[k].append(v)
+        else:
+            # Everything else should be strings
+            meta[k] = str(v)
+
     return meta
 
 
