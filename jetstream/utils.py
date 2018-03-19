@@ -113,17 +113,18 @@ def yaml_dumps(obj):
     return yaml.dump(obj, default_flow_style=False)
 
 
-def struct(*, action, format, **kwargs):
-    dispatcher = {
-        'yaml': {
-            'load': yaml_load,
-            'loads': yaml_loads,
-            'dump': yaml_dump,
-            'dumps': yaml_dumps
-        },
-    }
-
-    return dispatcher[format][action](**kwargs)
+def filter_documents(docs, filter):
+    """Given a list of mapping objects (docs) and a filter mapping,
+    this function returns a list of objects that match filter
+    criteria."""
+    matches = list()
+    for i in docs:
+        for k, v in filter.items():
+            if i[k] != v:
+                break
+        else:
+            matches.append(i)
+    return matches
 
 
 def fingerprint(to_json=False):
