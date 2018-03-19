@@ -75,14 +75,50 @@ class Project:
         return os.path.join(self.path, 'project.yaml')
 
     @property
-    def data(self):
-        data = None
+    def _reference_path(self):
+        return os.path.join(self.path, 'reference.yaml')
+
+    def reference(self, *args):
+        try:
+            data = utils.yaml_load(path=self._reference_path)
+        except FileNotFoundError as err:
+            log.warning(err)
+            return None
+
+        if args:
+            if len(args) > 1:
+                return {k: v for k, v in data['reference'].items() if k in args}
+            else:
+                return data['reference'][args[0]]
+        else:
+            return data['meta']
+
+    def meta(self, *args):
         try:
             data = utils.yaml_load(path=self._data_path)
         except FileNotFoundError as err:
             log.warning(err)
-        finally:
-            return data
+            return None
+
+        if args:
+            if len(args) > 1:
+                return {k: v for k, v in data['meta'].items() if k in args}
+            else:
+                return data['meta'][args[0]]
+        else:
+            return data['meta']
+
+    def data(self, **kwargs):
+        try:
+            data = utils.yaml_load(path=self._data_path)
+        except FileNotFoundError as err:
+            log.warning(err)
+            return None
+
+        if kwargs:
+            return utils.filter_documents(data['data'], kwargs)
+        else:
+            return data['data']
 
     def runs(self):
         run_data_dir = os.path.join(self.path, RUN_DATA_DIR)
