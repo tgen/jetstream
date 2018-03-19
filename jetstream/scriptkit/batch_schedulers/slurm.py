@@ -175,6 +175,17 @@ def get_jobs(*args, **kwargs):
 
 def wait_for(*jobs, timeout=None):
     # TODO batch query job status
+    if not jobs:
+        raise ValueError('No jobs given!')
+
+    else:
+        jids = list()
+        for job in jobs:
+            if isinstance(job, SlurmJob):
+                jids.append(job.jid)
+            else:
+                jids.append(int(job))
+
     start = time.time()
     tracker = {j: True for j in jobs}
     while 1:
