@@ -4,6 +4,7 @@ import re
 import shlex
 import subprocess
 import time
+import ulid
 from collections import OrderedDict
 
 from jetstream.core.settings import profile
@@ -242,7 +243,7 @@ def srun(*args):
 def sbatch(*args, stdin_data=None):
     cmd_args = ('sbatch', '--parsable') + args
 
-    log.debug('launching: {}'.format(cmd_args))
+    log.critical('launching: {}'.format(cmd_args))
     p = subprocess.Popen(
         cmd_args,
         stdin=subprocess.PIPE,
@@ -261,23 +262,38 @@ def sbatch(*args, stdin_data=None):
 
 def easy(cmd, *args, module_load=None):
     """Launch shell scripts on slurm with controlled environments via module """
-    run_id = os.environ.get('JETSTREAM_RUN_ID', '')
-    job_name = '{}\t{}'.format(os.getcwd(), run_id)
-    sbatch_args = args + ('-J', job_name)
+    if not os.path.exists('logs') or not os.path.isdir('logs'):
+        log.critical('Creating log dir')
+        os.makedirs('logs', exist_ok=True)
+
+    job_name = ulid.new().str
+    log.critical('Unique job name: {}'.format(job_name))
+    sbatch_args = args + ('-J', job_name, '-o', 'logs/%x_slurm-%A.out')
 
     if module_load:
-        "module load {} || exit 1".format(module_load)
+        module_cmd = "module load {} || exit 1".format(module_load)
     else:
-        "echo 'No extra modules loaded'"
+        module_cmd = "# No additional modules loaded'"
 
-    script = """#!/bin/bash
-    echo 'Submitted with jetstream.scriptkit.slurm.easy()'
-    echo '{}'
-    echo '{}'
-    module load {}
-    echo '---'
-    {}
-    """.format(' '.join(sbatch_args), cmd, module_load, cmd)
+    template= (
+        "#!/bin/bash\n"            
+        "# Generated with jetstream.scriptkit.slurm.easy()\n"
+        "# sbatch {sbatch_args}\n"
+        "# ---\n"
+        "{module_cmd}\n"
+        "{script}\n"
+    )
+
+    script = template.format(
+        sbatch_args=' '.join(sbatch_args),
+        module_cmd=module_cmd,
+        script=cmd
+    )
+
+    print('Final script to be submitted:\n{}'.format(script))
+
+    with open('logs/{}.sh'.format(job_name), 'w') as fp:
+        fp.write(script)
 
     job = sbatch(*sbatch_args, stdin_data=script.encode())
     return job

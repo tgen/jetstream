@@ -1,5 +1,6 @@
 import argparse
 import logging
+import json
 from jetstream import utils
 from jetstream.core.legacy import config
 
@@ -13,6 +14,10 @@ def build_parser():
 
     parser.add_argument('path')
 
+    parser.add_argument('--format',
+                        default='yaml',
+                        choices=['yaml', 'json'])
+
     return parser
 
 
@@ -22,4 +27,8 @@ def main(args):
     log.debug('{}: {}'.format(__name__, args))
 
     c = config.load(args.path)
-    print(utils.yaml_dumps(c))
+
+    if args.format == 'yaml':
+        print(utils.yaml_dumps(c))
+    elif args.format == 'json':
+        print(json.dumps(c, indent=4))
