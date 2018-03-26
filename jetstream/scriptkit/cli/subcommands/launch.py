@@ -3,8 +3,9 @@ import argparse
 import json
 import logging
 import sys
+
 from jetstream.core import Project
-from jetstream.workflows import Workflow, launchers
+from jetstream.core.workflows import Workflow, launchers
 
 log = logging.getLogger(__name__)
 

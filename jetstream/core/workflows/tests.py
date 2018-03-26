@@ -3,8 +3,8 @@ import os
 import tempfile
 import unittest
 
-from jetstream import workflows, plugins
-from jetstream.core import Project, init
+from jetstream import plugins
+from jetstream.core import Project, init, workflows
 
 
 class TestWorkflowModule(unittest.TestCase):

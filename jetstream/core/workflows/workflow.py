@@ -1,7 +1,6 @@
 import json
 import logging
 import shutil
-import subprocess
 from datetime import datetime
 
 import networkx as nx
@@ -259,69 +258,30 @@ class Workflow:
         res = nx.algorithms.binary.compose(self.graph, wf.graph)
         self.graph = res
 
-
-class Result(object):
-    """A common structure for the launchers to return to the workflow"""
-
-    def __init__(self, plugin, logs, return_code, error=None):
-        self.fingerprint = utils.fingerprint()
-        self.plugin = plugin
-        self.logs = str(logs)
-        self.return_code = int(return_code)
-        self.error = str(error)
-
-    def to_json(self):
-        return json.dumps(self.serialize())
-
-    def serialize(self):
-        """Returns a dictionary ready for json serialization. """
-        return {
-            'plugin': self.plugin,
-            'fingerprint': self.fingerprint,
-            'logs': str(self.logs),
-            'return_code': int(self.return_code),
-            'error': str(self.error),
-
-        }
-
-
-def launch(node):
-    """"""
-    log.critical('Starting node {}'.format(node['id']))
-    rc = 1
-    logs = ''
-    open_fds = []
-
-    try:
-        if 'stdout' in node:
-            out = open(node['stdout'], 'w')
-            open_fds.append(out)
-        else:
-            out = subprocess.PIPE
-
-        if 'stderr' in node:
-            err = open(node['stderr'], 'w')
-            open_fds.append(err)
-        else:
-            err = subprocess.STDOUT
-
-        p = subprocess.Popen(
-            node['cmd'],
-            stdin=subprocess.PIPE,
-            stdout=out,
-            stderr=err,
-            env=os.environ.copy()
-        )
-
-        stdout, _ = p.communicate(input=node.get('stdin'))
-
-        log.critical('Node complete {}'.format(node['id']))
-        log.critical('Logs\n{}'.format(stdout.decode()))
-    finally:
-        for fd in open_fds:
-            fd.close()
-
-    return
+#
+# class Result(object):
+#     """A common structure for the launchers to return to the workflow"""
+#
+#     def __init__(self, plugin, logs, return_code, error=None):
+#         self.fingerprint = utils.fingerprint()
+#         self.plugin = plugin
+#         self.logs = str(logs)
+#         self.return_code = int(return_code)
+#         self.error = str(error)
+#
+#     def to_json(self):
+#         return json.dumps(self.serialize())
+#
+#     def serialize(self):
+#         """Returns a dictionary ready for json serialization. """
+#         return {
+#             'plugin': self.plugin,
+#             'fingerprint': self.fingerprint,
+#             'logs': str(self.logs),
+#             'return_code': int(self.return_code),
+#             'error': str(self.error),
+#
+#         }
 
 
 def from_node_link_data(data):

@@ -271,7 +271,8 @@ def easy(cmd, *args, module_load=None):
     sbatch_args = args + ('-J', job_name, '-o', 'logs/%x_slurm-%A.out')
 
     if module_load:
-        module_cmd = "module load {} || exit 1".format(module_load)
+        module_cmd = "module load {} || echo 'Error loading modules! && " \
+                     "exit 1".format(module_load)
     else:
         module_cmd = "# No additional modules loaded'"
 

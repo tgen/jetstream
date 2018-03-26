@@ -1,90 +1,178 @@
-"""Run records get saved every time a workflow or plugin is launched in a
-project. This module contains functions for examining those records."""
 import os
-
 import ulid
-from jetstream import exc, utils
-from jetstream.core import settings
+import logging
+import time
+import subprocess
+import traceback
+from collections import deque
+from threading import Thread
+from jetstream.core import Project
+
+log = logging.getLogger(__name__)
 
 
-class Run(object):
-    def __init__(self, path):
-        self.path = path
-
-    @property
-    def logs(self):
-        for path in self._logs():
-            yield {path: utils.yaml_load(path)}
-        return
-
-    def _logs(self):
-        log_path = os.path.join(self.path, 'logs')
-        for dirpath, _, filenames in os.walk(log_path):
-            for f in filenames:
-                yield os.path.join(log_path, dirpath, f)
-        return
-
-    @property
-    def workflow(self):
-        try:
-            wf = utils.yaml_load(self._workflow())
-        except FileNotFoundError:
-            return dict()
-        return wf
-
-    def _workflow(self):
-        return os.path.join(self.path, 'workflow')
-
-    @property
-    def created(self):
-        try:
-            c = utils.yaml_load(self._created())
-        except FileNotFoundError:
-            return dict()
-        return c
-
-    def _created(self):
-        return os.path.join(self.path, 'created')
-
-    @property
-    def data(self):
-        obj = dict()
-        obj.update(self.created)
-        obj.update(self.workflow)
-        obj.update({'logs': [log for log in self.logs]})
-        return obj
+class ThreadWithReturnValue(Thread):
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None,
+                 *, daemon=None):
+        Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
+        self._return = None
 
 
-def load_run(path):
-    """Helper function for loading a run, validates the path before
-    loading."""
-    run_id = os.path.basename(path)
-    if is_valid_run_id(run_id):
-        return Run(path)
-    else:
-        raise exc.NotARun
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+            # try:
+            #     self._return = self._target(*self._args, **self._kwargs)
+            # except Exception as e:
+            #     self._return = e
+        else:
+            raise RuntimeError('Threads must have a target function')
+
+    def join(self, **kwargs):
+        Thread.join(self, **kwargs)
+        return self._return
 
 
 def new_run_id():
-    return settings.profile['RUN_DATA_PREFIX'] + ulid.new().str
+    run_id = 'js{}'.format(ulid.new().str)
+    return run_id
 
 
-def is_run(path):
-    """ Returns True if path is a valid run """
-    if os.path.isdir(path) and is_valid_run_id(os.path.basename(path)):
-        return True
-    else:
-        return False
+def launch(node, run_context):
+    log.critical('Starting node {}'.format(node['id']))
 
+    open_fds = []
+    result = {
+        'return_code': 1,
+        'logs': 'Launcher failed!',
+    }
 
-def is_valid_run_id(run_id):
-    """ Returns True if id is a valid run id """
-    prefix = settings.profile['RUN_DATA_PREFIX']
     try:
-        if run_id.startswith(prefix):
-            ulid.from_str(run_id[len(prefix):])
-            return True
+        if 'stdout' in node:
+            out = open(node['stdout'], 'w')
+            open_fds.append(out)
         else:
-            return False
-    except (TypeError, ValueError):
-        return False
+            out = subprocess.PIPE
+
+        if 'stderr' in node:
+            err = open(node['stderr'], 'w')
+            open_fds.append(err)
+        else:
+            err = subprocess.STDOUT
+
+        p = subprocess.Popen(
+            node['cmd'],
+            stdin=subprocess.PIPE,
+            stdout=out,
+            stderr=err,
+            env=run_context
+        )
+
+        stdout, _ = p.communicate(input=node.get('stdin'))
+
+        try:
+            stdout = stdout.decode()
+        except AttributeError:
+            pass
+
+        result['logs'] = stdout
+        result['return_code'] = p.returncode
+
+        log.critical('Node complete {}'.format(node['id']))
+    except Exception as e:
+        log.exception(e)
+        result['logs'] = "Launcher failed:\n{}".format(traceback.format_exc())
+    finally:
+        for fd in open_fds:
+            fd.close()
+
+    return result
+
+
+def _runner(workflow, run_context):
+    workflow.save(run_context['JETSTREAM_WORKFLOWPATH'])
+
+    tasks = deque()
+    while 1:
+        try:
+            task = next(workflow)
+        except StopIteration:
+            log.critical('Workflow raised StopIteration')
+            break
+
+        if task is None:
+            for node_id, result in _handle_completed(tasks, run_context):
+                workflow.__send__(
+                    node_id=node_id,
+                    return_code=result['return_code'],
+                    logs=result['logs']
+                )
+                workflow.save(run_context['JETSTREAM_WORKFLOWPATH'])
+            time.sleep(1)
+
+        else:
+            node_id, node_data = task
+
+            thread = ThreadWithReturnValue(
+                target=launch,
+                args=(node_data, run_context)
+            )
+            thread.start()
+            tasks.append((node_id, thread))
+
+    log.critical('Run complete!')
+
+
+def _handle_completed(tasks, run_context):
+    """Cycle through the active tasks queue and return completed tasks. """
+    sentinel = object()
+    tasks.append(sentinel)
+
+    next_task = tasks.popleft()
+    while next_task is not sentinel:
+        node_id, thread = next_task
+
+        if thread.is_alive():
+            tasks.append(next_task)
+        else:
+            try:
+                res = thread.join(timeout=1)
+
+                log_path = os.path.join(
+                    run_context['JETSTREAM_RUNPATH'],
+                    node_id + '.log'
+                )
+                print('Eventually will write log to ', log_path)
+                print('For now, here\'s the log:\n{}'.format(res['logs']))
+
+                yield (node_id, res)
+
+            except TimeoutError:
+                tasks.append(next_task)
+                log.critical(
+                    'Thread join timeout error: {}'.format(node_id))
+
+        next_task = tasks.popleft()
+
+    return
+
+
+def run_workflow(workflow):
+    # Ensure we are working inside of a valid project
+    p = Project()
+
+    # Generate the environment variables which will be
+    # available to each node command.
+    run_id = new_run_id()
+    run_path = os.path.join(p.path, '.jetstream', run_id)
+    os.makedirs(run_path)
+    env = {
+        'JETSTREAM_RUNID': run_id,
+        'JETSTREAM_RUNPATH': run_path,
+        'JETSTREAM_WORKFLOWPATH': os.path.join(run_path, 'workflow')
+    }
+
+    _runner(workflow, env)
+
+
+
