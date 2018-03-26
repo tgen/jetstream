@@ -35,7 +35,7 @@ def create_parser():
 
 
 def get_subcommands():
-    from jetstream.core.workflows.cli.subcommands import __all__ as subcommands
+    from jetstream.core.cli.subcommands import __all__ as subcommands
     return subcommands
 
 
