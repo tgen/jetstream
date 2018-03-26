@@ -1,13 +1,14 @@
 import json
 import logging
 import shutil
+import subprocess
 from datetime import datetime
 
 import networkx as nx
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
 
-from jetstream import plugins, utils, exc
+from jetstream import utils, exc
 
 
 log = logging.getLogger(__name__)
@@ -101,8 +102,7 @@ class Workflow:
                     datetime_start=str(datetime.now())
                 )
 
-                plugin_id = node_data['plugin_id']
-                return node_id, plugin_id
+                return node_id, node_data
         else:
             if pending:
                 log.debug('Request for next task but None available')
@@ -111,11 +111,11 @@ class Workflow:
                 log.debug('Request for next task but all complete')
                 raise StopIteration
 
-    def __send__(self, node_id, result):
+    def __send__(self, node_id, return_code, logs):
         """ Returns results to the workflow """
         log.critical('Received results for {}'.format(node_id))
 
-        if result.return_code != 0:
+        if return_code != 0:
             # TODO handle results better
             # this needs to recognized failures and set node status to new
             # but we might also want to only allow a limited number of retrys
@@ -128,7 +128,8 @@ class Workflow:
             node_id,
             status='complete',
             datetime_end=datetime.now(),
-            results=result.serialize()
+            return_code=return_code,
+            logs=logs
         )
 
     # Methods for reading from a workflow
@@ -192,26 +193,13 @@ class Workflow:
         RuntimeError will be raised if the name already exists in the graph"""
 
         if self.get_node(id):
-            raise RuntimeError('Duplicate node name: {} in\n{}'.format(
+            raise RuntimeError('Duplicate node id: {} in\n{}'.format(
                 id, self))
 
         # All nodes get a status attribute that the workflow uses to identify
         # nodes that are ready to be executed.
         data['status'] = 'new'
         return self.graph.add_node(id, **data)
-
-    def add_node(self, id, plugin_id, validate=True):
-        log.critical('Add node: {}: {}'.format(id, plugin_id))
-
-        # Checks that plugin_id is valid
-        if validate:
-            plugins.get_plugin(plugin_id)
-
-        # Adds a node to the graph with the plugin_id in node data
-        node_data = {'plugin_id': plugin_id}
-        node_id = self._add_node(id, node_data)
-
-        return node_id
 
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between components. Edges run
@@ -237,30 +225,35 @@ class Workflow:
             g.remove_edge(from_node, to_node)
             raise exc.NotDagError
 
-    def add_node_before(self, parent_id, plugin_id, *before):
-        """ Add a component and specify that it should run before some other
-        component(s) """
-        for child_id in before:
-            if child_id not in self.nodes():
-                raise ValueError('Node: {} not in workflow'.format(child_id))
-        else:
-            self.add_node(parent_id, plugin_id)
-            for node_id in before:
-                child_id = self.get_node(node_id)
-                self._add_edge(from_node=child_id, to_node=parent_id)
-            return parent_id
+    def add_node(self, id, cmd, **kwargs):
+        node_data = {
+            'id': id,
+            'cmd': cmd,
+        }
 
-    def add_node_after(self, child_id, plugin_id, *after):
-        """ Add a component and specify that it should run after some other
-        component(s) """
-        for parent_id in after:
-            if parent_id not in self.nodes():
-                raise ValueError('Node: {} not in workflow'.format(parent_id))
-        else:
-            self.add_node(child_id, plugin_id)
+        node_data.update(**kwargs)
+        self._add_node(id, node_data)
+
+        return id
+
+    def add_dependency(self, id, before=None, after=None, **kwargs):
+        if before:
+            if isinstance(before, str):
+                before = (before,)
+
+            for child_id in before:
+                if not child_id in self.graph:
+                    raise ValueError('{} not in graph'.format(child_id))
+                self._add_edge(from_node=child_id, to_node=id)
+
+        if after:
+            if isinstance(after, str):
+                after = (after,)
+
             for parent_id in after:
-                self._add_edge(from_node=child_id, to_node=parent_id)
-            return child_id
+                if not parent_id in self.graph:
+                    raise ValueError('{} not in graph'.format(parent_id))
+                self._add_edge(from_node=id, to_node=parent_id)
 
     def compose(self, wf):
         res = nx.algorithms.binary.compose(self.graph, wf.graph)
@@ -290,6 +283,45 @@ class Result(object):
             'error': str(self.error),
 
         }
+
+
+def launch(node):
+    """"""
+    log.critical('Starting node {}'.format(node['id']))
+    rc = 1
+    logs = ''
+    open_fds = []
+
+    try:
+        if 'stdout' in node:
+            out = open(node['stdout'], 'w')
+            open_fds.append(out)
+        else:
+            out = subprocess.PIPE
+
+        if 'stderr' in node:
+            err = open(node['stderr'], 'w')
+            open_fds.append(err)
+        else:
+            err = subprocess.STDOUT
+
+        p = subprocess.Popen(
+            node['cmd'],
+            stdin=subprocess.PIPE,
+            stdout=out,
+            stderr=err,
+            env=os.environ.copy()
+        )
+
+        stdout, _ = p.communicate(input=node.get('stdin'))
+
+        log.critical('Node complete {}'.format(node['id']))
+        log.critical('Logs\n{}'.format(stdout.decode()))
+    finally:
+        for fd in open_fds:
+            fd.close()
+
+    return
 
 
 def from_node_link_data(data):
