@@ -35,8 +35,8 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'jetstream=jetstream.scriptkit.cli.main:main',
-            'jetstream-workflows=jetstream.workflows.cli.main:main'
+            'jetstream=jetstream.core.cli.main:main',
+            'jetstreamk=jetstream.scriptkit.cli.main:main',
         ],
     }
 
