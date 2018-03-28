@@ -67,7 +67,7 @@ def build_workflow(nodes):
 
     for node in nodes:
         log.debug('Adding node to workflow: {}'.format(node))
-        wf.add_node(**node)
+        wf.add_node(node_id=node['id'], **node)
 
     for node in nodes:
         # Before/After linking
