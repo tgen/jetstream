@@ -46,10 +46,10 @@ def render(template, data, strict=True):
 
     log.debug('Template:\n{}'.format(template))
 
-    render = render_template(template, all_data, strict=strict)
-    log.debug('Render:\n{}'.format(render))
+    r = render_template(template, all_data, strict=strict)
+    log.debug('Render:\n{}'.format(r))
 
-    return render
+    return r
 
 
 def main(args=None):

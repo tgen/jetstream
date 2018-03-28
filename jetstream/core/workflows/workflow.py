@@ -238,36 +238,31 @@ class Workflow:
             g.remove_edge(from_node, to_node)
             raise exc.NotDagError
 
-    def add_node(self, id, cmd, **kwargs):
-        log.debug('')
-        node_data = {
-            'id': id,
-            'cmd': cmd,
-        }
+    def add_node(self, node_id, **kwargs):
+        if not 'cmd' in kwargs:
+            raise ValueError("cmd is a required node property")
 
-        node_data.update(**kwargs)
-        self._add_node(id, node_data)
+        self._add_node(node_id, kwargs)
+        return node_id
 
-        return id
-
-    def add_dependency(self, id, before=None, after=None, **kwargs):
+    def add_dependency(self, node_id, before=None, after=None):
         if before:
             if isinstance(before, str):
                 before = (before,)
 
             for child_id in before:
-                if not child_id in self.graph:
+                if child_id not in self.graph:
                     raise ValueError('{} not in graph'.format(child_id))
-                self._add_edge(from_node=child_id, to_node=id)
+                self._add_edge(from_node=child_id, to_node=node_id)
 
         if after:
             if isinstance(after, str):
                 after = (after,)
 
             for parent_id in after:
-                if not parent_id in self.graph:
+                if parent_id not in self.graph:
                     raise ValueError('{} not in graph'.format(parent_id))
-                self._add_edge(from_node=id, to_node=parent_id)
+                self._add_edge(from_node=node_id, to_node=parent_id)
 
     def compose(self, wf):
         res = nx.algorithms.binary.compose(self.graph, wf.graph)

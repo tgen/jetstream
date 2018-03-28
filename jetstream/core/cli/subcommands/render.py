@@ -8,7 +8,7 @@ import argparse
 import json
 import yaml
 import logging
-from jetstream.core.workflows.build import render_template, parse_nodes
+from jetstream.core.workflows.builder import render_template, build_workflow
 
 log = logging.getLogger(__name__)
 
@@ -61,5 +61,5 @@ def main(args=None):
         parsed = yaml.load(render)
         log.debug('Parsed:\n{}'.format(parsed))
 
-        print(parse_nodes(parsed))
+        print(build_workflow(parsed))
 

@@ -12,7 +12,7 @@ class Project(object):
         self.path = path.realpath(project)
         self.name = path.basename(self.path)
         self.short_name = re.subn('_ps\d*$', '', self.name)[0]
-        self.start_date = re.match('.*_ps(\d*)').groups()[0]
+        #self.start_date = re.match('.*_ps(\d*)').groups()[0]
 
         # Check for a config file
         self.config_path = path.join(self.path, self.short_name + '.config')

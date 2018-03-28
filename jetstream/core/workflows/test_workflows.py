@@ -1,4 +1,4 @@
-from jetstream.core import workflows
+from jetstream.core.workflows.workflow import Workflow
 
 
 def workflow1():

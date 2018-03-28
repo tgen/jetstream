@@ -24,5 +24,6 @@ def main(args):
 __all__ = [
     "resume",
     "run_workflow",
+    "launch",
     "render",
 ]
