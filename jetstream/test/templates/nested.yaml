@@ -1,0 +1,5 @@
+# Heres a node that requires some nested data inputs
+
+- id: Nested Data Inputs
+  cmd: {{ meta.nested.value }}
+  

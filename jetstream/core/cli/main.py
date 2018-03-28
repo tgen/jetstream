@@ -1,11 +1,12 @@
 import argparse
+import traceback
 import importlib
 import logging
 import sys
 
 log = logging.getLogger()
 
-default_log_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
+verbose_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
 def create_parser():
@@ -26,8 +27,7 @@ def create_parser():
 
     main_parser.add_argument('--log-filemode')
 
-    main_parser.add_argument('--log-format',
-                             default=default_log_format)
+    main_parser.add_argument('--log-format')
 
     main_parser.add_argument('--log-level', default='WARNING')
 
@@ -45,6 +45,7 @@ def main(args=None):
 
     if args.debug:
         # Alias for lowest level logging
+        args.log_format = verbose_format
         args.log_level = 'DEBUG'
 
     logging.basicConfig(
@@ -76,7 +77,8 @@ def main(args=None):
             mod.main(remaining)
 
         except ModuleNotFoundError:
+            log.debug(traceback.format_exc())
             parser.print_help()
             if args.subcommand != 'help':
-                print('Error! Unknown subcommand: {}'.format(args.subcommand))
+                print('Error loading subcommand: {}'.format(args.subcommand))
             sys.exit(1)

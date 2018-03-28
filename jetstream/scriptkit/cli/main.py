@@ -1,4 +1,5 @@
 import argparse
+import traceback
 import importlib
 import logging
 import sys
@@ -76,8 +77,9 @@ def main(args=None):
             mod.main(remaining)
 
         except ModuleNotFoundError as e:
+            log.debug(traceback.format_exc())
             parser.print_help()
             log.critical(str(e))
             if args.subcommand != 'help':
-                print('Error! Unknown subcommand: {}'.format(args.subcommand))
+                print('Error loading subcommand: {}'.format(args.subcommand))
             sys.exit(1)

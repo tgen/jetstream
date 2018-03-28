@@ -92,7 +92,7 @@ class Workflow:
             if node_data['status'] == 'pending':
                 pending = True
             if self.node_ready(node_id):
-                log.debug('Node ready for execution {}'.format(node_id))
+                log.debug('Releasing node for execution: {}'.format(node_id))
 
                 # Mark the node as pending
                 self.update(
@@ -104,7 +104,6 @@ class Workflow:
                 return node_id, node_data
         else:
             if pending:
-                log.debug('Request for next task but None available')
                 return None
             else:
                 log.debug('Request for next task but all complete')
@@ -112,56 +111,70 @@ class Workflow:
 
     def __send__(self, node_id, return_code, logs):
         """ Returns results to the workflow """
-        log.critical('Received results for {}'.format(node_id))
+        log.debug('Received results for {}'.format(node_id))
+
+        self.update(node_id, datetime_end=datetime.now())
 
         if return_code != 0:
-            # TODO handle results better
-            # this needs to recognized failures and set node status to new
-            # but we might also want to only allow a limited number of retrys
-            # per node or globally
-            log.critical('Node returned non-zero, here we would decide'
-                         'how many times to try and repeat that node, or'
-                         'halt and inform the user. ')
+            self.fail(node_id, return_code=return_code, logs=logs)
+        else:
+            self.complete(node_id, return_code=return_code, logs=logs)
 
+    def complete(self, node_id, return_code=0, logs=''):
+        """ Complete a node_id """
+        log.critical('Node complete! {}'.format(node_id))
         self.update(
             node_id,
             status='complete',
-            datetime_end=datetime.now(),
             return_code=return_code,
             logs=logs
         )
+
+    def fail(self, node_id, return_code=1, logs=''):
+        """ Fail a node_id, this also fails any nodes dependent on node_id"""
+        log.critical('Node failed! {}'.format(node_id))
+
+        self.update(
+            node_id,
+            status='failed',
+            return_code=return_code,
+            logs=logs
+        )
+
+        for d in self.graph.predecessors(node_id):
+            self.fail(d, logs='Failed due to dependency {}'.format(node_id))
 
     # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
         return self.graph.nodes(*args, **kwargs)
 
-    def status(self, node=None):
+    def status(self, node_id=None):
         """ Returns the status of a node or all nodes if node is None """
-        if node is not None:
-            return self.graph.nodes[node]['status']
+        if node_id is not None:
+            return self.graph.nodes[node_id]['status']
         else:
             return [d['status'] for n, d in self.graph.nodes(data=True)]
 
-    def get_node(self, name, data=False):
+    def get_node(self, node_id, data=False):
         """ Returns None if the node is not in the graph """
         g = self.graph
-        if name in g:
+        if node_id in g:
             if data:
-                return g.nodes()[name]
+                return g.nodes()[node_id]
             else:
-                return name
+                return node_id
         else:
             return None
 
-    def node_ready(self, node):
+    def node_ready(self, node_id):
         """ Returns True if the given node is ready for execution """
         g = self.graph
-        node_data = g.nodes()[node]
+        node_data = g.nodes()[node_id]
 
         if node_data['status'] != 'new':
             return False
 
-        for dependency in self.graph.successors(node):
+        for dependency in self.graph.successors(node_id):
             dependency_status = g.nodes()[dependency]['status']
             if dependency_status != 'complete':
                 return False
@@ -182,28 +195,29 @@ class Workflow:
                 res.add(node)
         return res
 
-    def update(self, node, **kwargs):
+    def update(self, node_id, **kwargs):
         """ Change the status of a node """
+        log.debug('Update node {}: {}'.format(node_id, kwargs))
         self.last_update = utils.fingerprint()
-        self.graph.nodes[node].update(**kwargs)
+        self.graph.nodes[node_id].update(**kwargs)
 
-    def _add_node(self, id, data):
+    def _add_node(self, node_id, data):
         """ Adding a node requires a mapping that includes "name" key. A
         RuntimeError will be raised if the name already exists in the graph"""
 
-        if self.get_node(id):
+        if self.get_node(node_id):
             raise RuntimeError('Duplicate node id: {} in\n{}'.format(
                 id, self))
 
         # All nodes get a status attribute that the workflow uses to identify
         # nodes that are ready to be executed.
         data['status'] = 'new'
-        return self.graph.add_node(id, **data)
+        return self.graph.add_node(node_id, **data)
 
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between components. Edges run
-        FROM one node TO another node that the component depends upon. Nodes
-        can have multiple edges.
+        FROM one node TO another node that it depends upon. Nodes can have
+        multiple edges, but not multiple instances of the same edge.
 
             Child ----- Depends Upon -----> Parent
          (from_node)                       (to_node)
@@ -225,6 +239,7 @@ class Workflow:
             raise exc.NotDagError
 
     def add_node(self, id, cmd, **kwargs):
+        log.debug('')
         node_data = {
             'id': id,
             'cmd': cmd,

@@ -6,7 +6,7 @@ import subprocess
 import traceback
 from collections import deque
 from threading import Thread
-from jetstream.core import Project
+from jetstream.core.project import Project
 
 log = logging.getLogger(__name__)
 
@@ -38,8 +38,8 @@ def new_run_id():
     return run_id
 
 
-def launch(node, run_context):
-    log.critical('Starting node {}'.format(node['id']))
+def launch(node, env):
+    log.critical('Launching node {}'.format(node))
 
     open_fds = []
     result = {
@@ -65,10 +65,10 @@ def launch(node, run_context):
             stdin=subprocess.PIPE,
             stdout=out,
             stderr=err,
-            env=run_context
+            env=env
         )
 
-        stdout, _ = p.communicate(input=node.get('stdin'))
+        stdout, _ = p.communicate(input=node.get('stdin').encode())
 
         try:
             stdout = stdout.decode()
@@ -78,7 +78,7 @@ def launch(node, run_context):
         result['logs'] = stdout
         result['return_code'] = p.returncode
 
-        log.critical('Node complete {}'.format(node['id']))
+        log.critical('Node complete {}'.format(node))
     except Exception as e:
         log.exception(e)
         result['logs'] = "Launcher failed:\n{}".format(traceback.format_exc())
@@ -89,33 +89,35 @@ def launch(node, run_context):
     return result
 
 
-def _runner(workflow, run_context):
-    workflow.save(run_context['JETSTREAM_WORKFLOWPATH'])
+def _runner(workflow, env):
+    log.critical('Runner starting: {}'.format(env))
+    workflow.save(env['JETSTREAM_WORKFLOWPATH'])
 
     tasks = deque()
     while 1:
         try:
-            task = next(workflow)
+            node = next(workflow)
         except StopIteration:
             log.critical('Workflow raised StopIteration')
             break
 
-        if task is None:
-            for node_id, result in _handle_completed(tasks, run_context):
+        if node is None:
+            for node_id, result in _handle_completed(tasks, env):
                 workflow.__send__(
                     node_id=node_id,
                     return_code=result['return_code'],
                     logs=result['logs']
                 )
-                workflow.save(run_context['JETSTREAM_WORKFLOWPATH'])
+                workflow.save(env['JETSTREAM_WORKFLOWPATH'])
             time.sleep(1)
 
         else:
-            node_id, node_data = task
+            log.critical('Runner  {}'.format(node))
+            node_id, node_data = node
 
             thread = ThreadWithReturnValue(
                 target=launch,
-                args=(node_data, run_context)
+                args=(node_data, env)
             )
             thread.start()
             tasks.append((node_id, thread))
@@ -123,7 +125,7 @@ def _runner(workflow, run_context):
     log.critical('Run complete!')
 
 
-def _handle_completed(tasks, run_context):
+def _handle_completed(tasks, env):
     """Cycle through the active tasks queue and return completed tasks. """
     sentinel = object()
     tasks.append(sentinel)
@@ -139,7 +141,7 @@ def _handle_completed(tasks, run_context):
                 res = thread.join(timeout=1)
 
                 log_path = os.path.join(
-                    run_context['JETSTREAM_RUNPATH'],
+                    env['JETSTREAM_RUNPATH'],
                     node_id + '.log'
                 )
                 print('Eventually will write log to ', log_path)
@@ -157,15 +159,14 @@ def _handle_completed(tasks, run_context):
     return
 
 
-def run_workflow(workflow):
-    # Ensure we are working inside of a valid project
-    p = Project()
-
+def run_workflow(workflow, project):
     # Generate the environment variables which will be
     # available to each node command.
     run_id = new_run_id()
-    run_path = os.path.join(p.path, '.jetstream', run_id)
+    run_path = os.path.join(project.path, '.jetstream', run_id)
+    log.debug('Making new run {}'.format(run_path))
     os.makedirs(run_path)
+
     env = {
         'JETSTREAM_RUNID': run_id,
         'JETSTREAM_RUNPATH': run_path,
