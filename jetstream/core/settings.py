@@ -1,5 +1,5 @@
 """Contains global application settings"""
-from ruamel import yaml
+import yaml
 from os import environ
 
 DEFAULT = {
@@ -11,6 +11,6 @@ profile_path = environ.get('JETSTREAM_PROFILE')
 
 if profile_path is not None:
     with open(profile_path, 'r') as fp:
-        profile = yaml.load(stream=fp)
+        profile = yaml.load(fp.read())
 else:
     profile = DEFAULT

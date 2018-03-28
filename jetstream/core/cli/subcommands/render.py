@@ -29,12 +29,6 @@ def arg_parser():
     return parser
 
 
-def launch_single_plugin(plugin, strategy, no_records=False):
-    if no_records:
-        result = strategy(plugin)
-        print(json.dumps(result, indent=4))
-
-
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)

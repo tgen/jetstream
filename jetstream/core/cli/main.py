@@ -1,6 +1,7 @@
 import argparse
 import traceback
 import importlib
+import pkg_resources
 import logging
 import sys
 
@@ -13,7 +14,7 @@ def create_parser():
     main_parser = argparse.ArgumentParser(
         description='Available subcommands '
                     'are: {}'.format(get_subcommands()),
-        epilog='Use \'jetstream-workflows <subcommand> -h/--help\' for help '
+        epilog='Use \'jetstream <subcommand> -h/--help\' for help '
                'specific commands.',
         add_help=False)
 
@@ -55,12 +56,13 @@ def main(args=None):
         level=getattr(logging, args.log_level)
     )
 
+    version = pkg_resources.get_distribution("jetstream").version
+    log.critical('jetstream {}'.format(version))
     log.debug(sys.argv)
     log.debug('{}: {}'.format(__name__, args))
 
     if args.version:
-        import jetstream
-        print(jetstream.__version__)
+        print(version)
         sys.exit(0)
     else:
         if args.subcommand is None:

@@ -6,7 +6,7 @@ import subprocess
 import traceback
 from collections import deque
 from threading import Thread
-from jetstream.core.project import Project
+from jetstream import utils
 
 log = logging.getLogger(__name__)
 
@@ -60,15 +60,25 @@ def launch(node, env):
         else:
             err = subprocess.STDOUT
 
+        if 'stdin' in node:
+            #TODO automatically guess if stdin is a file?
+            stdin = node['stdin'].encode()
+        else:
+            stdin = None
+
+        # TODO: Had to add this in order to get stuff thats in PATH
+        current_env = os.environ.copy()
+        current_env.update(env)
+
         p = subprocess.Popen(
             node['cmd'],
             stdin=subprocess.PIPE,
             stdout=out,
             stderr=err,
-            env=env
+            env=current_env,
         )
 
-        stdout, _ = p.communicate(input=node.get('stdin').encode())
+        stdout, _ = p.communicate(input=stdin)
 
         try:
             stdout = stdout.decode()
@@ -98,7 +108,7 @@ def _runner(workflow, env):
         try:
             node = next(workflow)
         except StopIteration:
-            log.critical('Workflow raised StopIteration')
+            log.debug('Workflow raised StopIteration')
             break
 
         if node is None:
@@ -166,6 +176,9 @@ def run_workflow(workflow, project):
     run_path = os.path.join(project.path, '.jetstream', run_id)
     log.debug('Making new run {}'.format(run_path))
     os.makedirs(run_path)
+
+    with open(os.path.join(run_path, 'created'), 'w') as fp:
+        fp.write(utils.yaml_dumps(utils.fingerprint()))
 
     env = {
         'JETSTREAM_RUNID': run_id,

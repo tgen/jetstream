@@ -2,7 +2,8 @@
 # Portability
 
 This currently only works on Linux machines locally or with a Slurm
-batch scheduler. It also relies heavily on Python.
+batch scheduler. It's implemented in Python3.
+
 
 # Upfront workflow rendering
 
@@ -13,23 +14,16 @@ complete description of the tasks required, and the order of
 execution.
 
 The advantages of this are that complete workflows can be built
-prior to runtime. You can export exact diagrams, directory structures,
+prior to runtime. You can export precise diagrams, directory structures,
 command lists, etc.. without executing any steps.
 
 What about feedback? Conditionals?
 
 The workflow is an immutable network graph defined prior to runtime.
-It cannot be modified by events that occur during runtime. Data can
-be captured from nodes, and stored in the project data. Downstream
-nodes can then make use of the project data for evaluating expression
-attributes. This is the only feedback mechanism.
-
-If a node exists in a workflow, the runner will always launch it. The
-only exceptions to this rule occur if the runner exits before reaching
-that node, or one of its dependencies has failed. Nodes can fail
-gracefully by condtional expressions. In other words, nodes can be
-skipped in some cases. But the runner will still lauch the node, and
-it will still fail, but it will not count towards a workflow failure.
+It cannot be modified by events that occur during runtime. If a node exists
+in a workflow, the runner will always launch it. The only exception to this
+rule occur if the runner exits before reaching that node, or one of its
+dependencies has failed.
 
 Cases where feedback may be necessary:
 
@@ -52,8 +46,7 @@ import logging
 
 log = logging.getLogger(__name__)
 SPEC = {
-    'name': '<spec name here> Definition',
-    'version': '0.1a',
+    'name': 'Jetstream node properties definition',
     'spec': {
         'node_properties': {
             'id': {
@@ -111,11 +104,8 @@ class SpecNameHere:
     def __init__(self, spec):
         self.spec = spec['spec']
         self.name = spec['name']
-        self.version = spec['version']
         self.node_properties = self.spec['node_properties']
         self.docs = __doc__ # Todo auto format docs with yaml
-        log.critical('Spec {} loaded'.format(self.version))
-
 
     def required_props(self):
         for name, attrs in self.node_properties.items():
@@ -147,7 +137,6 @@ class SpecNameHere:
                 errs.append('Property "{}" should be type "{}"'.format(k, cls))
 
         return errs
-
 
     def validate(self, node):
         errs = []

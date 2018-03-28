@@ -59,7 +59,7 @@ def render_template(template, obj=None, strict=False):
     return res
 
 
-def parse_nodes(nodes):
+def build_workflow(nodes):
     """Given a sequence of nodes (dictionaries with properties described in
      the workflow specification), returns a workflow with nodes and edges
      built. """
@@ -98,7 +98,7 @@ def parse_nodes(nodes):
     return wf
 
 
-def build(template, data):
+def render_and_build(template, data):
     # Render template with project_data using Jinja2
     log.critical('Rendering template...')
     raw = render_template(template, data)
@@ -110,10 +110,9 @@ def build(template, data):
     # validate nodes
     log.critical('Validating nodes...\n{}'.format(nodes))
 
-
     # Build workflow from nodes
     log.critical('Adding nodes to workflow...')
-    wf = parse_nodes(nodes)
+    wf = build_workflow(nodes)
 
     return wf
 

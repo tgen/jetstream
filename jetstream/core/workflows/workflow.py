@@ -113,7 +113,7 @@ class Workflow:
         """ Returns results to the workflow """
         log.debug('Received results for {}'.format(node_id))
 
-        self.update(node_id, datetime_end=datetime.now())
+        self.update(node_id, datetime_end=str(datetime.now()))
 
         if return_code != 0:
             self.fail(node_id, return_code=return_code, logs=logs)

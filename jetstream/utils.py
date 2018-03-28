@@ -9,7 +9,7 @@ from socket import gethostname
 from getpass import getuser
 from uuid import getnode
 from datetime import datetime
-from ruamel import yaml
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -113,14 +113,16 @@ def yaml_dumps(obj):
     return yaml.dump(obj, default_flow_style=False)
 
 
-def filter_documents(docs, filter):
-    """Given a list of mapping objects (docs) and a filter mapping,
+def filter_documents(docs, criteria):
+    """Given a list of mapping objects (docs) and a criteria mapping,
     this function returns a list of objects that match filter
     criteria."""
     matches = list()
     for i in docs:
-        for k, v in filter.items():
-            if i[k] != v:
+        for k, v in criteria.items():
+            if k not in i:
+                break
+            if i[k] == v:
                 break
         else:
             matches.append(i)
