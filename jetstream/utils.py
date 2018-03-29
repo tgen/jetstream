@@ -121,8 +121,10 @@ def filter_documents(docs, criteria):
     for i in docs:
         for k, v in criteria.items():
             if k not in i:
+                log.debug('Dropping {} due to {} not in doc'.format(i, k))
                 break
-            if i[k] == v:
+            if i[k] != v:
+                log.debug('Dropping {} due to {} not == {}'.format(i, k, v))
                 break
         else:
             matches.append(i)
