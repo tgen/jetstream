@@ -39,8 +39,6 @@
 ### Validate rnaPair samples exist
 """
 import logging
-from collections import OrderedDict
-
 from jetstream.utils import Source
 
 log = logging.getLogger(__name__)
@@ -142,7 +140,7 @@ def _parse_meta_lines(lines):
     dict will be converted to lower-case.
 
     """
-    meta = OrderedDict()
+    meta = dict()
 
     kv_tuples = list()
     for line in lines:
