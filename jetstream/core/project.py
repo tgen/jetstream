@@ -81,6 +81,7 @@ class Project:
         return {
             'name': self.name,
             'path': self.path,
+            'samples': self.samples(),
             'meta': self.meta(),
             'data': self.data(),
             'ref': self.ref()
