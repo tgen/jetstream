@@ -14,6 +14,17 @@ RUN_DATA_DIR = profile['RUN_DATA_DIR']
 # fatal: Not a git repository (or any parent up to mount point /home)
 # Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
 
+# TODO: The idea of storing data about the project in yaml files
+# seems like it will be really scalable and powerful, but I am still
+# unsure about the best implementation. It is very flexible right now
+# but this makes it unclear in some ways. For example, Project.reference()
+# will attempt to read a file called "reference.yaml" in the project.
+# There is no hard requirement for this file to be present, but some
+# tasks in a workflow may expect it. How do we test if all the data
+# is present before starting a project? I can only imagine that we need
+# to develop strict requirements on the data in a project, but will it
+# reduce flexibility?
+
 
 class Project:
     """Internal representation of a project. A project is a directory
@@ -120,7 +131,7 @@ class Project:
             else:
                 return data['reference'][args[0]]
         else:
-            return data['meta']
+            return data['reference']
 
     def meta(self, *args):
         """Returns a dictionary of all key:values in project.yaml['meta']"""
@@ -193,4 +204,3 @@ def init():
         with open('.jetstream/created', 'w') as fp:
             fp.write(utils.yaml.dump(utils.fingerprint()))
         log.critical('Initialized project {}'.format(os.getcwd()))
-
