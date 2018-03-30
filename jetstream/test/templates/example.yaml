@@ -5,16 +5,19 @@
 - id: A
   cmd: ['bwa', 'mem', 'mydata_R1_001.fastq', 'mydata_R2_001.fastq']
 
+
 # Run a script
 - id: A_1
   cmd: ['sh']
   stdin: "sleep 30 && echo {{ project_email }}"
+
 
 # Run a script with a different interpreter
 # Note: yaml has a relaxed quote requirement
 - id: A_2
   cmd: python2
   stdin: print "Hello, World!"
+
 
 # Run a command with dependencies
 - id: B_{{ project_email }}

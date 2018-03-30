@@ -267,7 +267,7 @@ def easy(cmd, *args, module_load=None):
         os.makedirs('logs', exist_ok=True)
 
     job_name = ulid.new().str
-    log.critical('Unique job name: {}'.format(job_name))
+    log.critical('Slurm Easy Unique job name: {}'.format(job_name))
     sbatch_args = args + ('-J', job_name, '-o', 'logs/%x_slurm-%A.out')
 
     if module_load:
@@ -290,7 +290,7 @@ def easy(cmd, *args, module_load=None):
         script=cmd
     )
 
-    print('Final script to be submitted:\n{}'.format(script))
+    log.critical('Final script to be submitted:\n{}'.format(script))
 
     with open('logs/{}.sh'.format(job_name), 'w') as fp:
         fp.write(script)

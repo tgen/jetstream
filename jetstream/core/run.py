@@ -82,6 +82,10 @@ def launch(node, env):
 
         try:
             stdout = stdout.decode()
+
+            # TODO How can we get stdout to write to a file and to logs in
+            # real-time as the command is running?
+
         except AttributeError:
             pass
 
@@ -122,7 +126,7 @@ def _runner(workflow, env):
             time.sleep(1)
 
         else:
-            log.critical('Runner  {}'.format(node))
+            log.critical('Runner sending to launch {}'.format(node))
             node_id, node_data = node
 
             thread = ThreadWithReturnValue(
@@ -131,6 +135,7 @@ def _runner(workflow, env):
             )
             thread.start()
             tasks.append((node_id, thread))
+            workflow.save(env['JETSTREAM_WORKFLOWPATH'])
 
     log.critical('Run complete!')
 
@@ -154,8 +159,12 @@ def _handle_completed(tasks, env):
                     env['JETSTREAM_RUNPATH'],
                     node_id + '.log'
                 )
-                print('Eventually will write log to ', log_path)
-                print('For now, here\'s the log:\n{}'.format(res['logs']))
+
+                if os.path.exists(log_path):
+                    log.warning('{} already exists'.format(log_path))
+
+                with open(log_path, 'w') as fp:
+                    fp.write(res['logs'])
 
                 yield (node_id, res)
 
