@@ -104,7 +104,7 @@ def launch(node, env):
 
 
 def _runner(workflow, env):
-    log.critical('Runner starting: {}'.format(env))
+    log.critical('Runner initialized: {}'.format(env))
     workflow.save(env['JETSTREAM_WORKFLOWPATH'])
 
     tasks = deque()

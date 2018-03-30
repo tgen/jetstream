@@ -26,4 +26,8 @@ __all__ = [
     "run_workflow",
     "launch",
     "render",
+    "legacy",
+    "plugins",
+    "project",
+    "report",
 ]
