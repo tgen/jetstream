@@ -66,7 +66,7 @@ def launch(node, env):
         else:
             stdin = None
 
-        # TODO: Had to add this in order to get stuff thats in PATH
+        # TODO Had to add this in order to get stuff that's in PATH
         current_env = os.environ.copy()
         current_env.update(env)
 

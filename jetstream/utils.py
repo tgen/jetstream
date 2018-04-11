@@ -2,6 +2,7 @@ import os
 import sys
 import stat
 import gzip
+import csv
 import logging
 import json
 from pkg_resources import get_distribution
@@ -13,6 +14,29 @@ import yaml
 
 log = logging.getLogger(__name__)
 
+TEST_RECORDS = [
+    {
+        'test': 'whitespace',
+        'data': ' \t\n\n\x0b\x0c'
+    },
+    {
+        'test': 'punctuation',
+        'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+    },
+    {
+        'test': 'printable',
+        'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
+    },
+    {
+        'test': 'digits',
+        'data': '0123456789'
+    },
+    {
+        'test': 'ascii_letters',
+        'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    }
+]
 
 class Source(str):
     """String subclass that includes a "line_numbers" property for tracking
@@ -94,6 +118,11 @@ def remove_prefix(string, prefix):
         return string
 
 
+def json_load(path):
+    with open(path, 'r') as fp:
+        return json.load(fp)
+
+
 # TODO Handle multi-document yaml files gracefully
 def yaml_load(path):
     with open(path, 'r') as fp:
@@ -129,6 +158,29 @@ def filter_documents(docs, criteria):
         else:
             matches.append(i)
     return matches
+
+
+def table_to_records(path):
+    """Attempts to load a table, in any format, as a set of records"""
+    r = list()
+    with open(path, 'r') as fp:
+        dialect = csv.Sniffer().sniff(fp.readline())
+        log.debug('csv.Sniffer delimiter: {}'.format(dialect.delimiter))
+        fp.seek(0)
+        reader = csv.DictReader(fp, delimiter=dialect.delimiter)
+        for row in reader:
+            r.append(dict(row))
+    return r
+
+
+def write_test_data(path, dialect='unix'):
+    """Writes test data out to a file. """
+    with open(path, 'w') as fp:
+        w = csv.DictWriter(fp, fieldnames=['test', 'data'], dialect=dialect)
+        w.writeheader()
+        for case in TEST_RECORDS:
+            w.writerow(case)
+    return path
 
 
 def fingerprint(to_json=False):

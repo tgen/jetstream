@@ -1,11 +1,11 @@
 """Command line utility for one-step render and run of workflow templates"""
+import os
 import argparse
-import yaml
-import json
 import logging
 from jetstream.core.project import Project
 from jetstream.core.workflows.builder import render_template, build_workflow
 from jetstream.core.run import run_workflow
+from jetstream import utils
 
 
 log = logging.getLogger(__name__)
@@ -29,14 +29,21 @@ def render(template, data, strict=True):
     all_data = {}
 
     for path in data:
-        log.debug('Loading data file: {}'.format(path))
+        name = os.path.splitext(os.path.basename(path))[0]
+
+
         with open(path, 'r') as fp:
             raw = fp.read()
 
         if path.endswith('.yaml'):
-            all_data.update(yaml.load(raw))
+            obj = {name: utils.yaml.load(raw)}
+            all_data.update(obj)
         elif path.endswith('.json'):
-            all_data.update(json.loads(raw))
+            obj = {name: utils.json.loads(raw)}
+            all_data.update(obj)
+        elif path.endswith(('.csv', '.tsv')):
+            obj = {name: utils.table_to_records(path)}
+            all_data.update(obj)
         else:
             # TODO allow explicit override of file types
             raise ValueError('Unrecognized run data format {}'.format(path))

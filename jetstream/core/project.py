@@ -26,6 +26,12 @@ RUN_DATA_DIR = profile['RUN_DATA_DIR']
 # reduce flexibility?
 
 
+class MissingProjectData(Exception):
+    """Raised when a reference to project data is made for a
+    file that does not exist. """
+    pass
+
+
 class Project:
     """Internal representation of a project. A project is a directory
     with a run data dir ('project/.jetstream'). Additionally there are
@@ -88,15 +94,20 @@ class Project:
 
         log.critical('Loaded project {}'.format(self.path))
 
-    def serialize(self):
-        return {
-            'name': self.name,
-            'path': self.path,
-            'samples': self.samples(),
-            'meta': self.meta(),
-            'data': self.data(),
-            'ref': self.ref()
-        }
+    def __getitem__(self, item):
+        """Read-only access to project data files facilitated with
+        project['data'] or project.get('data') in a dictionary-like
+        pattern. """
+        try:
+            return self.serialize()[item]
+        except KeyError as err:
+            raise MissingProjectData(err)
+
+    def get(self, item, fallback=None):
+        try:
+            self.__getitem__(item)
+        except KeyError:
+            return fallback
 
     @property
     def _data_path(self):
@@ -106,9 +117,42 @@ class Project:
     def _reference_path(self):
         return os.path.join(self.path, 'reference.yaml')
 
+    def _data_files(self):
+        """Generator that yields yaml files in the project"""
+        for file in os.listdir(self.path):
+            if file.endswith(('.yaml', '.yml', '.json', '.tsv', '.csv')):
+                yield os.path.join(self.path, file)
+
+    def serialize(self):
+        """Returns a dictionary of all data available for this project"""
+        data = vars(self)
+        for f in self._data_files():
+            name = os.path.splitext(os.path.basename(f))[0]
+            log.debug('Loading data file: {} as project["{}"]'.format(f, name))
+
+            if f.endswith(('.yaml', '.yml')):
+                parsed = utils.yaml_load(f)
+            elif f.endswith(('.json',)):
+                parsed = utils.json_load(f)
+            elif f.endswith(('.csv', '.tsv')):
+                parsed = utils.table_to_records(f)
+            else:
+                log.debug('Skipping unrecognized file type: {}'.format(f))
+                continue
+
+            data[name] = parsed
+
+        return data
+
     def runs(self):
+        """Find all run folders for this project"""
+        runs = []
         run_data_dir = os.path.join(self.path, RUN_DATA_DIR)
-        return os.listdir(run_data_dir)
+        for i in os.listdir(run_data_dir):
+            p = os.path.join(run_data_dir, i)
+            if os.path.isdir(p):
+                runs.append(i)
+        return runs
 
     def latest_run(self):
         try:
@@ -117,75 +161,39 @@ class Project:
         except IndexError:
             return None
 
-    def ref(self, *args):
-        """Returns a dictionary of all key:values in reference.yaml"""
-        try:
-            data = utils.yaml_load(path=self._reference_path)
-        except FileNotFoundError as err:
-            log.warning(err)
-            return None
-
-        if args:
-            if len(args) > 1:
-                return {k: v for k, v in data['reference'].items() if k in args}
-            else:
-                return data['reference'][args[0]]
-        else:
-            return data['reference']
-
-    def meta(self, *args):
-        """Returns a dictionary of all key:values in project.yaml['meta']"""
-        try:
-            data = utils.yaml_load(path=self._data_path)
-        except FileNotFoundError as err:
-            log.warning(err)
-            return None
-
-        if args:
-            if len(args) > 1:
-                return {k: v for k, v in data['meta'].items() if k in args}
-            else:
-                return data['meta'][args[0]]
-        else:
-            return data['meta']
-
-    def data(self, **kwargs):
-        """Returns a list of all data objects in project.yaml"""
-        try:
-            project_data = utils.yaml_load(path=self._data_path)
-        except FileNotFoundError as err:
-            log.warning(err)
-            return None
-
-        if kwargs:
-            return utils.filter_documents(project_data['data'], kwargs)
-        else:
-            return project_data['data']
+    def find(self, item, **kwargs):
+        """Returns records in the project[item] if they match on fields given
+        as kwargs to this method."""
+        return utils.filter_documents(self[item], kwargs)
 
     def samples(self, **kwargs):
-        """Returns a list of all sample objects in project.yaml"""
-        try:
-            project_data = utils.yaml_load(path=self._data_path)
-        except FileNotFoundError as err:
-            log.warning(err)
-            return None
+        """ Returns a list of all sample records in project_data. This is
+        ephemeral project data generated by joining records from other data
+        files, if they are present. It is accomplished by:
 
-        # Use sample descriptions from project_data if they're available
+        - Starting with any records in under project["samples"]
+        - Joining those records with any records found under project["data"]
+          key if they match on the "sample_name" property.
+        - Filtering the final list of records by any given kwargs
+
+        """
+        project_data = self.serialize()
         if 'samples' in project_data:
             samples = {s['sample_name']: s for s in project_data['samples']}
         else:
             samples = {}
 
         # Sort all data objects from project data into samples
-        for data in self.data():
-            sn = data['sample_name']
-            if not sn in samples:
-                samples[sn] = {
-                    'sample_name': sn,
-                    'data': []
-                }
+        if 'data' in project_data:
+            for data in project_data['data']:
+                name = data['sample_name']
+                if not name in samples:
+                    samples[name] = {
+                        'sample_name': name,
+                        'data': []
+                    }
 
-            samples[sn]['data'].append(data)
+                samples[name]['data'].append(data)
 
         # Turn it into a list so we can filter based on kwargs
         sample_list = list(samples.values())
