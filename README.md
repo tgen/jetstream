@@ -23,6 +23,14 @@ Install via SSH (requires SSH keys to be configured in Github profile)
 pip3 install --upgrade --user git+ssh://git@github.com/tgen/jetstream.git@master
 ```
 
+# Usage
+
+`jetstream -h`
+
+View the help to get started. If you receive an error that the command was not
+found, then the Python packages bin location is probably not on you `$PATH`. 
+[Refer to this post](https://stackoverflow.com/questions/35898734/pip-installs-packages-successfully-but-executables-not-found-from-command-line) for more help.
+
 # Development notes
 
 _Project_
