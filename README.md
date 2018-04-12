@@ -6,9 +6,8 @@
 > TGen users can load the latest version of Python with `module load python`
 
 This package requires Python3. For a lot of reasons, [Homebrew](https://brew.sh) 
-is the recommended way to install Python3. Follow this guide:
-
-http://docs.python-guide.org/en/latest/starting/install3/osx/
+is the recommended way to install Python3. 
+Follow this guide: http://docs.python-guide.org/en/latest/starting/install3/osx/
 
 ## Single Command Install with Pip
 
