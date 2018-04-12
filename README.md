@@ -60,9 +60,10 @@ _Record_
 [Records](https://en.wikipedia.org/wiki/Record_(computer_science)) are 
 generated for any data stored in tables (csv or tsv). Essentially, each row 
 in the table becomes an object with key-value properties determined by the 
-header of the table. This strategy allows project data to be stored in a ton 
-of different formats, while needing only a single interface to access that 
-data (see the Project() class).
+header of the table. In Python, the table becomes a list of dictionaries
+available in the project object. This strategy allows project data to be 
+created/stored in a ton of different formats, while needing only a single 
+interface to access that data (see the Project() class).
 
 
 
