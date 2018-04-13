@@ -1,8 +1,8 @@
 import logging
 import os
 from jetstream import exc, utils
+from jetstream.core import legacy
 from jetstream.core.settings import profile
-
 
 log = logging.getLogger(__name__)
 RUN_DATA_DIR = profile['RUN_DATA_DIR']
@@ -14,19 +14,8 @@ RUN_DATA_DIR = profile['RUN_DATA_DIR']
 # fatal: Not a git repository (or any parent up to mount point /home)
 # Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
 
-# TODO: The idea of storing data about the project in yaml files
-# seems like it will be really scalable and powerful, but I am still
-# unsure about the best implementation. It is very flexible right now
-# but this makes it unclear in some ways. For example, Project.reference()
-# will attempt to read a file called "reference.yaml" in the project.
-# There is no hard requirement for this file to be present, but some
-# tasks in a workflow may expect it. How do we test if all the data
-# is present before starting a project? I can only imagine that we need
-# to develop strict requirements on the data in a project, but will it
-# reduce flexibility?
 
-
-class MissingProjectData(Exception):
+class ProjectDataNotFound(Exception):
     """Raised when a reference to project data is made for a
     file that does not exist. """
     pass
@@ -41,40 +30,21 @@ class Project:
     Here is a description of the data files that can be present in a
     project their associated getter methods:
 
+    Project.samples() will return a list of all sample records in the project
+    data with their associated data records in an list accessible with
+    sample['data']. Note that if sample definitions are included in
+    project.data['samples'], they will be joined with the samples_names in
+    data records.
 
-    /project.yaml
-
-    Project.meta() will return a dictionary of key:value items in the
-    "meta" section of project.yaml
-
-    Project.data() will return a list of all data objects from the "data"
-    section of the project.yaml
-
-    Project.data(key=value) will return a list of data objects in the
-    "data" section of the project.yaml that has been filtered based on the
-    key/value requirements
-
-    Project.samples() will return a list of all samples in the project.yaml
-    with their associated data items in an list accessible with sample['data'].
-    Note that if sample definitions are included in project.yaml ("samples"
-    section is present), they will be joined with the samples_names in data.
-
-    Project.samples(key=value) behaves the same as Project.data() above but
-    returns information about samples.
-
-
-    /reference.yaml
-
-    Project.ref() will return a dictionary of all reference key/values from
-    the reference.yaml if it is present in the project directory.
-
-    Project.ref(<key>) will return the value of a single key, identical
-    to Project.ref()[<key>].
+    Project.samples(key=value) returns list of sample records in the that has
+    been filtered based on the key/value requirements
 
     """
+
     def __init__(self, path=None):
         self.path = path or os.getcwd()
         self.name = os.path.basename(self.path)
+        self.data = dict()
         self._run_id = ''
         self._run_path = ''
 
@@ -92,57 +62,40 @@ class Project:
         if not os.path.isdir(target):
             raise exc.NotAProject('Data dir is not a dir {}'.format(target))
 
+        self._load_project_data_files()
         log.critical('Loaded project {}'.format(self.path))
 
-    def __getitem__(self, item):
-        """Read-only access to project data files facilitated with
-        project['data'] or project.get('data') in a dictionary-like
-        pattern. """
-        try:
-            return self.serialize()[item]
-        except KeyError as err:
-            raise MissingProjectData(err)
+    def _load_project_data_files(self):
+        """Loads all data files in the project as values in the project.data
+        dictionary.
 
-    def get(self, item, fallback=None):
-        try:
-            self.__getitem__(item)
-        except KeyError:
-            return fallback
+        Legacy configs are handled differently than other data files. If the
+        name of the config file matches the name of the project, the values
+        for "meta" and "data" are added directly to project.data and will
+        overwrite any previous values. Legacy config files with names other
+        than the current project name are handled just like other data files.
+        """
+        res = dict()
+        project_legacy_config = None
+        for name, path in find_data_files(self.path).items():
+            if path.endswith('.config') and name == self.name:
+                project_legacy_config = path
+                continue
+            try:
+                res[name] = load_data_file(path)
+            except Exception as e:
+                log.warning('Unable to parse {}'.format(path))
+                log.exception(e)
 
-    @property
-    def _data_path(self):
-        return os.path.join(self.path, 'project.yaml')
+        if project_legacy_config is not None:
+            parsed = load_data_file(project_legacy_config)
+            res.update(parsed)
 
-    @property
-    def _reference_path(self):
-        return os.path.join(self.path, 'reference.yaml')
-
-    def _data_files(self):
-        """Generator that yields yaml files in the project"""
-        for file in os.listdir(self.path):
-            if file.endswith(('.yaml', '.yml', '.json', '.tsv', '.csv')):
-                yield os.path.join(self.path, file)
+        self.data = res
 
     def serialize(self):
         """Returns a dictionary of all data available for this project"""
-        data = vars(self)
-        for f in self._data_files():
-            name = os.path.splitext(os.path.basename(f))[0]
-            log.debug('Loading data file: {} as project["{}"]'.format(f, name))
-
-            if f.endswith(('.yaml', '.yml')):
-                parsed = utils.yaml_load(f)
-            elif f.endswith(('.json',)):
-                parsed = utils.json_load(f)
-            elif f.endswith(('.csv', '.tsv')):
-                parsed = utils.table_to_records(f)
-            else:
-                log.debug('Skipping unrecognized file type: {}'.format(f))
-                continue
-
-            data[name] = parsed
-
-        return data
+        return vars(self)
 
     def runs(self):
         """Find all run folders for this project"""
@@ -164,7 +117,7 @@ class Project:
     def find(self, item, **kwargs):
         """Returns records in the project[item] if they match on fields given
         as kwargs to this method."""
-        return utils.filter_documents(self[item], kwargs)
+        return utils.filter_documents(self.data[item], kwargs)
 
     def samples(self, **kwargs):
         """ Returns a list of all sample records in project_data. This is
@@ -177,7 +130,7 @@ class Project:
         - Filtering the final list of records by any given kwargs
 
         """
-        project_data = self.serialize()
+        project_data = self.data
         if 'samples' in project_data:
             samples = {s['sample_name']: s for s in project_data['samples']}
         else:
@@ -206,9 +159,49 @@ class Project:
 
 def init():
     if os.path.exists('.jetstream/created'):
-        log.critical('Already a project.'.format(os.getcwd()))
+        log.critical('{} is already a project.'.format(os.getcwd()))
     else:
         os.makedirs('.jetstream', exist_ok=True)
         with open('.jetstream/created', 'w') as fp:
             fp.write(utils.yaml.dump(utils.fingerprint()))
         log.critical('Initialized project {}'.format(os.getcwd()))
+
+
+data_loaders = {
+    '.txt': utils.table_to_records,
+    '.csv': utils.table_to_records,
+    '.tsv': utils.table_to_records,
+    '.json': utils.json_load,
+    '.yaml': utils.yaml_load,
+    '.yml': utils.yaml_load,
+    '.config': legacy.config.load,
+}
+
+
+def find_data_files(path):
+    """ Returns a dict of all data files in project """
+    files = dict()
+    for file in os.listdir(path):
+        if os.path.isfile(file) \
+                and file.endswith(tuple(data_loaders.keys())):
+            name = os.path.splitext(os.path.basename(file))[0]
+            if name in files:
+                log.warning('Duplicate project data name: {}'.format(name))
+            files[name] = os.path.join(path, file)
+    return files
+
+
+def load_data_file(path):
+    """Attempts to load a data file from path, raises Value error
+    if an suitable loader function is not found in data_loaders"""
+    for ext, fn in data_loaders.items():
+        if path.endswith(ext):
+            loader = fn
+            break
+    else:
+        raise ValueError('No loader fn found for {}'.format(path))
+
+    log.debug('Loading {} with {}.{}'.format(
+        path, loader.__module__, loader.__name__))
+
+    return loader(path)

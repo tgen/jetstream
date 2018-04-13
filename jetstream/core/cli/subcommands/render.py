@@ -4,10 +4,11 @@ wins" pattern. Jinja2 will raise errors when trying to access nested values
 for which a parent value is undefined. However, undefined leaves in the data
 will only generate a warning unless "--strict" is used.
 """
+import os
 import argparse
-import json
 import yaml
 import logging
+import jetstream
 from jetstream.core.workflows.builder import render_template, build_workflow
 
 log = logging.getLogger(__name__)
@@ -34,25 +35,21 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    data = {}
+
+    p = jetstream.Project()
+    data = {'project': p.data}
+
     if args.data:
         for path in args.data:
-            with open(path, 'r') as fp:
-                raw = fp.read()
-
-            if path.endswith('.yaml'):
-                data.update(yaml.load(raw))
-            elif path.endswith('.json'):
-                data.update(json.loads(raw))
-            else:
-                # TODO allow explicit override of file types
-                raise ValueError('Unrecognized run data format {}'.format(path))
+            name = os.path.splitext(path)[0]
+            parsed = jetstream.project.load_data_file(path)
+            data['project'][name] = parsed
 
     with open(args.template, 'r') as fp:
         template = fp.read()
     log.debug('Template:\n{}'.format(template))
 
-    render = render_template(template, data, strict=args.strict)
+    render = render_template(template, obj=data, strict=args.strict)
     log.debug('Render:\n{}'.format(render))
 
     if args.render_only:

@@ -41,6 +41,9 @@ def new_run_id():
 def launch(node, env):
     log.critical('Launching node {}'.format(node))
 
+    if isinstance(node, tuple) and len(node) == 2:
+        node_id, node = node
+
     open_fds = []
     result = {
         'return_code': 1,

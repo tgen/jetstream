@@ -262,6 +262,8 @@ def sbatch(*args, stdin_data=None):
 
 def easy(cmd, *args, module_load=None):
     """Launch shell scripts on slurm with controlled environments via module """
+    subprocess.check_call(['sbatch', '--version'])
+
     if not os.path.exists('logs') or not os.path.isdir('logs'):
         log.critical('Creating log dir')
         os.makedirs('logs', exist_ok=True)
