@@ -6,6 +6,21 @@ __author__ = 'Ryan Richholt'
 # TODO finish these attributes
 
 # This prevents numpy from starting a million threads when imported. The
-# graph library, networkx, uses scipy. TODO switch to another graph lib
+# graph library, networkx, uses scipy/numpy. TODO switch to another graph lib
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
+
+from jetstream.core.workflows.workflow import Workflow
+from jetstream.core import project
+from jetstream.core.project import Project
+from jetstream.scriptkit import *
+from jetstream import utils
+
+
+def load_project(path=None):
+    return Project(path)
+
+
+def load_workflow(path):
+    wf_data = utils.yaml_load(path)
+    return Workflow.from_node_link_data(wf_data)
