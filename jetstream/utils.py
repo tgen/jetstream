@@ -150,10 +150,10 @@ def filter_documents(docs, criteria):
     for i in docs:
         for k, v in criteria.items():
             if k not in i:
-                log.debug('Dropping {} due to {} not in doc'.format(i, k))
+                log.debug('Dropping "{}" due to "{}" not in doc'.format(i, k))
                 break
             if i[k] != v:
-                log.debug('Dropping {} due to {} not == {}'.format(i, k, v))
+                log.debug('Dropping "{}" due to "{}" not == "{}"'.format(i, k, v))
                 break
         else:
             matches.append(i)
@@ -165,7 +165,8 @@ def table_to_records(path):
     r = list()
     with open(path, 'r') as fp:
         dialect = csv.Sniffer().sniff(fp.readline())
-        log.debug('csv.Sniffer delimiter: {}'.format(dialect.delimiter))
+        log.debug('Sniffed delimiter "{}" for "{}"'.format(
+            dialect.delimiter, path))
         fp.seek(0)
         reader = csv.DictReader(fp, delimiter=dialect.delimiter)
         for row in reader:
