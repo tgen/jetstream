@@ -17,6 +17,7 @@ setup(
     url="https://github.com/tgen/jetstream",
     description="NGS analysis pipeline at TGen.",
     long_description=read('README.md'),
+    long_description_content_type="text/markdown",
     keywords="ngs pipeline automation",
     packages=find_packages(),
     python_requires='>=3.5',
@@ -36,7 +37,6 @@ setup(
     entry_points={
         'console_scripts': [
             'jetstream=jetstream.core.cli.main:main',
-            'jetstreamk=jetstream.scriptkit.cli.main:main',
         ],
     }
 
