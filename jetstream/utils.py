@@ -5,6 +5,7 @@ import gzip
 import csv
 import logging
 import json
+import fnmatch
 from pkg_resources import get_distribution
 from socket import gethostname
 from getpass import getuser
@@ -203,3 +204,13 @@ def fingerprint(to_json=False):
         return json.dumps(fp)
     else:
         return fp
+
+
+def find(path, name=None):
+    """Sorta behaves like bash find"""
+    for dirname, subdirs, files in os.walk(path):
+        for f in files:
+            if name is None:
+                yield os.path.join(dirname, f)
+            elif fnmatch.fnmatch(f, name):
+                yield os.path.join(dirname, f)
