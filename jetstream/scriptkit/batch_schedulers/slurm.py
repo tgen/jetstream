@@ -4,10 +4,9 @@ import re
 import shlex
 import subprocess
 import time
-import ulid
 from collections import OrderedDict
+import ulid
 
-from jetstream.core.settings import profile
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +50,8 @@ inactive_states = {'BOOT_FAIL', 'CANCELLED', 'COMPLETED', 'FAILED',
 failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL'}
 completed_states = {'COMPLETED'}
 
-_update_frequency = profile.get('slurm_update_frequency', 1)
-_max_update_wait = profile.get('slurm_max_update_wait', 3600)
+_update_frequency = os.environ.get('SLURM_UPDATE_FREQUENCY', 1)
+_max_update_wait = os.environ.get('SLURM_MAX_UPDATE_WAIT', 3600)
 
 
 class SacctOutput(Exception):
