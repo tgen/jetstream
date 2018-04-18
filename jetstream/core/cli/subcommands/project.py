@@ -28,9 +28,7 @@ def main(args=None):
         project.init()
 
     elif args.action in ('data',):
-        # TODO Iter samples
-        # TODO Iter data
-
+        # TODO Commandline iterator for samples/data, useful for bash scripts
         raise NotImplementedError
 
     else:
