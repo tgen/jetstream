@@ -36,10 +36,10 @@ def render(template, data, strict=True):
             raw = fp.read()
 
         if path.endswith('.yaml'):
-            obj = {name: utils.yaml.load(raw)}
+            obj = {name: utils.yaml_loads(raw)}
             all_data.update(obj)
         elif path.endswith('.json'):
-            obj = {name: utils.json.loads(raw)}
+            obj = {name: utils.json_loads(raw)}
             all_data.update(obj)
         elif path.endswith(('.csv', '.tsv')):
             obj = {name: utils.table_to_records(path)}
@@ -77,7 +77,7 @@ def main(args=None):
     # Rendered template is a yaml format array of nodes
     # we load this in with the yaml library, then build a
     # workflow from the nodes
-    nodes = yaml.load(rendered_template)
+    nodes = utils.yaml.load(rendered_template)
     wf = build_workflow(nodes)
 
     # Now we run the workflow in the project
