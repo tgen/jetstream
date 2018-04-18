@@ -99,11 +99,11 @@ def read_lines_allow_gzip(path):
     lines = data.splitlines()
     return lines
 
-
 def is_gzip(path, magic_number=b'\x1f\x8b'):
     """ Returns True if the path is gzipped """
-    if stat.S_ISFIFO(os.stat(path).st_mode):
-        raise OSError("this should not be used with named pipes")
+    if os.path.exists(path) and not os.path.isfile(path):
+        raise OSError("This should only be used with regular files because"
+                      "otherwise it will lose some data.")
 
     with open(path, 'rb') as fp:
         if fp.read(2) == magic_number:
@@ -122,6 +122,10 @@ def remove_prefix(string, prefix):
 def json_load(path):
     with open(path, 'r') as fp:
         return json.load(fp)
+
+
+def json_loads(data):
+    return json.loads(data)
 
 
 # TODO Handle multi-document yaml files gracefully
