@@ -1,6 +1,5 @@
 import argparse
 import logging
-import json
 from jetstream import utils
 from jetstream.core.legacy import config
 
@@ -9,7 +8,7 @@ log = logging.getLogger(__name__)
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Convert legacy config files to YAML"
+        description="Convert legacy config files to YAML/JSON"
     )
 
     parser.add_argument('path')
@@ -31,4 +30,4 @@ def main(args):
     if args.format == 'yaml':
         print(utils.yaml_dumps(c))
     elif args.format == 'json':
-        print(json.dumps(c, indent=4))
+        print(utils.json.dumps(c, indent=4))
