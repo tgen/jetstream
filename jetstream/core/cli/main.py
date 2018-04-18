@@ -57,7 +57,7 @@ def main(args=None):
     )
 
     version = pkg_resources.get_distribution("jetstream").version
-    log.critical('jetstream {}'.format(version))
+    log.debug('jetstream {}'.format(version))
     log.debug(sys.argv)
     log.debug('{}: {}'.format(__name__, args))
 
