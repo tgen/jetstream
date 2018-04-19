@@ -20,14 +20,6 @@ def arg_parser():
     return parser
 
 
-def render(template, data, strict=True):
-
-    r = render_template(template, data, strict=strict)
-    log.debug('Render:\n{}'.format(r))
-
-    return r
-
-
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
@@ -37,11 +29,13 @@ def main(args=None):
     p = Project()
 
     # Load the template
+    log.critical('Loading workflow template... {}'.format(args.template))
     with open(args.template, 'r') as fp:
         template = fp.read()
     log.debug('Template:\n{}'.format(template))
 
-    # Converts a template into a workflow
+    # Render variables in the workflow template
+    log.critical('Rendering template... strict: {}'.format(args.strict))
     rendered_template = render_template(
         template=template,
         obj=p.config,
@@ -51,8 +45,12 @@ def main(args=None):
     # Rendered template is a yaml format array of nodes
     # we load this in with the yaml library, then build a
     # workflow from the nodes
-    nodes = utils.yaml.load(rendered_template)
+    log.critical('Loading node-link data...')
+    nodes = utils.yaml_loads(rendered_template)
+
+    log.critical('Building workflow...')
     wf = build_workflow(nodes)
 
+    log.critical('Starting run...')
     # Now we run the workflow in the project
     run_workflow(wf, p)

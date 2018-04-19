@@ -29,11 +29,17 @@ def main(args=None):
 
     release_dir = os.path.join(os.environ['JETSTREAM_RELEASES_DIR'], args.release)
     if not os.path.exists(release_dir):
-        raise ValueError('Release not found: {}'.format(release_dir))
+        parser.print_help()
+        log.critical('Error! Release not found: {}'.format(release_dir))
+        sys.exit(1)
 
     os.environ["PATH"] += os.pathsep + release_dir
-
     log.debug(os.environ["PATH"])
+
+    if not args.cmd:
+        parser.print_help()
+        log.critical('Error! No cmd arguments given!')
+        sys.exit(1)
 
     log.debug(args.cmd)
     p = subprocess.Popen(args.cmd)

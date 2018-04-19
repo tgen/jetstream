@@ -10,10 +10,11 @@ __author__ = 'Ryan Richholt'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
+from jetstream import settings, utils
 from jetstream.core.workflows.workflow import Workflow
 from jetstream.core import project
 from jetstream.core.project import Project
-from jetstream import settings, utils
+
 
 def load_project(path=None):
     return Project(path)
