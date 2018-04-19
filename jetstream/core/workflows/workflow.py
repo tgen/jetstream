@@ -238,8 +238,9 @@ class Workflow:
             raise exc.NotDagError
 
     def add_node(self, node_id, **kwargs):
-        if not 'cmd' in kwargs or not kwargs['cmd']:
-            raise ValueError("cmd is a required node property")
+        if 'cmd' not in kwargs or not kwargs['cmd']:
+            msg = "Node: '{}' is missing a required value for 'cmd'"
+            raise ValueError(msg.format(node_id))
 
         self._add_node(node_id, kwargs)
         return node_id
