@@ -1,11 +1,13 @@
-import os
-import ulid
 import logging
-import time
+import os
 import subprocess
+import time
 import traceback
 from collections import deque
 from threading import Thread
+
+import ulid
+
 from jetstream import utils
 
 log = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ def new_run_id():
 
 
 def launch(node, env):
-    log.critical('Launching node {}'.format(node))
+    log.critical('Launching node cmd {}'.format(node['id']))
 
     if isinstance(node, tuple) and len(node) == 2:
         node_id, node = node
@@ -95,7 +97,7 @@ def launch(node, env):
         result['logs'] = stdout
         result['return_code'] = p.returncode
 
-        log.critical('Node complete {}'.format(node))
+        log.critical('Node cmd complete {}'.format(node['id']))
     except Exception as e:
         log.exception(e)
         result['logs'] = "Launcher failed:\n{}".format(traceback.format_exc())
