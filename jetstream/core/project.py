@@ -1,5 +1,6 @@
 import logging
 import os
+
 from jetstream import exc, utils
 from jetstream.core import legacy
 
@@ -60,10 +61,10 @@ class Project:
         if not os.path.isdir(target):
             raise exc.NotAProject('Data dir is not a dir {}'.format(target))
 
-        self._load_project_data_files()
+        self._load_project_config_files()
         log.critical('Loaded project {}'.format(self.path))
 
-    def _load_project_data_files(self):
+    def _load_project_config_files(self):
         """Loads all data files in the project/config as values in the
         project.config dictionary.
 
@@ -73,23 +74,27 @@ class Project:
         overwrite any previous values. Legacy config files with names other
         than the current project name are handled just like other data files.
         """
-        res = dict()
+        config = dict()
         project_legacy_config = None
-        for name, path in find_data_files(self.path).items():
+        for path in loadable_files(self.path):
+            name = name_a_path(path)
+
             if path.endswith('.config') and name == self.name:
+                # Handle legacy configs, see docstring
                 project_legacy_config = path
                 continue
+
             try:
-                res[name] = load_data_file(path)
+                config[name] = load_data_file(path)
             except Exception as e:
                 log.warning('Unable to parse {}'.format(path))
                 log.exception(e)
 
         if project_legacy_config is not None:
             parsed = load_data_file(project_legacy_config)
-            res.update(parsed)
+            config.update(parsed)
 
-        self.config = res
+        self.config = config
 
     def serialize(self):
         """Returns a dictionary of all data available for this project"""
@@ -185,17 +190,18 @@ data_loaders = {
 }
 
 
-def find_data_files(path):
-    """ Returns a dict of all data files in project """
-    files = dict()
+def loadable_files(path):
+    """Generator yields all files we can load (see data_loaders) """
     for file in os.listdir(path):
         if os.path.isfile(file) \
                 and file.endswith(tuple(data_loaders.keys())):
-            name = os.path.splitext(os.path.basename(file))[0]
-            if name in files:
-                log.warning('Duplicate project data name: {}'.format(name))
-            files[name] = os.path.join(path, file)
-    return files
+            yield os.path.join(path, file)
+
+
+def name_a_path(path):
+    """ Names a path by removing its directories and extension """
+    # TODO this might need some more rules in the future
+    return os.path.splitext(os.path.basename(path))[0]
 
 
 def load_data_file(path):
