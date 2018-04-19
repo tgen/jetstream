@@ -22,12 +22,13 @@ def main(args):
 """
 
 __all__ = [
+    "debug_build",
+    "debug_render",
+    "debug_workflow",
     "legacy",
     "project",
     "releases",
-    "render",
     "report",
     "run",
-    "run_workflow",
     "workflow",
 ]

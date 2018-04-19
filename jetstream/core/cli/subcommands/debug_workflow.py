@@ -1,12 +1,15 @@
-"""Command line utility for running final workflows. """
-import argparse
-import yaml
-import json
-import logging
-from jetstream.core.project import Project
-from jetstream.core.workflows.workflow import from_node_link_data
-from jetstream.core.run import run_workflow
+"""Command line utility for running final workflows saved as node-link data.
 
+*This subcommand is primarily intended for debugging workflow issues. To
+render, build, and run a workflow in one step use `jetstream workflow`.*
+"""
+import argparse
+import logging
+
+import jetstream
+from jetstream.core.project import Project
+from jetstream.core.run import run_workflow
+from jetstream.core.workflows.workflow import from_node_link_data
 
 log = logging.getLogger(__name__)
 
@@ -27,13 +30,13 @@ def main(args=None):
     # Load the project
     p = Project()
 
+    # TODO allow explicit loader declaration
     if args.workflow.endswith('.json'):
-        with open(args.workflow, 'r') as fp:
-            data = json.load(fp)
+        data = jetstream.utils.json_load(args.workflow)
     else:
-        with open(args.workflow, 'r') as fp:
-            data = yaml.load(fp.read())
+        data = jetstream.utils.yaml_load(args.workflow)
 
+    log.critical('Workflow data:\n{}'.format(data))
     wf = from_node_link_data(data)
 
     # Run the workflow

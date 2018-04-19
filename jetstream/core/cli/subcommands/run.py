@@ -1,8 +1,8 @@
-import os
-import sys
 import argparse
-import subprocess
 import logging
+import os
+import subprocess
+import sys
 
 log = logging.getLogger(__name__)
 
