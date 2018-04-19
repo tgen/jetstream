@@ -38,8 +38,7 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'jetstream=jetstream.core.cli.main:main',
-            'jsp=jetstream.pipelines.run:run'
+            'jetstream=jetstream.core.cli.main:main'
         ],
     }
 
