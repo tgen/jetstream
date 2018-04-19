@@ -9,7 +9,6 @@ from networkx.readwrite import json_graph
 
 from jetstream import utils, exc
 
-
 log = logging.getLogger(__name__)
 
 
@@ -239,7 +238,7 @@ class Workflow:
             raise exc.NotDagError
 
     def add_node(self, node_id, **kwargs):
-        if not 'cmd' in kwargs:
+        if not 'cmd' in kwargs or not kwargs['cmd']:
             raise ValueError("cmd is a required node property")
 
         self._add_node(node_id, kwargs)
@@ -267,31 +266,6 @@ class Workflow:
     def compose(self, wf):
         res = nx.algorithms.binary.compose(self.graph, wf.graph)
         self.graph = res
-
-#
-# class Result(object):
-#     """A common structure for the launchers to return to the workflow"""
-#
-#     def __init__(self, plugin, logs, return_code, error=None):
-#         self.fingerprint = utils.fingerprint()
-#         self.plugin = plugin
-#         self.logs = str(logs)
-#         self.return_code = int(return_code)
-#         self.error = str(error)
-#
-#     def to_json(self):
-#         return json.dumps(self.serialize())
-#
-#     def serialize(self):
-#         """Returns a dictionary ready for json serialization. """
-#         return {
-#             'plugin': self.plugin,
-#             'fingerprint': self.fingerprint,
-#             'logs': str(self.logs),
-#             'return_code': int(self.return_code),
-#             'error': str(self.error),
-#
-#         }
 
 
 def from_node_link_data(data):

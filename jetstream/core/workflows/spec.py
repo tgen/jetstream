@@ -1,50 +1,9 @@
-"""
-# Portability
-
-This currently only works on Linux machines locally or with a Slurm
-batch scheduler. It's implemented in Python3.
-
-
-# Upfront workflow rendering
-
-Workflows are an immutable data structure. Rendering a workflow
-is a dynamic process that responds to input data and template
-directives. But, the workflow that is generated should be a
-complete description of the tasks required, and the order of
-execution.
-
-The advantages of this are that complete workflows can be built
-prior to runtime. You can export precise diagrams, directory structures,
-command lists, etc.. without executing any steps.
-
-What about feedback? Conditionals?
-
-The workflow is an immutable network graph defined prior to runtime.
-It cannot be modified by events that occur during runtime. If a node exists
-in a workflow, the runner will always launch it. The only exception to this
-rule occur if the runner exits before reaching that node, or one of its
-dependencies has failed.
-
-Cases where feedback may be necessary:
-
-Dynamic chunking of data
-
-Some input data needs to be split into n chunks where n is determined
-during workflow runtime. Each chunk then needs to be treated as an
-individual task in the workflow by downstream tasks.
-
-Note that this is not a problem if n can be determined prior to runtime,
-or if your application can handle the chunking internally.
-
-
-# Parsing/Serializing
-
-json, yaml, etc..
-
-"""
+"""The workflow spec defines the node attributes required/allowed for building
+ a workflow graph from a template. """
 import logging
 
 log = logging.getLogger(__name__)
+
 SPEC = {
     'name': 'Jetstream node properties definition',
     'spec': {
@@ -64,11 +23,11 @@ SPEC = {
                 'type': str
             },
             'stdout': {
-                'description': 'Capture stdout to a project variable',
+                'description': 'Write stdout to a file',
                 'type': str
             },
             'stderr': {
-                'description': 'Capture stderr to project variable',
+                'description': 'Write stderr to a file',
                 'type': str
             },
             'stagein': {
@@ -77,7 +36,7 @@ SPEC = {
                 'type': str
             },
             'stageout': {
-                'description': 'Data to be copied out of workfing directory '
+                'description': 'Data to be copied out of working directory '
                                '(into final) after execution',
                 'type': str
             },

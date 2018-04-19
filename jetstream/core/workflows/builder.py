@@ -1,10 +1,13 @@
-import yaml
+"""Workflow builder module contains functions required for building a workflow
+object from a workflow template (yaml file)"""
 import json
 import logging
+
+import yaml
 from jinja2 import Template, Environment, meta, StrictUndefined, Undefined
+
 from jetstream.core.workflows import spec
 from jetstream.core.workflows.workflow import Workflow
-
 
 log = logging.getLogger(__name__)
 
