@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
-from jetstream.scriptkit.formats import intervals
+
+from jetstream.utils.formats import intervals
 
 grcm38_mm10_UCSC_TO_ENSEMBL = {
     'chr1': '1',

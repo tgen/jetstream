@@ -76,9 +76,10 @@ import subprocess
 
 import pkg_resources
 import tempstore
-from jetstream.scriptkit.formats import intervals
-from jetstream.scriptkit.formats.refdict import refdict_to_bedtools_genome
+
 from jetstream.utils import fingerprint
+from jetstream.utils.formats import intervals
+from jetstream.utils.formats.refdict import refdict_to_bedtools_genome
 
 log = logging.getLogger(__name__)
 
