@@ -1,7 +1,8 @@
 """Contains global application settings"""
-import yaml
 import logging
 from os import environ, path
+
+import yaml
 
 log = logging.getLogger(__name__)
 
@@ -20,8 +21,11 @@ try:
     if path.exists(profile_path):
         with open(profile_path, 'r') as fp:
             profile.update(yaml.load(fp.read()))
-    environ.update(profile)
+        log.debug('Loaded profile: {}'.format(profile_path))
+    else:
+        log.debug('Loaded default profile')
 except Exception as e:
     log.critical('Error loading profile {}: {}'.format(profile_path, e))
-    profile = defaults
-    environ.update(profile)
+
+
+environ.update(profile)
