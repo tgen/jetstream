@@ -9,8 +9,8 @@ log = logging.getLogger(__name__)
 def arg_parser():
     parser = argparse.ArgumentParser(
         description="Helper for launching jetstream pipeline components. All "
-                    "arguments following first positional <cmd> will be passed"
-                    "to command. Any arguments meant for this utility must come"
+                    "arguments following first positional <cmd> will be passed "
+                    "to command. Any arguments meant for this utility must come "
                     "before first positional"
     )
 

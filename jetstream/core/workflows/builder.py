@@ -1,11 +1,10 @@
 """Workflow builder module contains functions required for building a workflow
 object from a workflow template (yaml file)"""
-import json
 import logging
 
-import yaml
 from jinja2 import Template, Environment, meta, StrictUndefined, Undefined
 
+from jetstream import utils
 from jetstream.core.workflows import spec
 from jetstream.core.workflows.workflow import Workflow
 
@@ -49,7 +48,7 @@ def render_template(template, obj=None, strict=False):
     ast = env.parse(template)
     variables = meta.find_undeclared_variables(ast)
     for v in variables:
-        if not v in obj:
+        if v not in obj:
             log.warning('Undeclared template variable: {}'.format(v))
 
     # Allow strict rendering
@@ -108,7 +107,7 @@ def render_and_build(template, data):
 
     # Load template with yaml
     log.critical('Parsing template...')
-    nodes = yaml.load(raw)
+    nodes = utils.yaml_loads(raw)
 
     # validate nodes
     log.critical('Validating nodes...\n{}'.format(nodes))
@@ -118,19 +117,3 @@ def render_and_build(template, data):
     wf = build_workflow(nodes)
 
     return wf
-
-
-def _load_data(path):
-    with open(path, 'r') as fp:
-        return fp.read()
-
-
-def _load_json(path):
-    with open(path, 'r') as fp:
-        return json.load(fp)
-
-
-def _load_yaml(path):
-    with open(path, 'r') as fp:
-        return yaml.load(fp.read())
-

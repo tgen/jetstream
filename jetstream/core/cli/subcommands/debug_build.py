@@ -30,8 +30,6 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    p = jetstream.Project()
-
     # Load the template
     with open(args.template, 'r') as fp:
         template = fp.read()

@@ -2,7 +2,8 @@ import fnmatch
 import logging
 import re
 from os import path, walk, listdir
-from jetstream.scriptkit import slurm
+
+from jetstream.utils import slurm
 
 log = logging.getLogger(__name__)
 

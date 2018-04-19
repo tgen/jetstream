@@ -4,9 +4,9 @@ import shutil
 import tarfile
 import tempfile
 from getpass import getpass
+
 import requests
 from requests.auth import HTTPBasicAuth
-
 
 RELEASE_DIR = os.environ.get('JETSTREAM_RELEASES_DIR')
 log = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ def _extract_release(path, target):
 
 # TODO install the latest release
 # TODO install all releases
+# TODO list all releases
 
 def install_release(tag, owner='tgen', repo='jetstream_pipelines',
                     use_basic_auth=True, credentials=None):

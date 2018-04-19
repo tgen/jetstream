@@ -1,7 +1,8 @@
 """Command line utility for managing pipeline releases """
-import sys
 import argparse
 import logging
+import sys
+
 from jetstream.core import releases
 
 log = logging.getLogger(__name__)
@@ -29,6 +30,10 @@ def add_arg_parser():
 
     parser.add_argument('tags', nargs='+', help='Release tags to add')
 
+    parser.add_argument('--owner', default='tgen')
+
+    parser.add_argument('--repo', default='jetstream_pipelines')
+
     return parser
 
 
@@ -51,7 +56,7 @@ def add(args=None):
 
     for tag in args.tags:
         log.critical('Adding {}'.format(tag))
-        releases.install_release(tag)
+        releases.install_release(tag, owner=args.owner, repo=args.repo)
 
 
 def remove(args=None):

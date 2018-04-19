@@ -5,8 +5,8 @@ import shlex
 import subprocess
 import time
 from collections import OrderedDict
-import ulid
 
+import ulid
 
 log = logging.getLogger(__name__)
 
