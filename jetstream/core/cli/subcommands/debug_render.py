@@ -33,6 +33,7 @@ def arg_parser():
 
 
 def main(args=None):
+    logging.root.setLevel(logging.DEBUG)
     parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
