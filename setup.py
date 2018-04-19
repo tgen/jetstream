@@ -23,8 +23,8 @@ setup(
     keywords="ngs pipeline automation",
     packages=find_packages(),
     python_requires='>=3.5',
-    install_requires=['networkx', 'pydot', 'ruamel.yaml', 'ulid-py',
-                      'tempstore'],
+    install_requires=['networkx', 'ruamel.yaml', 'ulid-py',
+                      'tempstore', 'requests', 'jinja2'],
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Topic :: Utilities",
