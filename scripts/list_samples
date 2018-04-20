@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+import jetstream
+
+p = jetstream.Project()
+
+for sample in p.list_samples():
+    print(sample['sample_name'])

@@ -1,0 +1,22 @@
+
+{% for fastq in project.data %}
+
+{% set RG_LINE = fastq.read_group %}
+
+- id: DNA_Align_{{ loop.index }}
+  description: DNA Alignment with bwa mem
+  cmd: ['bash', '-l']
+  stdin: |
+    #!/bin/bash
+
+    bwa mem \
+    -M \
+    -t8 \
+    -R "{{RG_LINE}}" \
+    {{ project.reference.reference_genome_fasta }} \
+    {{ fastq.path }} | \
+    samtools sort \
+    -O BAM \
+    -o {{ fastq.sample_name }}.bam
+
+{% endfor %}

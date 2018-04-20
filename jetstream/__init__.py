@@ -1,19 +1,16 @@
-"""Jetstream is a collection of tools for automating workflows at TGen."""
 import os
+import pkg_resources
 
-__version__ = '0.1.0a1'
-__author__ = 'Ryan Richholt'
-# TODO finish these attributes
+__version__ = pkg_resources.get_distribution("jetstream").version
 
 # This prevents numpy from starting a million threads when imported. The
 # graph library, networkx, uses scipy/numpy. TODO switch to another graph lib
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
-from jetstream import settings, utils
-from jetstream.core.workflows.workflow import Workflow
-from jetstream.core import project
-from jetstream.core.project import Project
+from jetstream import settings, utils, legacy
+from jetstream.workflows import Workflow
+from jetstream.project import Project
 
 
 def load_project(path=None):

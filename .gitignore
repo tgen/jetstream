@@ -1,10 +1,4 @@
-deploy_dback.sh
-
-# We want to ignore any installed plugins but include the
-# plugin module
-jetstream/plugins/*
-!jetstream/plugins/__init__.py
-!jetstream/plugins/README
+deploy*
 
 .DS_Store
 .idea/

@@ -1,0 +1,27 @@
+
+
+- id: RNA_Align
+  cmd: []
+
+
+
+
+- id: DNA_Align_{{ assay }}
+  description: DNA Alignment with bwa mem and base recalibration with GATK
+  cmd: ['python3', '/Users/rrichholt/jetstream/tools/dna_alignment.py']
+
+
+- id: somatic variant calling {{ assay }}
+  after: DNA_Align
+
+- id: mutation_burden {{ assay }}
+  after: somatic variant calling
+
+
+#{% for item in project.meta.dnapair %}
+#- id: Mutation_Burden
+#  description: Whatever it does
+#  after: Somatic_Variant_calling
+#  cmd: ['mutationburden.sh', './stats/{{ item }}_samtools_depth.txt']
+#{% endfor %}
+

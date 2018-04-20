@@ -1,7 +1,6 @@
 """Contains global application settings"""
 import logging
 from os import environ, path
-
 from ruamel import yaml
 
 log = logging.getLogger(__name__)
@@ -11,9 +10,7 @@ home = path.expanduser('~')
 profile_default_path = path.join(home, '.jetstream.yaml')
 profile_path = environ.get('JETSTREAM_PROFILE', profile_default_path)
 
-defaults = {
-    'JETSTREAM_RELEASES_DIR': path.join(home, '.jetstream_pipelines')
-}
+defaults = {}
 
 profile = defaults.copy()
 

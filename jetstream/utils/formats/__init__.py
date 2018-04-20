@@ -1,1 +1,1 @@
-from . import intervals
+from jetstream.utils.formats import intervals

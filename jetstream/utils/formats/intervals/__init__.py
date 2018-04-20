@@ -1,5 +1,4 @@
 from jetstream.utils import read_lines_allow_gzip
-
 from . import bed, gffv2, gatk_style_intervals
 from .generic import IntervalFile
 

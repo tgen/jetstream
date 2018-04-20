@@ -9,9 +9,35 @@ from datetime import datetime
 from getpass import getuser
 from socket import gethostname
 from uuid import getnode
-
-from pkg_resources import get_distribution
 from ruamel import yaml
+from pkg_resources import get_distribution
+
+log = logging.getLogger(__name__)
+
+
+TEST_RECORDS = [
+    {
+        'test': 'whitespace',
+        'data': ' \t\n\n\x0b\x0c'
+    },
+    {
+        'test': 'punctuation',
+        'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+    },
+    {
+        'test': 'printable',
+        'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
+    },
+    {
+        'test': 'digits',
+        'data': '0123456789'
+    },
+    {
+        'test': 'ascii_letters',
+        'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    }
+]
 
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
@@ -57,33 +83,6 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 #
 #     lines = [parse_refdict_line(l) for l in lines]
 
-
-
-log = logging.getLogger(__name__)
-
-TEST_RECORDS = [
-    {
-        'test': 'whitespace',
-        'data': ' \t\n\n\x0b\x0c'
-    },
-    {
-        'test': 'punctuation',
-        'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-    },
-    {
-        'test': 'printable',
-        'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
-    },
-    {
-        'test': 'digits',
-        'data': '0123456789'
-    },
-    {
-        'test': 'ascii_letters',
-        'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    }
-]
 
 class Source(str):
     """String subclass that includes a "line_numbers" property for tracking
@@ -264,4 +263,3 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
             elif fnmatch.fnmatch(f, name):
                 yield os.path.join(dirname, f)
-
