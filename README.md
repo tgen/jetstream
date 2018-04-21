@@ -29,13 +29,9 @@ Jetstream is a Python module as well as a command-line utility.
 
 The installation process will make two commands available:
 
-`jetstream`
+  - `jetstream` Provides access to utility/core functions for building projects and workflows.
 
-Provides access to utility/core functions for building projects and workflows.
-
-`jetstream_pipelines`
-
-Runs the built-in analysis pipelines.
+  - `jetstream_pipelines` Runs the built-in analysis pipelines.
 
 View the help with `-h/--help` to get started. If you receive an error that acommand was not found, the Python packages bin location is probably not added to your `$PATH`. [Refer to this post][path_help] for more help.
 
@@ -46,7 +42,7 @@ In addition to the two commands mentioned above, individual analysis modules are
 
 ## Python API
 
-`import jetstream`
+`>>> import jetstream`
 
 TODO: Build and link module docs, maybe readthedocs and github.io?
 
@@ -56,7 +52,7 @@ TODO: Build and link module docs, maybe readthedocs and github.io?
 
 Best practices for development are to clone the source repo, create a virtual environment and install as a editable link with Pip. This will cause (most) changes made to the source code to be testable without resintalling. Here is an example command list:
 
-```shell
+```
 git clone https://github.com/tgen/jetstream.git
 virtualenv jetstream_venv
 source jetstream_venv/bin/activate
