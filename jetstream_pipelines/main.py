@@ -31,7 +31,7 @@ def main(args=None):
 
     cmd = [
         'jetstream',
-        'workflow',
+        'run',
         resource
     ]
 
