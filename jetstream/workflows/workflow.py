@@ -2,7 +2,7 @@ import json
 import logging
 import shutil
 from datetime import datetime
-
+import shlex
 import networkx as nx
 from networkx.drawing.nx_pydot import to_pydot
 from networkx.readwrite import json_graph
@@ -246,6 +246,9 @@ class Workflow:
         if 'cmd' not in kwargs or not kwargs['cmd']:
             msg = "Node: '{}' is missing a required value for 'cmd'"
             raise ValueError(msg.format(node_id))
+
+        if isinstance(kwargs['cmd'], str):
+            kwargs['cmd'] = shlex.shlex(kwargs['cmd'])
 
         self._add_node(node_id, kwargs)
         return node_id
