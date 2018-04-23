@@ -70,7 +70,7 @@ def loads(data):
      - Pipeline name is either 'medusa' or 'pegasus' (case insensitive)
      - Contains single occurrence of "=START" and "=END" lines
      - No data following "=END" line
-     - All metadata keys are translated to lower-case
+     - All run_parametersdata keys are translated to lower-case
      - "Kit" given in a SAMPLE line is also added to each data object for
        that sample
      - "Assay" value given in a SAMPLE line is also added to each data object
@@ -79,13 +79,13 @@ def loads(data):
     """
     source = Source(data.strip())
 
-    # Parse meta lines
-    meta_lines, sample_lines = _split_sections(source)
-    meta = _parse_meta_lines(meta_lines)
+    # Parse runparameters lines
+    run_parameters_lines, sample_lines = _split_sections(source)
+    run_parameters = _parse_run_parameters_lines(run_parameters_lines)
 
-    which_pipeline = meta['pipeline'].casefold()
+    which_pipeline = run_parameters['pipeline'].casefold()
     if which_pipeline not in ('pegasus', 'medusa'):
-        raise ConfigParsingException('Unknown pipeline: {}'.format(meta['pipeline']))
+        raise ConfigParsingException('Unknown pipeline: {}'.format(run_parameters['pipeline']))
 
     # Parse sample lines
     sample_line_groups = _group_sample_lines(sample_lines)
@@ -100,11 +100,11 @@ def loads(data):
     # Add rg and assumed read style
     data_objects = _add_extra_properties(data_objects)
 
-    return {'meta': meta, 'data': data_objects}
+    return {'run_parameters': run_parameters, 'data': data_objects}
 
 
 def _split_sections(source):
-    """ Split the metadata lines from the sample lines """
+    """ Split the run_parametersdata lines from the sample lines """
     lines = [line for line in source.splitlines() if line]
 
     start_line = '=START'
@@ -126,22 +126,22 @@ def _split_sections(source):
     if lines[-1] != "=END":
         raise ConfigParsingException('Lines found after "=END"')
 
-    # Now split the lines into two groups, meta and sample
-    meta = lines[0: start]
+    # Now split the lines into two groups, run_parameters and sample
+    run_parameters = lines[0: start]
     sample = lines[start + 1: end]
-    return meta, sample
+    return run_parameters, sample
 
 
-def _parse_meta_lines(lines):
-    """ Each line in metadata should follow a "key=value" syntax. This
-    function splits the lines in metadata into key-value pairs and
-    returns an OrderedDict of the metadata.
+def _parse_run_parameters_lines(lines):
+    """ Each line in run_parametersdata should follow a "key=value" syntax. This
+    function splits the lines in run_parametersdata into key-value pairs and
+    returns an OrderedDict of the run_parametersdata.
 
     Note: This ignores case on the keys and all keys in the resulting
     dict will be converted to lower-case.
 
     """
-    meta = dict()
+    run_parameters = dict()
 
     kv_tuples = list()
     for line in lines:
@@ -149,7 +149,7 @@ def _parse_meta_lines(lines):
             key, value = line.split('=')
             kv_tuples.append((key.lower(), value))
         except ValueError:
-            msg = 'Error parsing metadata: "{}"'.format(line.print_ln())
+            msg = 'Error parsing run_parametersdata: "{}"'.format(line.print_ln())
             raise ConfigParsingException(msg) from None
 
     # NOTE: Here I could have dynamically assigned values as
@@ -163,14 +163,14 @@ def _parse_meta_lines(lines):
     for k, v in kv_tuples:
         if k in ('jirset', 'dnapair', 'triplet4allelecount'):
             # Predetermined which fields can be arrays
-            if not k in meta:
-                meta[k] = list()
-            meta[k].append(v)
+            if not k in run_parameters:
+                run_parameters[k] = list()
+            run_parameters[k].append(v)
         else:
             # Everything else should be strings
-            meta[k] = str(v)
+            run_parameters[k] = str(v)
 
-    return meta
+    return run_parameters
 
 
 def _group_sample_lines(lines):

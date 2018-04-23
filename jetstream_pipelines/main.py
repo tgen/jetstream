@@ -1,9 +1,8 @@
+import sys
+import logging
 import argparse
 import subprocess
-import sys
-
 import pkg_resources
-
 import jetstream
 
 
@@ -19,6 +18,10 @@ def arg_parser():
 
     return parser
 
+
+# TODO add some subcomands:
+# Where are workflows stored? Should this be customizeable?
+# List available workflows?
 
 def main(args=None):
     parser = arg_parser()
@@ -40,4 +43,5 @@ def main(args=None):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     main()
