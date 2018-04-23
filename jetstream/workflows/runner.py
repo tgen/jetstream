@@ -39,11 +39,8 @@ def new_run_id():
     return run_id
 
 
-def launch(node, env):
-    log.critical('Launching node cmd {}'.format(node['id']))
-
-    if isinstance(node, tuple) and len(node) == 2:
-        node_id, node = node
+def launch(node_id, node_data, env):
+    log.critical('Launching node: {}'.format(node_id))
 
     open_fds = []
     result = {
@@ -52,21 +49,21 @@ def launch(node, env):
     }
 
     try:
-        if 'stdout' in node:
-            out = open(node['stdout'], 'w')
+        if 'stdout' in node_data:
+            out = open(node_data['stdout'], 'w')
             open_fds.append(out)
         else:
             out = subprocess.PIPE
 
-        if 'stderr' in node:
-            err = open(node['stderr'], 'w')
+        if 'stderr' in node_data:
+            err = open(node_data['stderr'], 'w')
             open_fds.append(err)
         else:
             err = subprocess.STDOUT
 
-        if 'stdin' in node:
+        if 'stdin' in node_data:
             #TODO automatically guess if stdin is a file?
-            stdin = node['stdin'].encode()
+            stdin = node_data['stdin'].encode()
         else:
             stdin = None
 
@@ -75,7 +72,7 @@ def launch(node, env):
         current_env.update(env)
 
         p = subprocess.Popen(
-            node['cmd'],
+            node_data['cmd'],
             stdin=subprocess.PIPE,
             stdout=out,
             stderr=err,
@@ -96,10 +93,12 @@ def launch(node, env):
         result['logs'] = stdout
         result['return_code'] = p.returncode
 
-        log.critical('Node cmd complete {}'.format(node['id']))
+        log.critical('Node complet: {}'.format(node_id))
+
     except Exception as e:
         log.exception(e)
         result['logs'] = "Launcher failed:\n{}".format(traceback.format_exc())
+
     finally:
         for fd in open_fds:
             fd.close()
@@ -130,12 +129,12 @@ def _runner(workflow, env):
             time.sleep(1)
 
         else:
-            log.critical('Runner sending to launch {}'.format(node))
             node_id, node_data = node
+            log.critical('Runner sending to launch: {}'.format(node_id))
 
             thread = ThreadWithReturnValue(
                 target=launch,
-                args=(node_data, env)
+                args=(node_id, node_data, env)
             )
             thread.start()
             tasks.append((node_id, thread))

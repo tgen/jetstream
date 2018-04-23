@@ -248,7 +248,7 @@ class Workflow:
             raise ValueError(msg.format(node_id))
 
         if isinstance(kwargs['cmd'], str):
-            kwargs['cmd'] = shlex.shlex(kwargs['cmd'])
+            kwargs['cmd'] = shlex.split(kwargs['cmd'])
 
         self._add_node(node_id, kwargs)
         return node_id
