@@ -24,6 +24,7 @@ def main(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     # Load the project, ensure we're working in a valid project
+    log.critical('Loading project...')
     p = Project()
 
     # Load the template
@@ -39,6 +40,7 @@ def main(args=None):
         project=p,
         strict=args.strict
     )
+    log.debug('Rendered template:\n{}'.format(rendered_template))
 
     # Rendered template is a yaml format array of nodes
     # we load this in with the yaml library, then build a

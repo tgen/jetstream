@@ -40,7 +40,7 @@ def new_run_id():
 
 
 def launch(node_id, node_data, env):
-    log.critical('Launching node: {}'.format(node_id))
+    log.critical('Launching node process: {}'.format(node_id))
 
     open_fds = []
     result = {
@@ -93,7 +93,7 @@ def launch(node_id, node_data, env):
         result['logs'] = stdout
         result['return_code'] = p.returncode
 
-        log.critical('Node complet: {}'.format(node_id))
+        log.critical('Node process exited: {}'.format(node_id))
 
     except Exception as e:
         log.exception(e)

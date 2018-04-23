@@ -1,5 +1,6 @@
-import logging
 import os
+import traceback
+import logging
 import jetstream
 
 log = logging.getLogger(__name__)
@@ -95,8 +96,8 @@ class Project:
             try:
                 config[name] = load_data_file(path)
             except Exception as e:
-                log.warning('Unable to parse {}'.format(path))
-                log.exception(e)
+                log.warning('Unable to parse project config {}'.format(path))
+                log.debug(traceback.format_exc())
 
         if project_legacy_config is not None:
             parsed = load_data_file(project_legacy_config)
