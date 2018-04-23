@@ -1,27 +1,43 @@
 
 
-- id: RNA_Align
-  cmd: []
+{% for data in project.config.data -%}{% if data.type == 'FQ' %}
+
+- id: bwa_mem_{{ loop.index }}
+  cmd: sbatch -W -c8
+  stdin: |
+    module load bwa/bwa/0.7.12 samtools/1.4.1
+
+    READ_GROUP=$(echo -e "@RG\t{{ data.read_group.ID}}")
+    OUTPATH="{{ data.sample_name }}.bam"
+
+    bwa mem \
+      -M \
+      -t8 \
+      -R ${READ_GROUP} \
+      {{ project.config.reference.reference_genome_index }} \
+      {{ data.path }} \
+      {{ data.path }} |\
+    samtools sort -O BAM -o {OUTPATH} -
 
 
 
+- id: base_recalibration_{{ loop.index }}
+  after: bwa_mem_{{ loop.index }}
+  cmd: sbatch -W -c8
+  stdin: |
+    module load gatk/4.0.1.2
 
-- id: DNA_Align_{{ assay }}
-  description: DNA Alignment with bwa mem and base recalibration with GATK
-  cmd: ['python3', '/Users/rrichholt/jetstream/tools/dna_alignment.py']
+    gatk BaseRecalibrator \
+        --reference {{ project.config.reference.reference_genome_index }} \
+        --known-sites {KNOWN_SITES} \
+        --input {OUT_PATH} \
+        --output {OUT_PATH}.recal_data.table
+
+    gatk ApplyBQSR \
+       --reference {REF} \
+       --input {OUT_PATH} \
+       --bqsr-recal-file {OUT_PATH}.recal_data.table \
+       -O {OUT_PATH}.bam
 
 
-- id: somatic variant calling {{ assay }}
-  after: DNA_Align
-
-- id: mutation_burden {{ assay }}
-  after: somatic variant calling
-
-
-#{% for item in project.meta.dnapair %}
-#- id: Mutation_Burden
-#  description: Whatever it does
-#  after: Somatic_Variant_calling
-#  cmd: ['mutationburden.sh', './stats/{{ item }}_samtools_depth.txt']
-#{% endfor %}
-
+{% endif %}{% endfor %}
