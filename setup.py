@@ -18,7 +18,7 @@ setup(
     version=__version__,
     author="Ryan Richholt",
     author_email="ryan@tgen.org",
-    url="https://github.com/tgen/jetstream_pipelines",
+    url="https://github.com/tgen/jetstream",
     description="NGS analysis pipeline at TGen.",
     long_description=read('README.md'),
     long_description_content_type="text/markdown",
@@ -38,9 +38,15 @@ setup(
         'requests',
         'jinja2'
     ],
+    extras_require={
+        'dev': [
+            'mkdocs',
+        ]
+    },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
     package_data={
-        'jetstream_pipelines': ['templates/*']
+        'jetstream_pipelines': ['templates/*'],
+        'jetstream': ['etc/*']
     },
     entry_points={
         'console_scripts': [

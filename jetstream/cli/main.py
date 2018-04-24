@@ -3,11 +3,11 @@ import importlib
 import logging
 import sys
 import traceback
-
 import pkg_resources
 
 log = logging.getLogger()
 
+__version__ = pkg_resources.get_distribution("jetstream").version
 verbose_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
@@ -21,7 +21,8 @@ def create_parser():
 
     main_parser.add_argument('subcommand', nargs='?')
 
-    main_parser.add_argument('-v', '--version', action='store_true')
+    main_parser.add_argument('-v', '--version', action='version',
+                      version=__version__)
 
     main_parser.add_argument('--debug', action='store_true')
 
@@ -57,31 +58,27 @@ def main(args=None):
         level=getattr(logging, args.log_level)
     )
 
-    version = pkg_resources.get_distribution("jetstream").version
-    log.debug('jetstream {}'.format(version))
+    log.debug('Jetstream {}'.format(__version__))
     log.debug(sys.argv)
     log.debug('{}: {}'.format(__name__, args))
 
-    if args.version:
-        print(version)
-        sys.exit(0)
-    else:
-        if args.subcommand is None:
-            parser.print_help()
-            sys.exit(1)
 
-        try:
-            # This dynamically imports the requested subcommand
-            mod = importlib.import_module(
-                '.subcommands.' + args.subcommand,
-                package=__package__)
+    if args.subcommand is None:
+        parser.print_help()
+        sys.exit(1)
 
-            log.debug('Launch {} remaining args: {}'.format(mod, remaining))
-            mod.main(remaining)
+    try:
+        # This dynamically imports the requested subcommand
+        mod = importlib.import_module(
+            '.subcommands.' + args.subcommand,
+            package=__package__)
 
-        except ModuleNotFoundError:
-            log.debug(traceback.format_exc())
-            parser.print_help()
-            if args.subcommand != 'help':
-                print('Error loading subcommand: {}'.format(args.subcommand))
-            sys.exit(1)
+        log.debug('Launch {} remaining args: {}'.format(mod, remaining))
+        mod.main(remaining)
+
+    except ModuleNotFoundError:
+        log.debug(traceback.format_exc())
+        parser.print_help()
+        if args.subcommand != 'help':
+            print('Error loading subcommand: {}'.format(args.subcommand))
+        sys.exit(1)

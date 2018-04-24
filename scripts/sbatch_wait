@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Sbatch command that waits for the job to finish then
+# cats the logs to stdout. This eliminates the need
+# for managing slurm output files.
+
+LOGS=$(mktemp)
+sbatch -W -o ${LOGS} $@
+JOBEXITCODE=$?
+cat ${LOGS}
+rm ${LOGS}
+exit $JOBEXITCODE

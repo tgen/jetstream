@@ -1,7 +1,6 @@
-# Aligns a all the DNA fastqs for sample
-{% for data in sample.data -%}{% if data.type == 'FQ' %}
+{% for data in project.config.data -%}{% if data.type == 'FQ' %}
 
-- id: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
+- id: bwa_mem_{{ loop.index }}
   cmd: sbatch_wait -c8
   stdin: |
     #!/bin/bash
@@ -11,7 +10,7 @@
     REF="{{ project.config.reference.genome_index }}"
     READ_GROUP=$(echo -e "@RG\tID:{{ data.read_group.ID}}\t\
     PL:{{ data.read_group.PL }}\t")
-    OUTPATH="{{ sample.sample_name }}.bwa.bam"
+    OUTPATH="{{ data.sample_name }}.bwa.bam"
     R1FASTQ="{{ data.path }}"
     R2FASTQ="${R1FASTQ/R1_001/R2_001}"
 
@@ -25,7 +24,7 @@
     samtools sort -O BAM -o ${OUTPATH} -
 
 
-- id: base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
+- id: base_recalibration_{{ loop.index }}
   after: bwa_mem_{{ loop.index }}
   cmd: sbatch_wait -c8
   stdin: |
@@ -35,8 +34,8 @@
 
     REF="{{ project.config.reference.genome_index }}"
     KNOWN_SITES="{{ project.config.reference.known_sites }}"
-    IN_BAM="{{ sample.sample_name }}.bwa.bam"
-    OUT_PREFIX="{{ sample.sample_name }}"
+    IN_BAM="{{ data.sample_name }}.bwa.bam"
+    OUT_PREFIX="{{ data.sample_name }}"
 
     gatk BaseRecalibrator \
         --reference ${REF} \

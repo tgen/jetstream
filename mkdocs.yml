@@ -1,0 +1,8 @@
+site_name: Jetstream 
+pages:
+    - Jetstream: index.md
+    - Installation: installation.md
+    - Getting Started: getting_started.md
+    - Troubleshooting: troubleshooting.md
+    - Source Code: contributing.md
+theme: readthedocs

@@ -69,7 +69,7 @@ class Project:
             raise NotAProject('Data dir is not a dir {}'.format(target))
 
         self._load_project_config_files()
-        log.critical('Loaded project {}'.format(self.path))
+        log.critical('Loaded project: {}'.format(self.path))
 
     def _load_project_config_files(self):
         """Loads all data files in the project/config as values in the
@@ -96,7 +96,7 @@ class Project:
             try:
                 config[name] = load_data_file(path)
             except Exception as e:
-                log.warning('Unable to parse project config {}'.format(path))
+                log.warning('Unable to parse project config: {}'.format(path))
                 log.debug(traceback.format_exc())
 
         if project_legacy_config is not None:
@@ -166,14 +166,21 @@ class Project:
             return sample_list
 
 
-def init():
-    if os.path.exists('.jetstream/created'):
-        log.critical('{} is already a project.'.format(os.getcwd()))
-    else:
-        os.makedirs('.jetstream', exist_ok=True)
-        with open('.jetstream/created', 'w') as fp:
-            fp.write(jetstream.utils.yaml_dumps(jetstream.utils.fingerprint()))
-        log.critical('Initialized project {}'.format(os.getcwd()))
+def init(path=None):
+    cwd = os.getcwd()
+    try:
+        if path is not None:
+            os.chdir(path)
+
+        if os.path.exists('.jetstream/created'):
+            log.critical('{} is already a project.'.format(os.getcwd()))
+        else:
+            os.makedirs('.jetstream', exist_ok=True)
+            with open('.jetstream/created', 'w') as fp:
+                fp.write(jetstream.utils.yaml_dumps(jetstream.utils.fingerprint()))
+            log.critical('Initialized project {}'.format(os.getcwd()))
+    finally:
+        os.chdir(cwd)
 
 
 data_loaders = {

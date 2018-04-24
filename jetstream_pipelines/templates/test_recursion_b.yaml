@@ -1,6 +1,0 @@
-# Recursive workflows have tasks that call other workflows
-
-- id: Say hi
-  cmd:
-    - echo
-    - Hello World from workflow test_recursion_b.yaml

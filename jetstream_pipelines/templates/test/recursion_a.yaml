@@ -1,6 +1,6 @@
 # Recursive workflows have tasks that call other workflows
 
-- id: Run workflow b
+- id: task1
   cmd:
     - jetstream_pipelines
-    - test_recursion_b
+    - test/recursion_b.yaml

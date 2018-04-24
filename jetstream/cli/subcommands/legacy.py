@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 
 def build_parser():
     parser = argparse.ArgumentParser(
+        prog='jetstream legacy',
         description="Convert legacy config files to YAML/JSON"
     )
 

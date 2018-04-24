@@ -1,50 +1,20 @@
-"""Render a workflow template with project config data.
-
-*This subcommand is primarily intended for debugging workflow issues. To render,
-build, and run a workflow in one step use `jetstream workflow`.*
-
-This must be run inside of a jetstream project. It renders the template with
-variables in the project config data, then prints the rendered workflow
-template to stdout.
-
-Multiple data files with the same name (basename minus extension) can be used
-during the render process in a "last value wins" pattern. Jinja2 will raise e
-errors when trying to access nested values for which a parent value is
-undefined. However, undefined values in a mapping that exists will be ignored
-unless "--strict" is used.
-"""
-import argparse
+"""Note: This command is primarily intended for debugging template issues. To
+render, build, and run a workflow in one step use "jetstream_pipelines". This
+command inherits its arguments from jetstream_pipelines. """
 import logging
-
 import jetstream
-from jetstream.workflows.builder import render_template
+import jetstream_pipelines
+from jetstream_pipelines.main import arg_parser
 
 log = logging.getLogger(__name__)
 
-
-def arg_parser():
-    parser = argparse.ArgumentParser(description=__doc__)
-
-    parser.add_argument('template', help='Path to a workflow template')
-
-    parser.add_argument('--strict', action='store_true', default=False)
-
-    return parser
-
+# Argument parser should be nearly identical to jetstream_pipelines.main
 
 def main(args=None):
-    logging.root.setLevel(logging.DEBUG)
     parser = arg_parser()
+    parser.epilog = __doc__
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project()
-
-    # Load the template
-    with open(args.template, 'r') as fp:
-        template = fp.read()
-    log.critical('Template:\n{}'.format(template))
-
-    # Render the template
-    render = render_template(template, project=p, strict=args.strict)
-    print(render)
+    env = jetstream_pipelines.env()

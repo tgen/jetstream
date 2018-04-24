@@ -6,6 +6,7 @@ render, build, and run a workflow in one step use `jetstream workflow`.*
 import argparse
 import logging
 
+import jetstream
 from jetstream import Project, Workflow, utils
 from jetstream.workflows.runner import run_workflow
 
@@ -27,16 +28,17 @@ def main(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     # Load the project
-    p = Project()
+    # This not is not entirely necessary
+    p = jetstream.Project()
 
     # TODO allow explicit loader declaration
     if args.workflow.endswith('.json'):
-        data = utils.json_load(args.workflow)
+        data = jetstream.utils.json_load(args.workflow)
     else:
-        data = utils.yaml_load(args.workflow)
+        data = jetstream.utils.yaml_load(args.workflow)
 
     log.critical('Workflow data:\n{}'.format(data))
-    wf = Workflow.from_node_link_data(data)
+    wf =jetstream.workflows.from_node_link_data(data)
 
     # Run the workflow
-    run_workflow(wf, p)
+    run_workflow(wf)

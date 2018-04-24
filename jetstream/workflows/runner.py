@@ -181,13 +181,14 @@ def _handle_completed(tasks, env):
     return
 
 
-def run_workflow(workflow, project):
+def run_workflow(workflow):
     # Generate the environment variables which will be
     # available to each node command.
     run_id = new_run_id()
-    run_path = os.path.join(project.path, '.jetstream', run_id)
+    run_path = os.path.join('.jetstream', run_id)
+
     log.debug('Making new run {}'.format(run_path))
-    os.makedirs(run_path)
+    os.mkdir(run_path)
 
     with open(os.path.join(run_path, 'created'), 'w') as fp:
         fp.write(utils.yaml_dumps(utils.fingerprint()))

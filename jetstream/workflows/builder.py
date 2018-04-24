@@ -1,9 +1,6 @@
 """Workflow builder module contains functions required for building a workflow
 object from a workflow template (yaml file)"""
 import logging
-
-from jinja2 import Template, StrictUndefined, Undefined
-
 from jetstream import utils
 from jetstream.workflows import Workflow
 from jetstream.workflows import spec
@@ -36,19 +33,6 @@ def validate_nodes(nodes, coerce=True):
         raise NodeValidationError('Validation failed for:\n{}'.format(msgs))
     else:
         return True
-
-
-def render_template(template, project=None, strict=False):
-    """Use Jinja2 to render a yaml template with a given object"""
-
-    # Allow strict rendering
-    if strict:
-        t = Template(template, undefined=StrictUndefined)
-    else:
-        t = Template(template, undefined=Undefined)
-
-    res = t.render(project=project)
-    return res
 
 
 def build_workflow(nodes):
@@ -86,24 +70,5 @@ def build_workflow(nodes):
         # need to revisit and think about how to address edge
         # cases, ex out directive with no ins, number of matches
         # per in/out etc.
-
-    return wf
-
-
-def render_and_build(template, data):
-    # Render template with project_data using Jinja2
-    log.critical('Rendering template...')
-    raw = render_template(template, data)
-
-    # Load template with yaml
-    log.critical('Parsing template...')
-    nodes = utils.yaml_loads(raw)
-
-    # validate nodes
-    log.critical('Validating nodes...\n{}'.format(nodes))
-
-    # Build workflow from nodes
-    log.critical('Adding nodes to workflow...')
-    wf = build_workflow(nodes)
 
     return wf

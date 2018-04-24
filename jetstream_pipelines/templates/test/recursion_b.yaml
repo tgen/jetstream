@@ -1,0 +1,5 @@
+# Recursive workflows have tasks that call other workflows
+
+- id: task1
+  cmd:
+    - echo DONT MAKE CIRCULAR WORKFLOWS

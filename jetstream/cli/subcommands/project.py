@@ -1,21 +1,43 @@
 """ This module contains the cli interface code for the project data utility."""
 import argparse
 import logging
-
-from jetstream import project
+import jetstream
 
 log = logging.getLogger(__name__)
 
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog='jetstream project',
+        description=__doc__
+    )
 
     parser.add_argument('action',
-                        choices=['data', 'init'])
+                        choices=['init'])
 
-    parser.add_argument('path', nargs='?')
+    parser.add_argument('args', nargs=argparse.REMAINDER)
 
     return parser
+
+
+def init_arg_parser():
+    """arg parser for the init action"""
+    parser = argparse.ArgumentParser(
+        prog='jetstream project init',
+        description='Add a release'
+    )
+
+    parser.add_argument('path', nargs='?', default='.')
+
+    return parser
+
+
+def init(args=None):
+    parser = init_arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    jetstream.project.init(args.path)
 
 
 def main(args=None):
@@ -24,7 +46,7 @@ def main(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     if args.action in ('init',):
-        project.init()
+        init(args=args.args)
 
     elif args.action in ('data',):
         # TODO Commandline iterator for samples/data, useful for bash scripts
