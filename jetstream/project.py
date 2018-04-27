@@ -102,7 +102,7 @@ class Project:
 
             try:
                 config[name] = load_data_file(path)
-            except Exception as e:
+            except Exception:
                 log.warning('Unable to parse project config: {}'.format(path))
                 log.debug(traceback.format_exc())
 
@@ -155,14 +155,18 @@ class Project:
         # Sort all data objects from project.config['data'] into samples
         if 'data' in project_data:
             for record in project_data['data']:
-                name = record['sample_name']
-                if not name in samples:
-                    samples[name] = {
-                        'sample_name': name,
+                record_sample_name = record['sample_name']
+
+                if record_sample_name not in samples:
+                    samples[record_sample_name] = {
+                        'sample_name': record_sample_name,
                         'data': []
                     }
 
-                samples[name]['data'].append(record)
+                if 'data' not in samples[record_sample_name]:
+                    samples[record_sample_name]['data'] = []
+
+                samples[record_sample_name]['data'].append(record)
 
         # Turn it into a list so we can filter based on kwargs
         sample_list = list(samples.values())
