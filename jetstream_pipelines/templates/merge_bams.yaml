@@ -15,7 +15,7 @@
       USE_THREADING=true \
       VALIDATION_STRINGENCY=SILENT \
       TMP_DIR=${TMPDIR} \
-      {%- for b in sample.data %}
+      {%- for b in sample.data if data.type == 'FQ' %}
       I={{ b.path }}
       {%- endfor %}
       OUTPUT=${MERGEDBAM}

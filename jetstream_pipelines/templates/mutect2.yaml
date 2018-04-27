@@ -3,7 +3,6 @@
 # project.config.reference.parallelization_intervals
 
 {% for interval in project.config.reference.parallelization_intervals %}
-
 - id: Mutect2_{{ dna_pair }}_{{ interval }}
   description: |
     Launch Mutect2 on a dna-pair for a single interval.
@@ -44,8 +43,10 @@
 - id: Mutect_merge_steps_{{ dna_pair }}
   description:
     Merges together the mutect stepwise vcfs into a final vcf
-  after: {% for interval in project.config.reference.parallelization_intervals %}
-    - Mutect_{{ dna_pair }}_{{ interval }} {%- endfor %}
+  after: 
+    {% for interval in project.config.reference.parallelization_intervals %}
+    - Mutect_{{ dna_pair }}_{{ interval }} 
+    {% endfor %}
   cmd: sbatch_wait -c2
   stdin: |
     #!/bin/bash
@@ -56,8 +57,8 @@
     PAIR_NAME="${DNAPAIR_LINE//,/-}"
 
     gatk MergeVcfs \
-      {%- for interval in project.config.reference.parallelization_intervals %}
+      {% for interval in project.config.reference.parallelization_intervals %}
       I="temp/${PAIR_NAME}/mutect/{PAIR_NAME}_{{ interval }}.vcf" \
-      {%- endfor %}
+      {% endfor %}
       O="${PAIR_NAME}/mutect/${PAIR_NAME}.vcf"
 

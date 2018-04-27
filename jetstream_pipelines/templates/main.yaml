@@ -6,35 +6,30 @@
     echo Project started $(date) > started.txt
 
 
-{% for sample in project.list_samples() %}
+# Alignment steps
+{% for sample in project.list_samples() if sample.assay in ["Exome", "Genome"] %}
 - id: Alignment_{{ sample.sample_name }}
   after: inform_start
-  cmd:
-    - jetstream_pipelines
-    - dna_align.yaml
-    - --sample
-    - '{{ sample | tojson }}'
+  cmd:[jetstream_pipelines, dna_align.yaml, --sample, '{{ sample | tojson }}']
 
 - id: Merge_Bams_{{ sample.sample_name }}
   after: Alignment_{{ sample.sample_name }}
-  cmd:
-    - jetstream_pipelines
-    - merge_bams.yaml
-    - --
+  cmd: [jetstream_pipelines, merge_bams.yaml, --sample, '{{ sample | tojson }}']
 
 {% endfor %}
 
-
 - id: Alignment_is_done
-  description: This is just a symbolic task that represents the point at which
-    all of the alignment steps are done. It's completely unnecessary but
-    demonstrates how one to specify "after" items in a loop. 
-  after: {% for sample in project.list_samples() %}
-    - Alignment_{{ sample.sample_name }} {%- endfor %}
+  help: This is just a symbolic task that represents the point at which
+    all of the alignment steps are done. It's completely unnecessary, but
+    demonstrates how to specify "after" for multiple items. 
+  after: 
+    {% for sample in project.list_samples() %}
+    - Alignment_{{ sample.sample_name }} 
+    {% endfor %}
   cmd: echo
 
 
-# We can add conditional modules: \{\% if project.config.run_parameters.somatic_variant_calling \%\}
+# Somatic variant calling steps
 {% for dna_pair in project.config.run_parameters.dnapair %}
 - id: Mutect_{{ dna_pair }}
   after: Alignment_is_done
@@ -43,8 +38,12 @@
 - id: Strelka_{{ dna_pair}}
   after: Alignment_is_done
   cmd: jetstream_pipelines streka.yaml --dna_pair "{{ dna_pair }}"
-{% endfor %}
 
+- id: Seurat_{{ dna_pair }}
+  after: Alignment_is_done
+  cmd: jetstream_pipelines seurat.yaml --dna_pair "{{ dna_pair }}"
+
+{% endfor %}
 
 - id: inform_complete
   after: Alignment_is_done
@@ -53,3 +52,18 @@
     #!/bin/bash
     echo Project all done $(date) > finished.txt
 
+{#
+# {% for pair in project.config.run_parameters.dnapair %}
+# - id: Mutation_burden
+#   after: somatic_variant_calling
+#   cmd: sbatch_wait -c1
+#   stdin: |
+#     #!/usr/bin/env python3
+#     import jetstream
+#     p = jetstream.Project()
+
+#     normal_name = '{{ pair }}'.split(',')[0]
+#     normal_sample = p.list_samples(sample_name=normal_name)
+#     normal_kit = normal_sample['kit']
+# {% endfor %}
+#}

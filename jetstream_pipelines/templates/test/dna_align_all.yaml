@@ -1,5 +1,4 @@
-{% for data in project.config.data -%}{% if data.type == 'FQ' %}
-
+{% for data in project.config.data if data.type == 'FQ' %}
 - id: bwa_mem_{{ loop.index }}
   cmd: sbatch_wait -c8
   stdin: |
@@ -49,5 +48,4 @@
        --bqsr-recal-file ${OUT_PREFIX}.recal_data.table \
        -O {OUT_PREFIX}.bam
 
-
-{% endif %}{% endfor %}
+{% endfor %}

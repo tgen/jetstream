@@ -32,6 +32,8 @@ def env(*dirs,
         undefined_handler = Undefined
 
     return Environment(
+        trim_blocks=True,
+        lstrip_blocks=True,
         loader=ChoiceLoader(loaders),
         undefined=undefined_handler
     )
