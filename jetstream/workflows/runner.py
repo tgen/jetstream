@@ -167,7 +167,7 @@ def _handle_completed(tasks, env):
                     log.warning('{} already exists'.format(log_path))
 
                 with open(log_path, 'w') as fp:
-                    fp.write(res['logs'])
+                    fp.write(str(res['logs']))
 
                 yield (node_id, res)
 
@@ -200,6 +200,4 @@ def run_workflow(workflow):
     }
 
     _runner(workflow, env)
-
-
 
