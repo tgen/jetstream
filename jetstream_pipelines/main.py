@@ -130,7 +130,10 @@ def main(args=None):
         sys.exit(0)
 
     jetstream.workflows.run_workflow(wf)
-
+    for node_id, node_data in wf.nodes(data=True):
+        if node_data['status'] == 'failed':
+            log.critical('Error: There were failures during the run!')
+            sys.exit(1)
 
 if __name__ == '__main__':
     main()
