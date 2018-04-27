@@ -11,18 +11,39 @@
   after: inform_start
   cmd:
     - jetstream_pipelines
-    - dna_align
+    - dna_align.yaml
     - --sample
     - '{{ sample | tojson }}'
+
+- id: Merge_Bams_{{ sample.sample_name }}
+  after: Alignment_{{ sample.sample_name }}
+  cmd:
+    - jetstream_pipelines
+    - merge_bams.yaml
+    - --
+
 {% endfor %}
 
 
 - id: Alignment_is_done
-  description: This is just a symbolic task that represents the point at which all of the alignment steps are done.
+  description: This is just a symbolic task that represents the point at which
+    all of the alignment steps are done. It's completely unnecessary but
+    demonstrates how one to specify "after" items in a loop. 
   after: {% for sample in project.list_samples() %}
     - Alignment_{{ sample.sample_name }} {%- endfor %}
-  cmd: sleep 3
+  cmd: echo
 
+
+# We can add conditional modules: \{\% if project.config.run_parameters.somatic_variant_calling \%\}
+{% for dna_pair in project.config.run_parameters.dnapair %}
+- id: Mutect_{{ dna_pair }}
+  after: Alignment_is_done
+  cmd: jetstream_pipelines mutect.yaml --dna_pair "{{ dna_pair }}"
+
+- id: Strelka_{{ dna_pair}}
+  after: Alignment_is_done
+  cmd: jetstream_pipelines streka.yaml --dna_pair "{{ dna_pair }}"
+{% endfor %}
 
 
 - id: inform_complete

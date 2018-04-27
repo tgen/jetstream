@@ -1,0 +1,63 @@
+# Requirements:
+# dna_pair
+# project.config.reference.parallelization_intervals
+
+{% for interval in project.config.reference.parallelization_intervals %}
+
+- id: Mutect_{{ dna_pair }}_{{ interval }}
+  description: |
+    Launch Mutect2 on a dna-pair for a single interval.
+
+    This path to the bam files is computed by assuming they are in a 
+    directory with the 
+
+  cmd: sbatch_wait -c2 -N Mutect_{{ dna_pair }}_{{ interval }}
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load gatk/4.0.1.2
+
+    DNAPAIR_LINE="{{ dna_pair }}"
+    PAIR_NAME="${DNAPAIR_LINE//,/-}"
+    PAIR=(${DNAPAIR_LINE//,/ })
+    
+    NORMAL_NAME=${PAIR[0]}
+    NORMAL_BAM="${NORMAL_NAME}/{$NORMAL_NAME}.bam"
+
+    TUMOR_NAME=${PAIR[1]}
+    TUMOR_BAM="${TUMOR_NAME}/${TUMOR_NAME}.bam"
+
+    gatk Mutect2 \
+      -R {{ project.config.reference.genome_index }} \
+      -I ${NORMAL_BAM} \
+      -I ${TUMOR_BAM} \
+      -L {{ interval }} \
+      -tumor ${TUMOR_NAME} \
+      -normal ${NORMAL_NAME} \
+      --germline-resource af-only-gnomad.vcf.gz \
+      --af-of-alleles-not-in-resource 0.00003125 \
+      --panel-of-normals pon.vcf.gz \
+      -O temp/${PAIR_NAME}/mutect/${PAIR_NAME}_{{ interval }}.vcf
+
+{% endfor %}
+
+- id: Mutect_merge_steps_{{ dna_pair }}
+  description:
+    Merges together the mutect stepwise vcfs into a final vcf
+  after: {% for interval in project.config.reference.parallelization_intervals %}
+    - Mutect_{{ dna_pair }}_{{ interval }} {%- endfor %}
+  cmd: sbatch_wait -c2
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load gatk/4.0.1.2
+
+    DNAPAIR_LINE="{{ dna_pair }}"
+    PAIR_NAME="${DNAPAIR_LINE//,/-}"
+
+    gatk MergeVcfs \
+      {%- for interval in project.config.reference.parallelization_intervals %}
+      I="temp/${PAIR_NAME}/mutect/{PAIR_NAME}_{{ interval }}.vcf" \
+      {%- endfor %}
+      O="${PAIR_NAME}/mutect/${PAIR_NAME}.vcf"
+
