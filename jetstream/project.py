@@ -6,12 +6,17 @@ import jetstream
 log = logging.getLogger(__name__)
 RUN_DATA_DIR = '.jetstream'
 
-# TODO: should project functions walk up the directory tree like git?
-# see this https://gist.github.com/zdavkeos/1098474 but also consider
-# this:
-# [rrichholt@dback-login1:~]$ git pull
-# fatal: Not a git repository (or any parent up to mount point /home)
-# Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+
+data_loaders = {
+    '.txt': jetstream.utils.table_to_records,
+    '.csv': jetstream.utils.table_to_records,
+    '.mer': jetstream.utils.table_to_records,
+    '.tsv': jetstream.utils.table_to_records,
+    '.json': jetstream.utils.json_load,
+    '.yaml': jetstream.utils.yaml_load,
+    '.yml': jetstream.utils.yaml_load,
+    '.config': jetstream.legacy.config.load,
+}
 
 
 class ProjectDataNotFound(Exception):
@@ -170,29 +175,25 @@ def init(path=None):
     cwd = os.getcwd()
     try:
         if path is not None:
+            os.makedirs(path, exist_ok=True)
             os.chdir(path)
 
-        if os.path.exists('.jetstream/created'):
-            log.critical('{} is already a project.'.format(os.getcwd()))
+        os.makedirs('.jetstream', exist_ok=True)
+        os.makedirs('config', exist_ok=True)
+        os.makedirs('temp', exist_ok=True)
+
+        created_path = os.path.join('.jetstream', 'created')
+        if not os.path.exists(created_path):
+            with open(created_path, 'w') as fp:
+                created = jetstream.utils.fingerprint()
+                created = jetstream.utils.yaml_dumps(created)
+                fp.write(created)
+            log.critical('Initialized project: {}'.format(os.getcwd()))
         else:
-            os.makedirs('.jetstream', exist_ok=True)
-            with open('.jetstream/created', 'w') as fp:
-                fp.write(jetstream.utils.yaml_dumps(jetstream.utils.fingerprint()))
-            log.critical('Initialized project {}'.format(os.getcwd()))
+            log.critical('Reinitialized project: {}'.format(os.getcwd()))
+
     finally:
         os.chdir(cwd)
-
-
-data_loaders = {
-    '.txt': jetstream.utils.table_to_records,
-    '.csv': jetstream.utils.table_to_records,
-    '.mer': jetstream.utils.table_to_records,
-    '.tsv': jetstream.utils.table_to_records,
-    '.json': jetstream.utils.json_load,
-    '.yaml': jetstream.utils.yaml_load,
-    '.yml': jetstream.utils.yaml_load,
-    '.config': jetstream.legacy.config.load,
-}
 
 
 def loadable_files(path):
