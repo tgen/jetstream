@@ -70,7 +70,7 @@ def loads(data):
      - Pipeline name is either 'medusa' or 'pegasus' (case insensitive)
      - Contains single occurrence of "=START" and "=END" lines
      - No data following "=END" line
-     - All run_parametersdata keys are translated to lower-case
+     - All run_parameters keys are translated to lower-case
      - "Kit" given in a SAMPLE line is also added to each data object for
        that sample
      - "Assay" value given in a SAMPLE line is also added to each data object
@@ -79,20 +79,32 @@ def loads(data):
     """
     source = Source(data.strip())
 
-    # Parse runparameters lines
+    # Everything before =START is considered the run_parameters lines,
+    # everything after is considered the sample lines.
     run_parameters_lines, sample_lines = _split_sections(source)
-    run_parameters = _parse_run_parameters_lines(run_parameters_lines)
 
+    run_parameters = _parse_run_parameters_lines(run_parameters_lines)
     which_pipeline = run_parameters['pipeline'].casefold()
     if which_pipeline not in ('pegasus', 'medusa'):
-        raise ConfigParsingException('Unknown pipeline: {}'.format(run_parameters['pipeline']))
+        raise ConfigParsingException(
+            'Unknown pipeline: {}'.format(run_parameters['pipeline']))
 
     # Parse sample lines
     sample_line_groups = _group_sample_lines(sample_lines)
     data_objects = []
+    sample_objects = []
     for group in sample_line_groups:
         try:
-            data_objects += _parse_sample(group)
+            datas, sample = _parse_sample(group)
+
+            # datas is a list of data objects we want to extend
+            # data_objects to include
+            data_objects.extend(datas)
+
+            # sample there is only one sample so just append to
+            # sample_objects
+            sample_objects.append(sample)
+
         except Exception as err:
             msg = '{} while parsing group:\n{}'.format(err, '\n'.join(group))
             raise ConfigParsingException(msg)
@@ -100,11 +112,15 @@ def loads(data):
     # Add rg and assumed read style
     data_objects = _add_extra_properties(data_objects)
 
-    return {'run_parameters': run_parameters, 'data': data_objects}
+    return {
+        'run_parameters': run_parameters,
+        'data': data_objects,
+        'samples': sample_objects
+    }
 
 
 def _split_sections(source):
-    """ Split the run_parametersdata lines from the sample lines """
+    """ Split the run_parameters lines from the sample lines """
     lines = [line for line in source.splitlines() if line]
 
     start_line = '=START'
@@ -133,9 +149,9 @@ def _split_sections(source):
 
 
 def _parse_run_parameters_lines(lines):
-    """ Each line in run_parametersdata should follow a "key=value" syntax. This
-    function splits the lines in run_parametersdata into key-value pairs and
-    returns an OrderedDict of the run_parametersdata.
+    """ Each line in run_parameters should follow a "key=value" syntax. This
+    function splits the lines in run_parameters into key-value pairs and
+    returns an OrderedDict of the run_parameters.
 
     Note: This ignores case on the keys and all keys in the resulting
     dict will be converted to lower-case.
@@ -149,30 +165,46 @@ def _parse_run_parameters_lines(lines):
             key, value = line.split('=')
             kv_tuples.append((key.lower(), value))
         except ValueError:
-            msg = 'Error parsing run_parametersdata: "{}"'.format(line.print_ln())
+            msg = 'Error parsing run_parameters: "{}"'.format(line.print_ln())
             raise ConfigParsingException(msg) from None
 
-    # NOTE: Here I could have dynamically assigned values as
-    # arrays (lists) if the key was found multiple times. But,
-    # This would cause the value for a particular key to be
-    # an array in cases with mutiple values, and strings when
-    # only a single value was present. I've chosen to predetermine
-    # the fields which can be arrays, therefore the results are
-    # more predictable
+    # NOTE: Here I could have dynamically set value types to
+    # lists if the key was found multiple times. But, This could have
+    # potentially masked user errors in the config files. I've chosen
+    # to hard-code the fields which can be lists, in order to make the
+    # behavior more predictable. Every other value is parsed with str()
 
     for k, v in kv_tuples:
         if k in ('jirset', 'dnapair', 'triplet4allelecount'):
-            # Predetermined which fields can be arrays
-            if not k in run_parameters:
+            if k not in run_parameters:
                 run_parameters[k] = list()
             run_parameters[k].append(v)
         else:
-            # Everything else should be strings
             run_parameters[k] = str(v)
 
     return run_parameters
 
 
+# The following functions convert the sample lines in a config file into
+# data objects (nested dictionary/list structure). This causes a couple small
+# changes in the structure:
+#
+#    1) Data objects inherit 'kit' and 'assay' attributes from their SAMPLE
+#
+#    The kit code and assay are associated with a sample in the config files.
+#    But, the assay is not really a property of the sample itself, it's a
+#    property of the data object. For instance, one sample can be prepped
+#    multiple times with different kits. Here, kit is copied as a property of
+#    each data object.
+#
+#
+#    2) Data will ALWAYS have a library property.
+#
+#    Dilution ID is part of the sample data for Medusa config files. This
+#    was later changed in Pegasus. The dilution ID is also called a library,
+#    and is eventually used for making read groups. This parser always adds
+#    dilution id (library) as a property of the data.
+#
 def _group_sample_lines(lines):
     """ Groups sample lines together with data lines """
     samples = []
@@ -202,42 +234,20 @@ def _group_sample_lines(lines):
     return samples
 
 
-# The following functions convert the sample lines in a config file into
-# data objects (nested dictionary/list structure). This causes a couple small
-# changes in the structure:
-#
-#    1) Data objects inherit 'kit' and 'assay' attributes from their SAMPLE
-#
-#    The kit code and assay are associated with a sample in the config files.
-#    But, the assay is not really a property of the sample itself, it's a
-#    property of the data object. For instance, one sample can be prepped
-#    multiple times with different kits. Here, kit is copied as a property of
-#    each data object.
-#
-#
-#    2) Data will ALWAYS have a library property.
-#
-#    Dilution ID is part of the sample data for Medusa config files. This
-#    was later changed in Pegasus. The dilution ID is also called a library,
-#    and is eventually used for making read groups. This parser always adds
-#    dilution id (library) as a property of the data.
-#
-
 def _parse_sample(lines):
     """Create a list of data objects from a list of sample lines"""
-    data_objects = []
+    data_objects = list()
     sample_line = lines[0]
     s = {'line_number': sample_line.line_number}
 
-    # The fields are everything after 'SAMPLE='
-    # Collect data from the sample line and store it as key:values
-    # in the sample dict.
+    # The sample fields are everything after 'SAMPLE=' Collect data
+    # from the sample line and add it to the sample dict.
     fields = sample_line.partition('SAMPLE=')[2]
     try:
-        # Pegasus has 4 fields in sample line
+        # Pegasus field order
         s['kit'], s['name'], s['assay'], s['library'] = fields.split(',')
     except ValueError:
-        # Medusa has only 3
+        # Medusa field order
         s['kit'], s['name'], s['assay'] = fields.split(',')
 
     # Every line after 'SAMPLE=' is a data object
@@ -263,7 +273,7 @@ def _parse_sample(lines):
 
         data_objects.append(d)
 
-    return data_objects
+    return data_objects, s
 
 
 def _add_extra_properties(data):
