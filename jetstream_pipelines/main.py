@@ -33,14 +33,14 @@ def arg_parser():
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('name', help='Template name')
+    parser.add_argument('template', help='Template name')
 
     parser.add_argument('-t', '--template-dir', action='append', default=[])
 
-    parser.add_argument('--build-only', action='store_true',
+    parser.add_argument('-b', '--build-only', action='store_true',
                         help='Just build the workflow and print to stdout.')
 
-    parser.add_argument('--render-only', action='store_true',
+    parser.add_argument('-r', '--render-only', action='store_true',
                         help='Just render the template and print to stdout.')
 
     parser.add_argument('--ignore-undefined', dest='strict',
@@ -88,7 +88,7 @@ def main(args=None):
     log.debug(args)
 
     project = jetstream.Project()
-    template_name = args.name
+    template_name = args.template
     strict = args.strict
     additional_template_dirs = args.template_dir
     package_templates = args.package_templates
