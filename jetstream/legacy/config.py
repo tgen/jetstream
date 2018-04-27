@@ -245,10 +245,10 @@ def _parse_sample(lines):
     fields = sample_line.partition('SAMPLE=')[2]
     try:
         # Pegasus field order
-        s['kit'], s['name'], s['assay'], s['library'] = fields.split(',')
+        s['kit'], s['sample_name'], s['assay'], s['library'] = fields.split(',')
     except ValueError:
         # Medusa field order
-        s['kit'], s['name'], s['assay'] = fields.split(',')
+        s['kit'], s['sample_name'], s['assay'] = fields.split(',')
 
     # Every line after 'SAMPLE=' is a data object
     # Collect data information from the data line in a dictionary
@@ -256,7 +256,7 @@ def _parse_sample(lines):
     for line in lines[1:]:
         d = {
             'line_number': line.line_number,
-            'sample_name': s['name'],
+            'sample_name': s['sample_name'],
             'kit': s['kit'],
             'assay': s['assay']
         }
