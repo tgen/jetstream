@@ -4,14 +4,14 @@
 
 {% for interval in project.config.reference.parallelization_intervals %}
 
-- id: Mutect_{{ dna_pair }}_{{ interval }}
+- id: Mutect2_{{ dna_pair }}_{{ interval }}
   description: |
     Launch Mutect2 on a dna-pair for a single interval.
 
     This path to the bam files is computed by assuming they are in a 
     directory with the 
 
-  cmd: sbatch_wait -c2 -N Mutect_{{ dna_pair }}_{{ interval }}
+  cmd: sbatch_wait -c2 -N Mutect2_{{ dna_pair }}_{{ interval }}
   stdin: |
     #!/bin/bash
     set -eu
