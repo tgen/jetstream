@@ -54,6 +54,8 @@ class Project:
     """
     def __init__(self, path=None):
         self.path = path or os.getcwd()
+        self.config_path = os.path.join(self.path, 'config')
+        self.temp_path = os.path.join(self.path, 'temp')
         self.name = os.path.basename(self.path)
         self.config = dict()
         self._run_id = ''
@@ -90,11 +92,11 @@ class Project:
         # be stored in multiple files https://pypi.org/project/jsonmerge/
         config = dict()
         project_legacy_config = None
-        for path in loadable_files(self.path):
+        for path in loadable_files(self.config_path):
             name = name_a_path(path)
 
+            # Handle legacy configs, see docstring
             if path.endswith('.config') and name == self.name:
-                # Handle legacy configs, see docstring
                 project_legacy_config = path
                 continue
 
@@ -196,12 +198,13 @@ def init(path=None):
         os.chdir(cwd)
 
 
-def loadable_files(path):
+def loadable_files(directory):
     """Generator yields all files we can load (see data_loaders) """
-    for file in os.listdir(path):
-        if os.path.isfile(file) \
-                and file.endswith(tuple(data_loaders.keys())):
-            yield os.path.join(path, file)
+    for file in os.listdir(directory):
+        path = os.path.join(directory, file)
+        if os.path.isfile(path) \
+                and path.endswith(tuple(data_loaders.keys())):
+            yield path
 
 
 def name_a_path(path):
