@@ -44,19 +44,26 @@ Templates are awesome. They allow us to generate very complex workflows with a m
 (# TODO make graphic)
 ```
 
-Code/Scripts 		<----------|Flexibility|----------->     CLI/GUI Applications
+Code/Scripts          <---------------Flexibility--------------->       CLI/GUI Applications
  
- 								 Templates
-
-+ Flexibilty              + Very flexible                    + No user development time needed 
-- Speed					  + Limited/Predictable behavior     + Very predicatble results
-- Predictability          - Small learning curve             - Flexibile only by adding more options
++ Flexibilty                           Templates                     + Very predicatble results
+- Speed                                                              - High developer time burden
+- Predictability                + Very flexible                      - Flexibile only by adding more options
+                                + Limited/Predictable behavior       
+                                + Small learning curve            
 
  ```
 
 
+# External resources
+
 https://en.wikipedia.org/wiki/Template_processor
 
+http://yaml.org
+
+https://stedolan.github.io/jq/
+
+https://jqplay.org
 
 http://jinja.pocoo.org/docs/2.10/templates/
 
