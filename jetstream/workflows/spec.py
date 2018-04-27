@@ -30,16 +30,6 @@ SPEC = {
                 'description': 'Write stderr to a file',
                 'type': str
             },
-            'stagein': {
-                'description': 'Data to be copied into working directory prior '
-                               'to execution',
-                'type': str
-            },
-            'stageout': {
-                'description': 'Data to be copied out of working directory '
-                               '(into final) after execution',
-                'type': str
-            },
             'before': {
                 'description': 'This node should execute before some other '
                                'node/s',
