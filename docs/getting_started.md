@@ -16,14 +16,14 @@
 
 # Intro
 
-# note: often times when I read documents for a project, I find myself thinking that they dont spend enough time introducing the project at the basic/beginner level. I want this section to be a very clear introduction to the application, but ive been working so closely on it that its difficult for me to step back and see it from an outside perspective.
+note: often times when I read documents for a project, I find myself thinking that they dont spend enough time introducing the project at the basic/beginner level. I want this section to be a very clear introduction to the application, but ive been working so closely on it that its difficult for me to step back and see it from an outside perspective.
 
 
 # Projects
 
-Jetstream relies heavily on organizing work as projects. Most of the commands covered in this guide are going to require that you are working inside of a project, and all the built-in pipelines assume that you're inside of a project. This section covers a description of the Jetstream project and the rationale behind the structure. 
+Jetstream relies heavily on organizing data as projects. Most of the commands discussed in this guide, and all of the built-in pipelines, have to be run inside of a project. This section describes the rational and structure of the Jetstream project.
 
-Jetstream Projects are just directories on a filesystem that include a few simple, but essential requirements. You can 
+Jetstream Projects are just directories on a filesystem that include a few simple, but essential requirements.
 
 
 # Pipelines
@@ -52,7 +52,7 @@ Code/Scripts          <---------------Flexibility--------------->       CLI/GUI 
                                 + Limited/Predictable behavior       
                                 + Small learning curve            
 
- ```
+```
 
 
 # External resources
