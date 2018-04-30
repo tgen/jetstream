@@ -1,8 +1,14 @@
-# Requirements
-# sample
-# project.config.reference.genome_index 
+# Description:
+#   Aligns all sequencing read data for a single sample. This operates on 
+#   data files found in the sample json, under sample.data, where the property
+#   "type" is equal to "FQ".
+#
+# Requirements: 
+# sample (json data)
+# project.config.reference.genome_index
+# project.config.reference.known_sites
 
-{% for data in sample.data -%}{% if data.type == 'FQ' %}
+{% for data in sample.data if data.type == 'FQ' %}
 - id: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
   cmd: sbatch_wait -c8
   methods: Fastqs for {{ sample.sample_name}} were aligned with bwa mem v0.7.12
@@ -51,5 +57,4 @@
        --bqsr-recal-file ${OUT_PREFIX}.recal_data.table \
        -O {OUT_PREFIX}.bam
 
-
-{% endif %}{% endfor %}
+{% endfor %}
