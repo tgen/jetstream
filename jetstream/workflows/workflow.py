@@ -18,19 +18,18 @@ class NotDagError(Exception):
 
 
 class Workflow:
-    """ Workflows are a network graph representating a series of steps that need
-    to be executed on a project. Each node of the graph represents a plugin
-    component loaded with jetstream.plugins.get_plugin(). Workflows are a type
-    of iterable that implement __next__() and __send__() methods. Calling next()
-    on a workflow will yield a plugin that is ready for to be executed, or None
-    if there are none available. StopIteration will be raised when all plugins
-    are completed.
+    """ Workflows are a network graph representing a series of steps that need
+    to be executed on a project. Each node of the graph represents a task
+    to be completed, edges represent dependencies between the tasks. Workflows
+    are iterables that implement __next__() and __send__() methods. Calling
+    next() on a workflow will return a task (node_id, node_data) that is ready
+    for to be executed, or None if there are none currently available.
+    StopIteration will be raised when all tasks are completed. Task status
+    should be updated via Workflow.__send__(), Workflow.fail_node(), or
+    Workflow.pass_node().
 
-    on_update takes a function that will be called every time a change is made
-    to the workflow.
-
-    Workflows can be loaded from existing graphs with the graph argument or
-    from_pydot() method.
+    Workflows can be loaded from existing graphs with the data argument or
+    from_node_link_data() method.
 
     """
 
@@ -85,12 +84,11 @@ class Workflow:
     def __iter__(self):
         """ Workflows are essentially fancy iterators that allow feedback
         through the __send__ method. See generators """
-        # TODO we may want this to reset the status for pending tasks?
         return self
 
     def __next__(self):
-        """ returns the next component available for launch and marks
-        the node status as "pending" """
+        """ Returns the next task available for launch and marks the node status
+        as "pending" """
         pending = False
         for node_id, node_data in self.graph.nodes(data=True):
             if node_data['status'] == 'pending':
@@ -120,11 +118,11 @@ class Workflow:
         self.update(node_id, datetime_end=str(datetime.now()))
 
         if return_code != 0:
-            self.fail(node_id, return_code=return_code, logs=logs)
+            self.fail_node(node_id, return_code=return_code, logs=logs)
         else:
-            self.complete(node_id, return_code=return_code, logs=logs)
+            self.pass_node(node_id, return_code=return_code, logs=logs)
 
-    def complete(self, node_id, return_code=0, logs=''):
+    def pass_node(self, node_id, return_code=0, logs=''):
         """ Complete a node_id """
         log.critical('Node complete! {}'.format(node_id))
         self.update(
@@ -134,7 +132,7 @@ class Workflow:
             logs=logs
         )
 
-    def fail(self, node_id, return_code=1, logs=''):
+    def fail_node(self, node_id, return_code=1, logs=''):
         """ Fail a node_id, this also fails any nodes dependent on node_id"""
         log.critical('Node failed! {}'.format(node_id))
 
@@ -146,7 +144,19 @@ class Workflow:
         )
 
         for d in self.graph.predecessors(node_id):
-            self.fail(d, logs='Failed due to dependency {}'.format(node_id))
+            self.fail_node(d, logs='Failed due to dependency {}'.format(node_id))
+
+    def reset_node(self, node_id):
+        log.critical('Node reset! {}'.format(node_id))
+
+        self.update(
+            node_id,
+            status='new',
+            return_code=None,
+            logs=None,
+            datetime_start=None,
+            datetime_end=None
+        )
 
     # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
@@ -276,6 +286,17 @@ class Workflow:
         res = nx.algorithms.binary.compose(self.graph, wf.graph)
         self.graph = res
 
+    def resume(self):
+        """ Returns all pending nodes to an incomplete state. """
+        for node_id, node_data in self.nodes(data=True):
+            if node_data['status'] == 'pending':
+                self.reset_node(node_id)
+
+    def reset(self):
+        """ Returns all nodes to a new state. """
+        for node_id, node_data in self.nodes(data=True):
+            self.reset_node(node_id)
+
 
 def from_node_link_data(data):
     graph = json_graph.node_link_graph(data)
@@ -284,3 +305,8 @@ def from_node_link_data(data):
 
 def to_node_link_data(wf):
     return json_graph.node_link_data(wf.graph)
+
+
+def load(path, loader=utils.yaml_load):
+    data = loader(path)
+    return from_node_link_data(data['workflow'])
