@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import subprocess
 import traceback
 import logging
@@ -8,6 +9,7 @@ from threading import Thread
 
 import ulid
 from jetstream import utils
+from .workflow import save
 
 log = logging.getLogger(__name__)
 
@@ -22,10 +24,6 @@ class ThreadWithReturnValue(Thread):
     def run(self):
         if self._target is not None:
             self._return = self._target(*self._args, **self._kwargs)
-            # try:
-            #     self._return = self._target(*self._args, **self._kwargs)
-            # except Exception as e:
-            #     self._return = e
         else:
             raise RuntimeError('Threads must have a target function')
 
@@ -39,13 +37,26 @@ def new_run_id():
     return run_id
 
 
-def launch(node_id, node_data, env):
+def cleanse_filename(s):
+    # shout-out https://stackoverflow.com/a/1007615/3924113
+    s = re.sub(r"[^\w\s]", '', s)
+    s = re.sub(r"\s+", '_', s)
+    return s
+
+
+def launch(node_id, node_data):
+    """Launch a node
+
+    Nodes represent tasks to be completed. This function launches a
+    process for the node, and knows how to handle node directives for
+    saving stdout/stderr and piping in stdin.
+    """
     log.critical('Launching node process: {}'.format(node_id))
 
     open_fds = []
     result = {
         'return_code': 1,
-        'logs': 'Launcher failed!',
+        'logs': 'Launcher failed to initialize task!',
     }
 
     try:
@@ -62,33 +73,24 @@ def launch(node_id, node_data, env):
             err = subprocess.STDOUT
 
         if 'stdin' in node_data:
-            #TODO automatically guess if stdin is a file?
             stdin = node_data['stdin'].encode()
         else:
             stdin = None
-
-        # TODO Had to add this in order to get stuff that's in PATH
-        current_env = os.environ.copy()
-        current_env.update(env)
 
         p = subprocess.Popen(
             node_data['cmd'],
             stdin=subprocess.PIPE,
             stdout=out,
-            stderr=err,
-            env=current_env,
+            stderr=err
         )
 
         stdout, _ = p.communicate(input=stdin)
 
-        try:
-            stdout = stdout.decode()
-
-            # TODO How can we get stdout to write to a file and to logs in
-            # real-time as the command is running?
-
-        except AttributeError:
-            pass
+        if stdout:
+            try:
+                stdout = stdout.decode()
+            except AttributeError as e:
+                stdout = 'Unable to decode stdout: {}'.format(e)
 
         result['logs'] = stdout
         result['return_code'] = p.returncode
@@ -106,9 +108,10 @@ def launch(node_id, node_data, env):
     return result
 
 
-def _runner(workflow, env):
-    log.critical('Runner initialized: {}'.format(env))
-    workflow.save(env['JETSTREAM_WORKFLOWPATH'])
+def _runner(workflow, run_id, run_path):
+    log.critical('Runner initialized: {}'.format(run_path))
+    workflow_path = os.path.join(run_path, 'workflow.yaml')
+    save(workflow, workflow_path)
 
     tasks = deque()
     while 1:
@@ -119,13 +122,13 @@ def _runner(workflow, env):
             break
 
         if node is None:
-            for node_id, result in _handle_completed(tasks, env):
+            for node_id, result in _handle_completed(tasks, run_id, run_path):
                 workflow.__send__(
                     node_id=node_id,
                     return_code=result['return_code'],
                     logs=result['logs']
                 )
-                workflow.save(env['JETSTREAM_WORKFLOWPATH'])
+                save(workflow, workflow_path)
             time.sleep(1)
 
         else:
@@ -134,16 +137,16 @@ def _runner(workflow, env):
 
             thread = ThreadWithReturnValue(
                 target=launch,
-                args=(node_id, node_data, env)
+                args=(node_id, node_data)
             )
             thread.start()
             tasks.append((node_id, thread))
-            workflow.save(env['JETSTREAM_WORKFLOWPATH'])
+            save(workflow, workflow_path)
 
     log.critical('Run complete!')
 
 
-def _handle_completed(tasks, env):
+def _handle_completed(tasks, run_id, run_path):
     """Cycle through the active tasks queue and return completed tasks. """
     sentinel = object()
     tasks.append(sentinel)
@@ -159,15 +162,13 @@ def _handle_completed(tasks, env):
                 res = thread.join(timeout=1)
 
                 log_path = os.path.join(
-                    env['JETSTREAM_RUNPATH'],
-                    node_id + '.log'
-                )
+                    run_path, node_id.replace('\n', '_') + '.log')
 
                 if os.path.exists(log_path):
                     log.warning('{} already exists'.format(log_path))
 
                 with open(log_path, 'w') as fp:
-                    fp.write(str(res['logs']))
+                    print(res['logs'], file=fp)
 
                 yield (node_id, res)
 
@@ -182,22 +183,20 @@ def _handle_completed(tasks, env):
 
 
 def run_workflow(workflow):
-    # Generate the environment variables which will be
-    # available to each node command.
+    parent = os.environ.get('JETSTREAM_RUNPATH', '.jetstream')
+
     run_id = new_run_id()
-    run_path = os.path.join('.jetstream', run_id)
+    run_path = os.path.join(parent, run_id)
+
+    os.environ['JETSTREAM_RUNID'] = run_id
+    os.environ['JETSTREAM_RUNPATH'] = run_path
 
     log.debug('Making new run {}'.format(run_path))
     os.mkdir(run_path)
 
-    with open(os.path.join(run_path, 'created'), 'w') as fp:
-        fp.write(utils.yaml_dumps(utils.fingerprint()))
+    with open(os.path.join(run_path, 'created.yaml'), 'w') as fp:
+        record = {run_id: utils.fingerprint()}
+        fp.write(utils.yaml_dumps(record))
 
-    env = {
-        'JETSTREAM_RUNID': run_id,
-        'JETSTREAM_RUNPATH': run_path,
-        'JETSTREAM_WORKFLOWPATH': os.path.join(run_path, 'workflow')
-    }
-
-    _runner(workflow, env)
+    _runner(workflow, run_id=run_id, run_path=run_path)
 
