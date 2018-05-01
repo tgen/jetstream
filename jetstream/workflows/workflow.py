@@ -40,16 +40,9 @@ class Workflow:
         if not nx.is_directed_acyclic_graph(self.graph):
             raise NotDagError
 
-    # Utility methods
     def __str__(self):
         """ Gives better results when using print() """
         return utils.yaml_dumps(self.serialize())
-
-    def save(self, path):
-        lock_path = path + '.lock'
-        obj = {'workflow': self.serialize()}
-        utils.yaml_dump(obj, lock_path)
-        shutil.move(lock_path, path)
 
     def serialize(self, serializer=None):
         """Serialize the workflow for dumping to json/yaml etc..."""
@@ -59,8 +52,8 @@ class Workflow:
             return self.to_node_link_data()
 
     def to_dot(self):
-        """ Returns a pydot representation of the graph """
-        # Note Had to dig into the networkx source to find this, but it works..
+        """ Returns a pydot representation of the graph. Note: Had to dig into
+        the networkx source to find this, but it works.."""
         graph = self.graph.copy()
         return to_pydot(graph).__str__()
 
@@ -310,3 +303,10 @@ def to_node_link_data(wf):
 def load(path, loader=utils.yaml_load):
     data = loader(path)
     return from_node_link_data(data['workflow'])
+
+
+def save(wf, path):
+    lock_path = path + '.lock'
+    obj = {'workflow': wf.serialize()}
+    utils.yaml_dump(obj, lock_path)
+    shutil.move(lock_path, path)
