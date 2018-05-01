@@ -1,20 +1,12 @@
 """Run a Jetstream pipeline
 
-All arguments following the name of the pipeline are considered template
-data values and will be ignored by the argument parser initially. Any
-options listed below must be given BEFORE the workflow name (first
-positional argument)
+All arguments following the name of the pipeline are considered template data
+values and will be ignored by the argument parser initially. Any options listed
+below must be given BEFORE the workflow name (first positional argument) The
+key must start with two hyphens and the value is the next argument. Values can
+be JSON strings.
 
-Template Data "--key value" Arguments:
-
-All arguments FOLLOWING the workflow name are parsed as key-value pairs,
-and then passed to the template for rendering. The key must start with
-two hyphens and the value is the next argument: "--key value". Values
-can be JSON strings.
-
-For example, if a workflow requires a variable "name":
-
-    jetstream_pipelines bender --name bender
+    jetstream_pipelines <options> <template> [ --<key> <value> ]
 
 """
 import sys
@@ -35,8 +27,6 @@ def arg_parser():
 
     parser.add_argument('template', help='Template name')
 
-    parser.add_argument('-t', '--template-dir', action='append', default=[])
-
     parser.add_argument('-b', '--build-only', action='store_true',
                         help='Just build the workflow and print to stdout.')
 
@@ -44,16 +34,12 @@ def arg_parser():
                         help='Just render the template and print to stdout.')
 
     parser.add_argument('--ignore-undefined', dest='strict',
-                        action='store_false', default=True,
+                        action='store_false',
                         help='Suppress errors normally raised when a workflow '
                              'variable is undefined')
 
-    parser.add_argument('--no-site-templates', dest='package_templates',
-                        action='store_false', default=True,
-                        help='Ignore templates installed in package data')
-
     parser.add_argument('--no-project-templates', dest='project_templates',
-                        action='store_false', default=True,
+                        action='store_false',
                         help='Ignore templates in the current project')
 
     parser.add_argument('kvargs', nargs=argparse.REMAINDER,
@@ -61,6 +47,7 @@ def arg_parser():
                              'as arbitrary "--key value" pairs (see help)')
 
     return parser
+
 
 
 def reparse_aribitrary(remainder):
@@ -85,43 +72,28 @@ def json_allowed(value):
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
-    log.debug(args)
+    log.critical(args)
 
-    project = jetstream.Project()
-    template_name = args.template
-    strict = args.strict
-    additional_template_dirs = args.template_dir
-    package_templates = args.package_templates
-    project_templates = args.project_templates
-    key_value_args = args.kvargs
-
-    # TODO Template search path should be set as an environement variable
-    # in order to propagate the settings to recursive workflows
-
-    # Jinja manages templates, we just need to add any additional directories
-    # to the search path, and decide if we want strict rendering.
     env = jetstream_pipelines.env(
-        *additional_template_dirs,
-        strict=strict,
-        include_project_templates=project_templates,
-        include_package_templates=package_templates
+        strict=args.strict,
+        include_project_templates=args.project_templates,
     )
 
-    t = env.get_template(template_name)
+    project = jetstream.Project()
+    t = env.get_template(args.template)
     log.critical("Loaded template: {}".format(t.filename))
 
     # Any arguments following the workflow template name are parsed with
     # json_allowed and available as variables when rendering the template.
     # "project" is reserved as the namespace for the project data.
-    kwargs = reparse_aribitrary(key_value_args)
+    kwargs = reparse_aribitrary(args.kvargs)
     rendered_template = t.render(project=project, **kwargs)
 
     if args.render_only:
         print(rendered_template)
         sys.exit(0)
 
-    # Node properties that are allowed in a workflow template are
-    # described in jetstream.workflows.spec
+    # Node properties are described in jetstream.workflows.spec
     nodes = jetstream.utils.yaml_loads(rendered_template)
     wf = jetstream.workflows.build_workflow(nodes)
 
@@ -130,10 +102,11 @@ def main(args=None):
         sys.exit(0)
 
     jetstream.workflows.run_workflow(wf)
-    for node_id, node_data in wf.nodes(data=True):
-        if node_data['status'] == 'failed':
-            log.critical('Error: There were failures during the run!')
-            sys.exit(1)
+
+    failures = [s for s in wf.status() if s == 'failed']
+    if failures:
+        log.critical('Error: Some tasks failed! {}'.format(failures))
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
