@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 import shutil
 from datetime import datetime
@@ -257,23 +258,50 @@ class Workflow:
         return node_id
 
     def add_dependency(self, node_id, before=None, after=None):
-        if before:
-            if isinstance(before, str):
-                before = (before,)
+        if not node_id in self.graph:
+            raise ValueError('{} not in graph'.format(node_id))
 
-            for child_id in before:
-                if child_id not in self.graph:
-                    raise ValueError('{} not in graph'.format(child_id))
-                self._add_edge(from_node=child_id, to_node=node_id)
+        stack = []
+        try:
+            if before:
+                if isinstance(before, str):
+                    before = (before,)
 
-        if after:
-            if isinstance(after, str):
-                after = (after,)
+                before_pats = [re.compile(b) for b in before]
 
-            for parent_id in after:
-                if parent_id not in self.graph:
-                    raise ValueError('{} not in graph'.format(parent_id))
-                self._add_edge(from_node=node_id, to_node=parent_id)
+                for pat in before_pats:
+                    matches = filter(pat.match, self.nodes())
+
+                    if not matches:
+                        raise ValueError('No matching nodes for: {}'.format(
+                            pat.pattern))
+
+                    for child_id in matches:
+                        self._add_edge(from_node=child_id, to_node=node_id)
+                        stack.append((child_id, node_id))
+
+            if after:
+                if isinstance(after, str):
+                    after = (after,)
+
+                after_pats = [re.compile(a) for a in after]
+
+                for pat in after_pats:
+                    matches = filter(pat.match, self.nodes())
+
+                    if not matches:
+                        raise ValueError('No matching nodes for {}'.format(
+                            pat.pattern))
+
+                    for parent_id in matches:
+                        self._add_edge(from_node=node_id, to_node=parent_id)
+                        stack.append((node_id, parent_id))
+
+        except Exception as e:
+            for u, v in stack:
+                log.debug('Rolling back: {} -> {}'.format(u, v))
+                self.graph.remove_edge(u, v)
+            raise e from None
 
     def compose(self, wf):
         res = nx.algorithms.binary.compose(self.graph, wf.graph)
