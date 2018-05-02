@@ -10,6 +10,17 @@
     files. It is not included in the Picard metrics files. The targets intervals
     do NOT need to be padded before starting this process.
 
+Usage:
+
+See argument help with:
+
+    make_exome_refpack.py -h
+
+Typical use case:
+
+    make_exome_refpack.py -t <targets.bed> [-b <baits>] -r <refdict> -g <gtf>
+    
+
 Summary:
 
 The goal of this script is to generate the files needed to add a new capture
