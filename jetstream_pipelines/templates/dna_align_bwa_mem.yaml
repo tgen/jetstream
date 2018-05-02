@@ -1,15 +1,6 @@
-# Description:
-#   Aligns all sequencing read data for a single sample. This operates on 
-#   data files found in the sample json, under sample.data, where the property
-#   "type" is equal to "FQ".
-#
-# Requirements: 
-# sample (json data)
-# project.config.reference.genome_index
-# project.config.reference.known_sites
-
+{% for sample in project.list_samples() if sample.assay in ["Exome", "Genome"] %}
 {% for data in sample.data if data.type == 'FQ' %}
-- id: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
+- id: {{ task_prefix }}bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
   cmd: sbatch_wait -c8
   methods: Fastqs for {{ sample.sample_name}} were aligned with bwa mem v0.7.12
   stdin: |
@@ -18,7 +9,7 @@
     module load bwa/0.7.12 samtools/1.4.1
 
     REF="{{ project.config.reference.genome_index }}"
-    READ_GROUP=$(echo -e "@RG\tID:{{ data.read_group.ID}}\t\PL:{{ data.read_group.PL }}\t")
+    READ_GROUP=$(echo -e "@RG\tID:{{ data.read_group.ID}}\tPL:{{ data.read_group.PL }}\t")
     OUTPATH="temp/{{ sample.sample_name }}_{{ loop.index }}.bwa.bam"
     R1FASTQ="{{ data.path }}"
     R2FASTQ="${R1FASTQ/R1_001/R2_001}"
@@ -26,14 +17,14 @@
     bwa mem \
       -M \
       -t8 \
-      -R ${READ_GROUP} \
+      -R "${READ_GROUP}" \
       ${REF} \
       ${R1FASTQ} \
       ${R2FASTQ} |\
     samtools sort -O BAM -o ${OUTPATH} -
 
-- id: base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
-  after: bwa_mem_{{ loop.index }}
+- id: {{ task_prefix }}base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
+  after: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
   cmd: sbatch_wait -c8
   stdin: |
     #!/bin/bash
@@ -56,5 +47,8 @@
        --input ${IN_BAM} \
        --bqsr-recal-file ${OUT_PREFIX}.recal_data.table \
        -O {OUT_PREFIX}.bam
+
+{% endfor %}
+{% include "merge_bams.yaml" %}
 
 {% endfor %}

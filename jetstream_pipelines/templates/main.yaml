@@ -1,26 +1,22 @@
-
 # Setup the run
 - id: inform_start
   help: This task demonstrates how scripts can be embedded in a workflow
   cmd: python
   stdin: |
     import os
-    print(os.listdir())
+    print(os.listdir('.'))
 
+# TODO
+# Gather input data
 
-# DNA Alignment steps
-{% for sample in project.list_samples() if sample.assay in ["Exome", "Genome"] %}
-- id: alignment_{{ sample.sample_name }}
-  after: inform_start
-  cmd: >
-    jetstream_pipelines dna_align.yaml --sample '{{ sample | tojson }}'
+{% if dna_module is defined %}
+{% with task_prefix='alignment_' %}
+{% filter replace('id:', 'ID:') %}
+{% include dna_module %}
+{% endfilter %}
+{% endwith %}
+{% endif %}
 
-- id: merge_bams_{{ sample.sample_name }}
-  after: alignment_{{ sample.sample_name }}
-  cmd: >
-    jetstream_pipelines merge_bams.yaml --sample '{{ sample | tojson }}'
-
-{% endfor %}
 
 
 # RNA Alignment steps
@@ -39,13 +35,7 @@
   cmd: echo
 
 
-# Somatic variant calling steps
-{% for dna_pair in project.config.run_parameters.dnapair %}
-- id: Mutect2_{{ dna_pair }}
-  after: alignment_is_done
-  cmd: jetstream_pipelines mutect.yaml --dna_pair "{{ dna_pair }}"
 
-{% endfor %}
 
 
 # Finalize the run

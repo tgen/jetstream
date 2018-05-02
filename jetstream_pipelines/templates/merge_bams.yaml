@@ -1,7 +1,4 @@
-# Requirements
-# sample
-
-- id: merge_bams_{{ sample.sample_name }}
+- id: {{ task_prefix }}merge_bams_{{ sample.sample_name }}
   cmd: sbatch_wait -c8
   stdin: |
     #!/bin/bash
@@ -15,7 +12,8 @@
       USE_THREADING=true \
       VALIDATION_STRINGENCY=SILENT \
       TMP_DIR=${TMPDIR} \
-      {%- for b in sample.data if data.type == 'FQ' %}
-      I={{ b.path }}
-      {%- endfor %}
+      {% for data in sample.data if data.type == 'FQ' %}
+      I={{ data.path }}
+      {% endfor %}
       OUTPUT=${MERGEDBAM}
+
