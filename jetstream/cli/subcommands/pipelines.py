@@ -108,6 +108,8 @@ def main(args=None):
         args=args.kvargs,
         type_separator=args.kvarg_separator
     )
+    log.debug('Project config data:\n{}'.format(project.config))
+    log.debug('Other template data:\n{}'.format(kwargs))
     rendered_template = t.render(project=project, **kwargs)
 
     if args.render_only:

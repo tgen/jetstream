@@ -1,4 +1,5 @@
 """ This module contains the cli interface code for the project data utility."""
+import sys
 import argparse
 import logging
 import jetstream
@@ -73,7 +74,7 @@ def data(args=None):
         else:
             print(jetstream.utils.json.dumps(p.config))
     elif args.format == 'yaml':
-        print(jetstream.utils.yaml_dumps(p.config))
+        jetstream.utils.yaml.dump(p.config, stream=sys.stdout)
 
 
 def main(args=None):

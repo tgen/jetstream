@@ -9,10 +9,13 @@ from datetime import datetime
 from getpass import getuser
 from socket import gethostname
 from uuid import getnode
-from ruamel import yaml
 from pkg_resources import get_distribution
+from ruamel.yaml import YAML
 
+yaml = YAML(typ='safe')
+yaml.default_flow_style = False
 log = logging.getLogger(__name__)
+
 
 
 TEST_RECORDS = [
@@ -144,6 +147,7 @@ def read_lines_allow_gzip(path):
     lines = data.splitlines()
     return lines
 
+
 def is_gzip(path, magic_number=b'\x1f\x8b'):
     """ Returns True if the path is gzipped """
     if os.path.exists(path) and not os.path.isfile(path):
@@ -176,20 +180,11 @@ def json_loads(data):
 # TODO Handle multi-document yaml files gracefully
 def yaml_load(path):
     with open(path, 'r') as fp:
-        return yaml.safe_load(fp)
+        return yaml.load(fp)
 
 
 def yaml_loads(data):
-    return yaml.safe_load(data)
-
-
-def yaml_dump(obj, path):
-    with open(path, 'w') as fp:
-        return yaml.dump(obj, stream=fp, default_flow_style=False)
-
-
-def yaml_dumps(obj):
-    return yaml.dump(obj, default_flow_style=False)
+    return yaml.load(data)
 
 
 def filter_documents(docs, criteria):

@@ -1,3 +1,4 @@
+import sys
 import argparse
 import logging
 
@@ -30,6 +31,6 @@ def main(args):
     c = config.load(args.path)
 
     if args.format == 'yaml':
-        print(utils.yaml_dumps(c))
+        utils.yaml.dump(c, stream=sys.stdout)
     elif args.format == 'json':
         print(utils.json.dumps(c, indent=4))

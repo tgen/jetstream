@@ -1,4 +1,5 @@
 import json
+import io
 import re
 import logging
 import shutil
@@ -43,7 +44,9 @@ class Workflow:
 
     def __str__(self):
         """ Gives better results when using print() """
-        return utils.yaml_dumps(self.serialize())
+        stream = io.StringIO()
+        utils.yaml.dump(self.serialize(), stream=stream)
+        return stream.getvalue()
 
     def serialize(self, serializer=None):
         """Serialize the workflow for dumping to json/yaml etc..."""
@@ -59,7 +62,7 @@ class Workflow:
         return to_pydot(graph).__str__()
 
     def to_yaml(self):
-        return utils.yaml_dumps(obj=self.serialize())
+        return str(self)
 
     def to_json(self):
         return json.dumps(self.serialize(), indent=4)
@@ -336,5 +339,8 @@ def load(path, loader=utils.yaml_load):
 def save(wf, path):
     lock_path = path + '.lock'
     obj = {'workflow': wf.serialize()}
-    utils.yaml_dump(obj, lock_path)
+
+    with open(lock_path, 'w') as fp:
+        utils.yaml.dump(obj, stream=fp)
+
     shutil.move(lock_path, path)

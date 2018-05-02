@@ -24,7 +24,7 @@
     set -eu
     module load strelka/{{ strelka_version }}
 
-    REF="{{ project.config.reference.genome_index }}"
+    REF="{{ ref.genome_index }}"
     DNAPAIR_LINE="{{ dna_pair }}"
     PAIR_NAME="${DNAPAIR_LINE//,/-}"
     PAIR=(${DNAPAIR_LINE//,/ })

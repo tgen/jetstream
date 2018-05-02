@@ -192,8 +192,7 @@ def init(path=None):
         if not os.path.exists(created_path):
             with open(created_path, 'w') as fp:
                 created = jetstream.utils.fingerprint()
-                created = jetstream.utils.yaml_dumps(created)
-                fp.write(created)
+                jetstream.utils.yaml.dump(created, stream=fp)
             log.critical('Initialized project: {}'.format(os.getcwd()))
         else:
             log.critical('Reinitialized project: {}'.format(os.getcwd()))

@@ -86,7 +86,7 @@ def launch(node_id, node_data):
 
         stdout, _ = p.communicate(input=stdin)
 
-        if stdout:
+        if stdout is not None:
             try:
                 stdout = stdout.decode()
             except AttributeError as e:
@@ -196,7 +196,7 @@ def run_workflow(workflow):
 
     with open(os.path.join(run_path, 'created.yaml'), 'w') as fp:
         record = {run_id: utils.fingerprint()}
-        fp.write(utils.yaml_dumps(record))
+        utils.yaml.dump(record, stream=fp)
 
     _runner(workflow, run_id=run_id, run_path=run_path)
 

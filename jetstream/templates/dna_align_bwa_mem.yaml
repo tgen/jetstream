@@ -8,7 +8,7 @@
     set -eu
     module load bwa/0.7.12 samtools/1.4.1
 
-    REF="{{ project.config.reference.genome_index }}"
+    REF="{{ ref.genome_index }}"
     READ_GROUP=$(echo -e "@RG\tID:{{ data.read_group.ID}}\tPL:{{ data.read_group.PL }}\t")
     OUTPATH="temp/{{ sample.sample_name }}_{{ loop.index }}.bwa.bam"
     R1FASTQ="{{ data.path }}"
@@ -31,8 +31,8 @@
     set -eu
     module load gatk/4.0.1.2
 
-    REF="{{ project.config.reference.genome_index }}"
-    KNOWN_SITES="{{ project.config.reference.known_sites }}"
+    REF="{{ ref.genome_index }}"
+    KNOWN_SITES="{{ ref.known_sites }}"
     IN_BAM="{{ sample.sample_name }}.bwa.bam"
     OUT_PREFIX="{{ sample.sample_name }}_{{ loop.index }}"
 
