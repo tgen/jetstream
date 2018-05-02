@@ -31,9 +31,10 @@ def main(args=None):
         log.exception(e)
         project = dict()
 
-    # Jinja manages templates, we just need to add any additional directories
-    # to the search path, and decide if we want strict rendering.
-    env = jetstream.template_env(strict=args.strict)
+    env = jetstream.template_env(
+        strict=args.strict,
+        include_project_templates=args.project_templates
+    )
 
     if args.string:
         template_text = args.template
