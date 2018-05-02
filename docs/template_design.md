@@ -84,3 +84,13 @@ This will be applied to all content included in the child template
 {% include dna_module %}
 {% endfilter %}
 ```
+
+
+## Accessing variables with partial strings
+
+```
+[rrichholt@it5687:~]$ jetstream debug_render -s "{{ hello[kit[1:]] }}" --hello '{"kay": 42, "ey": 24}' --kit hey
+24
+[rrichholt@it5687:~]$ jetstream debug_render -s "{{ hello[kit[1:]] }}" --hello '{"kay": 42, "ey": 24}' --kit okay
+42
+```
