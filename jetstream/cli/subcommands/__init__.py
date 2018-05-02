@@ -28,4 +28,5 @@ __all__ = [
     "legacy",
     "project",
     "report",
+    "pipelines",
 ]

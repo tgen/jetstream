@@ -6,21 +6,20 @@ below must be given BEFORE the workflow name (first positional argument) The
 key must start with two hyphens and the value is the next argument. Values can
 be JSON strings.
 
-    jetstream_pipelines <options> <template> [ --<key> <value> ]
+    jetstream pipelines <options> <template> [ --<key> <value> ]
 
 """
 import sys
-import json
 import logging
 import argparse
 import jetstream
-import jetstream_pipelines
 
 log = logging.getLogger(__name__)
 
 
 def arg_parser():
     parser = argparse.ArgumentParser(
+        prog='jetstream pipelines',
         description=__doc__,
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
@@ -46,27 +45,46 @@ def arg_parser():
                         help='Arguments following the workflow name are parsed '
                              'as arbitrary "--key value" pairs (see help)')
 
+    parser.add_argument('--kvarg-separator', default=':', help=argparse.SUPPRESS)
+
     return parser
 
 
+# Loader functions for typed arbitrary arguments
+argtype_fns = {
+    "default": str,
+    "file": jetstream.project.load_data_file,
+    "json": jetstream.utils.json_loads,
+    "yaml": jetstream.utils.yaml_loads,
+}
 
-def reparse_aribitrary(remainder):
+
+def reparse_aribitrary(args, type_separator=':'):
+    """Reparses sequence of arbitrary arguments "--<type>:<key> <value>"
+
+    This works by first building an argument parser specifically for the
+    arguments present in the list. First we look for any items that
+    start with '--', then adding an argument to the parser with the given
+    key and type (type is optional, str is the default).
+
+    After building the parser, the args are parsed and namespace is returned
+    as a dictionary. """
     parser = argparse.ArgumentParser(add_help=False)
-    for arg in remainder:
-        # TODO if the value starts with a dash, what do?
-        if arg.startswith(("-", "--")):
-            parser.add_argument(arg, type=json_allowed)
-    return vars(parser.parse_args(remainder))
 
+    for arg in args:
+        if arg.startswith('--'):
 
-def json_allowed(value):
-    """Given any value this will attempt to parse as json and return the
-    resulting object. If parsing fails, it will fall back to a string."""
-    try:
-        return json.loads(value)
-    except json.decoder.JSONDecodeError:
-        log.debug('JSON parsing failed, treating as string: {}'.format(value))
-        return str(value)
+            if type_separator in arg:
+                argtype, _, key = arg.lstrip('-').partition(type_separator)
+            else:
+                argtype = 'default'
+                key = arg
+
+            fn = argtype_fns[argtype]
+            parser.add_argument(arg, type=fn, dest=key)
+
+    namespace = parser.parse_args(args)
+    return vars(namespace)
 
 
 def main(args=None):
@@ -74,7 +92,7 @@ def main(args=None):
     args = parser.parse_args(args)
     log.critical(args)
 
-    env = jetstream_pipelines.env(
+    env = jetstream.template_env(
         strict=args.strict,
         include_project_templates=args.project_templates,
     )
@@ -86,7 +104,10 @@ def main(args=None):
     # Any arguments following the workflow template name are parsed with
     # json_allowed and available as variables when rendering the template.
     # "project" is reserved as the namespace for the project data.
-    kwargs = reparse_aribitrary(args.kvargs)
+    kwargs = reparse_aribitrary(
+        args=args.kvargs,
+        type_separator=args.kvarg_separator
+    )
     rendered_template = t.render(project=project, **kwargs)
 
     if args.render_only:

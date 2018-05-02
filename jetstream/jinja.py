@@ -5,7 +5,7 @@ from jinja2 import (Environment, PackageLoader, FileSystemLoader, ChoiceLoader,
     StrictUndefined, Undefined)
 
 project_loader = FileSystemLoader(os.path.join(os.getcwd(), 'templates'))
-package_loader = PackageLoader('jetstream_pipelines', 'templates')
+package_loader = PackageLoader('jetstream', 'templates')
 
 PROJECT_TEMPLATES_ENVVAR = 'JETSTREAM_PROJECT_TEMPLATES'
 STRICT_ENVVAR = 'JETSTREAM_STRICT'
@@ -18,7 +18,7 @@ def envbool(value):
     return str(int(bool(value)))
 
 
-def env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
+def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
     """Start a Jinja2 Environment with the given template directories.
 
     Templates are loaded by a Jinja2 ChoiceLoader that includes

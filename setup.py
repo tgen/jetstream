@@ -45,13 +45,11 @@ setup(
     },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
     package_data={
-        'jetstream_pipelines': ['templates/*'],
-        'jetstream': ['etc/*']
+        'jetstream': ['templates/*', 'etc/*']
     },
     entry_points={
         'console_scripts': [
             'jetstream=jetstream.cli.main:main',
-            'jetstream_pipelines=jetstream_pipelines.main:main',
         ],
     }
 )

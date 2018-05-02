@@ -8,6 +8,7 @@ import pkg_resources
 log = logging.getLogger()
 
 __version__ = pkg_resources.get_distribution("jetstream").version
+log_format = "[%(asctime)s] %(message)s"
 verbose_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
@@ -24,13 +25,14 @@ def create_parser():
     main_parser.add_argument('-v', '--version', action='version',
                       version=__version__)
 
-    main_parser.add_argument('--debug', action='store_true')
+    main_parser.add_argument('--debug', action='store_true',
+                             help='Alias for lowest level logging')
 
     main_parser.add_argument('--log-filename')
 
     main_parser.add_argument('--log-filemode')
 
-    main_parser.add_argument('--log-format')
+    main_parser.add_argument('--log-format', default=log_format)
 
     main_parser.add_argument('--log-level', default='WARNING')
 
@@ -47,7 +49,6 @@ def main(args=None):
     args, remaining = parser.parse_known_args(args)
 
     if args.debug:
-        # Alias for lowest level logging
         args.log_format = verbose_format
         args.log_level = 'DEBUG'
 

@@ -11,6 +11,7 @@ os.environ['MKL_NUM_THREADS'] = '1'
 from jetstream import settings, utils, legacy, workflows
 from jetstream.workflows import Workflow
 from jetstream.project import Project
+from jetstream.jinja import template_env, package_loader
 
 
 def load_project(path=None):

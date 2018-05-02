@@ -2,7 +2,6 @@ import jetstream
 import logging
 
 
-
 def test_workflow():
     logging.root.setLevel(logging.DEBUG)
     cmd = 'echo hello world'

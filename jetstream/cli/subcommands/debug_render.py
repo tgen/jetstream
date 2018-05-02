@@ -8,9 +8,9 @@ Note: This command is primarily intended for debugging template issues. To
 render, build, and run a workflow in one step use "jetstream_pipelines".
 """
 import logging
+
 import jetstream
-import jetstream_pipelines
-from jetstream_pipelines.main import arg_parser, reparse_aribitrary
+from jetstream.cli.subcommands.pipelines import arg_parser, reparse_aribitrary
 
 log = logging.getLogger(__name__)
 
@@ -25,11 +25,15 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    project = jetstream.Project()
+    try:
+        project = jetstream.Project()
+    except Exception as e:
+        log.exception(e)
+        project = dict()
 
     # Jinja manages templates, we just need to add any additional directories
     # to the search path, and decide if we want strict rendering.
-    env = jetstream_pipelines.env(strict=args.strict)
+    env = jetstream.template_env(strict=args.strict)
 
     if args.string:
         template_text = args.template
