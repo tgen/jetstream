@@ -18,6 +18,11 @@ def envbool(value):
     return str(int(bool(value)))
 
 
+def raise_helper(msg):
+    """Allows "raise('msg')" to be used in templates"""
+    raise Exception(msg)
+
+
 def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
     """Start a Jinja2 Environment with the given template directories.
 
@@ -37,9 +42,12 @@ def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
     os.environ[PROJECT_TEMPLATES_ENVVAR] = envbool(include_project_templates)
     os.environ[STRICT_ENVVAR] = envbool(strict)
 
-    return Environment(
+    env = Environment(
         trim_blocks=True,
         lstrip_blocks=True,
         loader=ChoiceLoader(loaders),
         undefined=undefined_handler
     )
+
+    env.globals['raise'] = raise_helper
+    return env
