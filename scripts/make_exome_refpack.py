@@ -79,20 +79,21 @@ Glossary:
 
 
 """
+import sys
 import argparse
 import logging
 import os
 import shutil
 import subprocess
-
 import pkg_resources
 import tempstore
-
 import jetstream
 from jetstream.utils.formats.refdict import refdict_to_bedtools_genome
 from jetstream.utils.formats import intervals
 
 log = logging.getLogger(__name__)
+
+TEMPFILES = tempstore.TempStore(name='temp')
 
 CNA_TEMPLATE = '/home/tgenref/binaries/capture_specific_jetstream_file_creatio'\
                'n/Copy_Number_100bp_Interval_Template.bed'
@@ -174,7 +175,8 @@ def check_java_version():
 def external_proc(cmd_args, out_path):
     """Launch external process that writes to out_path"""
     cmd_string = ' '.join(cmd_args)
-    log.critical('Starting external process: {}'.format(cmd_string))
+    log.critical('Starting external process: {} > {}'.format(
+        cmd_string, out_path))
 
     with open(out_path, 'w') as fp:
         p = subprocess.Popen(cmd_args, stdout=fp)
@@ -205,8 +207,8 @@ def picard_bedtointervallist(bed, refdict, out_path):
 
 
 def bedtools_intersect(a, b, out_path):
-    """ Writes bedfile to out_path that includes all intervals in a which
-    intersect any interval in b. """
+    """ Writes bedfile to out_path that includes all intervals in "a" which
+    intersect any interval in "b". """
     cmd_args = [
         BEDTOOLS_PATH,
         'intersect',
@@ -217,7 +219,6 @@ def bedtools_intersect(a, b, out_path):
     ]
 
     return external_proc(cmd_args, out_path)
-
 
 
 def bedtools_intersect_v(a, b, out_path):
@@ -276,6 +277,11 @@ def bedtools_merge(a, out_path):
             stdin=bedtools_sort.stdout)
         bedtools.wait()
 
+    bedtools_sort.wait()
+
+    if bedtools_sort.returncode != 0:
+        raise ChildProcessError(' '.join(bedtools_sort.args))
+
     if bedtools.returncode != 0:
         raise ChildProcessError(' '.join(bedtools.args))
 
@@ -283,6 +289,7 @@ def bedtools_merge(a, out_path):
 
 
 def gtf_to_bed(gtf_path, out_path):
+    log.debug('Converting gtf to bed: {} > {}'.format(gtf_path, out_path))
     ints = intervals.read_gffv2(gtf_path)
     ints = ints.filter(lambda i: i['feature'] == 'exon')  # Select only exons
 
@@ -291,6 +298,8 @@ def gtf_to_bed(gtf_path, out_path):
 
 
 def make_vcf_filter(targets, refdict, gtf, out_path):
+    log.debug('Making VCF merger filter .bed')
+
     # A: Make an exon bed file from the GTF
     gtf_to_bed(gtf, out_path=TEMPFILES.create('exons.bed'))
 
@@ -322,16 +331,15 @@ def make_vcf_filter(targets, refdict, gtf, out_path):
     # Create a new file to store all the ints
     all_ints_path = TEMPFILES.create('all_intervals.bed')
     with open(all_ints_path, 'w') as ai:
+        b1 = intervals.read_bed(TEMPFILES.paths['padded100_targets.bed'])
+        b2 = intervals.read_bed(TEMPFILES.paths['captured_exons.bed'])
 
-        # Write padded100_targets
-        with open(TEMPFILES.paths['padded100_targets.bed'], 'r') as pt:
-            for line in pt:
-                ai.write(line)
+        for interval in b1:
+            print(intervals.bed.write(interval), file=ai)
 
-        # And write captured exons
-        with open(TEMPFILES.paths['captured_exons.bed'], 'r') as ce:
-            for line in ce:
-                ai.write(line)
+        for interval in b2:
+            print(intervals.bed.write(interval), file=ai)
+
 
     # Finally, merge all the intervals in all_intervals and return
     bedtools_merge(
@@ -371,11 +379,13 @@ def make_cna_index(bed_path, cna_template_bed, out_path, x='23', y='24'):
 
 def make_unmatched_cna_index(intervals, known_sv, cna_template_bed, out_path):
     ints_not_in_sv = TEMPFILES.create('ints_not_in_sv.bed')
+
     bedtools_intersect_v(
         a=intervals,
         b=known_sv,
         out_path=ints_not_in_sv
     )
+
     return make_cna_index(
         bed_path=ints_not_in_sv,
         cna_template_bed=cna_template_bed,
@@ -383,7 +393,7 @@ def make_unmatched_cna_index(intervals, known_sv, cna_template_bed, out_path):
     )
 
 
-def save_results(targets_path, baits_path, save_temp):
+def save_results(targets_path, baits_path):
     # Save the targets.interval_list
     targets_base = os.path.basename(targets_path)
     targets_root, targets_ext = os.path.splitext(targets_base)
@@ -416,9 +426,6 @@ def save_results(targets_path, baits_path, save_temp):
     log.critical("Saving unmatched_cna_index.bed")
     shutil.copy(TEMPFILES.paths['unmatched_cna_index.bed'], out_path)
 
-    if save_temp:
-        log.critical("Saving all tempfiles {}".format(TEMPFILES.paths))
-        TEMPFILES.copy('./', exist_ok=True)
     return
 
 
@@ -428,49 +435,64 @@ def main(args=None):
     log.critical(jetstream.utils.fingerprint(to_json=True))
     log.critical(args)
 
+    success = False
 
-    # Make Picard targets/baits interval list files
-    picard_bedtointervallist(
-        bed=args.targets,
-        refdict=args.refdict,
-        out_path=TEMPFILES.create('targets.interval_list')
-    )
-    if args.baits is not None:
+    try:
         picard_bedtointervallist(
-            bed=args.baits,
+            bed=args.targets,
             refdict=args.refdict,
-            out_path=TEMPFILES.create('baits.interval_list')
+            out_path=TEMPFILES.create('targets.interval_list')
+        )
+
+        if args.baits is not None:
+            picard_bedtointervallist(
+                bed=args.baits,
+                refdict=args.refdict,
+                out_path=TEMPFILES.create('baits.interval_list')
+            )
+
+
+        # Make VCF bed file
+        make_vcf_filter(
+            targets=args.targets,
+            refdict=args.refdict,
+            gtf=args.gtf,
+            out_path=TEMPFILES.create('vcf_filter.bed')
         )
 
 
-    # Make VCF bed file
-    make_vcf_filter(
-        targets=args.targets,
-        refdict=args.refdict,
-        gtf=args.gtf,
-        out_path=TEMPFILES.create('vcf_filter.bed')
-    )
+        # Make CNA index bed file
+        make_cna_index(
+            bed_path=TEMPFILES.paths['vcf_filter.bed'],
+            cna_template_bed=args.cna_template,
+            out_path=TEMPFILES.create('cna_index.bed')
+        )
 
 
-    # Make CNA index bed file
-    make_cna_index(
-        bed_path=TEMPFILES.paths['vcf_filter.bed'],
-        cna_template_bed=args.cna_template,
-        out_path=TEMPFILES.create('cna_index.bed')
-    )
+        # Make unmatched CNA index bed file
+        make_unmatched_cna_index(
+            intervals=TEMPFILES.paths['vcf_filter.bed'],
+            known_sv=args.known_sv,
+            cna_template_bed=args.cna_template,
+            out_path=TEMPFILES.create('unmatched_cna_index.bed')
+        )
 
 
-    # Make unmatched CNA index bed file
-    make_unmatched_cna_index(
-        intervals=TEMPFILES.paths['vcf_filter.bed'],
-        known_sv=args.known_sv,
-        cna_template_bed=args.cna_template,
-        out_path=TEMPFILES.create('unmatched_cna_index.bed')
-    )
+        # Now save results to the cwd
+        save_results(args.targets, args.baits)
+        success = True
 
+    except Exception as e:
+        log.exception(e)
 
-    # Now save results to the cwd
-    save_results(args.targets, args.baits, args.save_temp)
+    finally:
+        if args.save_temp:
+            log.critical("Saving all tempfiles to {}".format(TEMPFILES.name))
+            TEMPFILES.copy('./', exist_ok=True)
+        else:
+            TEMPFILES.cleanup()
+
+    sys.exit(int(success))
 
 
 if __name__ == "__main__":
@@ -479,10 +501,4 @@ if __name__ == "__main__":
         format="[%(asctime)s] %(message)s",
         handlers=[logging.FileHandler("log.txt"), logging.StreamHandler()]
     )
-
-    TEMPFILES = tempstore.TempStore(name='temp')
-
-    try:
-        main()
-    finally:
-        TEMPFILES.cleanup()
+    main()
