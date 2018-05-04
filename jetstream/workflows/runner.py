@@ -19,7 +19,6 @@ class ThreadWithReturnValue(Thread):
         Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
         self._return = None
 
-
     def run(self):
         if self._target is not None:
             self._return = self._target(*self._args, **self._kwargs)
@@ -51,7 +50,7 @@ def launch(node_id, node_data):
     saving stdout/stderr and piping in stdin.
     """
     log.critical('Launching task: {}'.format(node_id))
-    log.info(utils.task_summary(node_id, node_data))
+    log.info('Task summary:\n{}'.format(utils.task_summary(node_id, node_data)))
 
     open_fds = []
     result = {
@@ -84,6 +83,8 @@ def launch(node_id, node_data):
             stderr=err
         )
 
+        log.debug('Task "{}": Pid: {}'.format(node_id, p.pid))
+
         stdout, _ = p.communicate(input=stdin)
 
         if stdout is not None:
@@ -95,7 +96,7 @@ def launch(node_id, node_data):
         result['logs'] = stdout
         result['return_code'] = p.returncode
 
-        log.critical('Node process exited: {}'.format(node_id))
+        log.critical('{} exited: {}'.format(p.pid, p.returncode))
 
     except Exception as e:
         log.exception(e)
@@ -109,7 +110,7 @@ def launch(node_id, node_data):
 
 
 def _runner(workflow, run_id, run_path):
-    log.critical('Runner initialized: {}'.format(run_path))
+    log.critical('Initialized: {}'.format(run_path))
     workflow_path = os.path.join(run_path, 'workflow.yaml')
     save(workflow, workflow_path)
 
@@ -118,7 +119,7 @@ def _runner(workflow, run_id, run_path):
         try:
             node = next(workflow)
         except StopIteration:
-            log.debug('Workflow raised StopIteration')
+            log.critical('Workflow raised StopIteration')
             break
 
         if node is None:
@@ -133,7 +134,7 @@ def _runner(workflow, run_id, run_path):
 
         else:
             node_id, node_data = node
-            log.critical('Runner sending to launch: {}'.format(node_id))
+            log.critical('Sending to launch: {}'.format(node_id))
 
             thread = ThreadWithReturnValue(
                 target=launch,

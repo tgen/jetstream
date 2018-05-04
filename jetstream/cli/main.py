@@ -8,7 +8,7 @@ import pkg_resources
 log = logging.getLogger()
 
 __version__ = pkg_resources.get_distribution("jetstream").version
-log_format = "[%(asctime)s] %(message)s"
+log_format = "[JS %(module)10s][%(asctime)s] %(message)s"
 verbose_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 

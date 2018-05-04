@@ -92,7 +92,7 @@ def reparse_aribitrary(args, type_separator=':'):
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
-    log.critical(args)
+    log.debug(args)
 
     env = jetstream.template_env(
         strict=args.strict,
@@ -128,7 +128,7 @@ def main(args=None):
 
     jetstream.workflows.run_workflow(wf)
 
-    failures = [s for s in wf.status() if s == 'failed']
+    failures = [nid for nid, n in wf.nodes(data=True) if n['status'] == 'failed']
     if failures:
         log.critical('Error: Some tasks failed! {}'.format(failures))
         sys.exit(1)

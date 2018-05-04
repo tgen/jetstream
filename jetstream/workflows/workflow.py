@@ -120,8 +120,9 @@ class Workflow:
             self.pass_node(node_id, return_code=return_code, logs=logs)
 
     def pass_node(self, node_id, return_code=0, logs=''):
-        """ Complete a node_id """
-        log.critical('Node complete! {}'.format(node_id))
+        """Complete a node_id """
+        log.debug('Pass node: {}'.format(node_id))
+
         self.update(
             node_id,
             status='complete',
@@ -130,8 +131,9 @@ class Workflow:
         )
 
     def fail_node(self, node_id, return_code=1, logs=''):
-        """ Fail a node_id, this also fails any nodes dependent on node_id"""
-        log.critical('Node failed! {}'.format(node_id))
+        """Fail a node_id, this also fails any nodes dependent on node_id"""
+        log.debug('Fail node: {}'.format(node_id))
+        log.critical('Fail node: {} Logs:\n{}'.format(node_id, logs))
 
         self.update(
             node_id,
@@ -144,7 +146,8 @@ class Workflow:
             self.fail_node(d, logs='Failed due to dependency {}'.format(node_id))
 
     def reset_node(self, node_id):
-        log.critical('Node reset! {}'.format(node_id))
+        """Reset a node_id, this destroys any existing data for the node"""
+        log.debug('Reset node: {}'.format(node_id))
 
         self.update(
             node_id,
@@ -155,19 +158,22 @@ class Workflow:
             datetime_end=None
         )
 
-    # Methods for reading from a workflow
     def nodes(self, *args, **kwargs):
+        """Access nodes in a workflow"""
         return self.graph.nodes(*args, **kwargs)
 
     def status(self, node_id=None):
-        """ Returns the status of a node or all nodes if node is None """
+        """Returns the status of a node or all nodes if "node_id" is None"""
         if node_id is not None:
             return self.graph.nodes[node_id]['status']
         else:
             return [d['status'] for n, d in self.graph.nodes(data=True)]
 
-    def get_node(self, node_id, data=False):
-        """ Returns None if the node is not in the graph """
+    def get_node(self, node_id, fallback=None, data=False):
+        """Get a single node
+
+        Similar to dict.get, this returns "fallback" if the node_id is not in
+        the graph """
         g = self.graph
         if node_id in g:
             if data:
@@ -175,10 +181,10 @@ class Workflow:
             else:
                 return node_id
         else:
-            return None
+            return fallback
 
     def node_ready(self, node_id):
-        """ Returns True if the given node is ready for execution """
+        """Returns True if the given "node_id" is ready for execution."""
         g = self.graph
         node_data = g.nodes()[node_id]
 
@@ -193,7 +199,7 @@ class Workflow:
             return True
 
     def root_nodes(self):
-        """ Returns the set of root nodes in the graph """
+        """Returns the set of root nodes in the graph."""
         graph = self.graph
 
         res = set()
@@ -207,10 +213,11 @@ class Workflow:
         return res
 
     def update(self, node_id, **kwargs):
-        """ Change the status of a node """
-        log.debug('Update node {}: {}'.format(node_id, kwargs))
+        """Change the status of a node."""
         self.last_update = utils.fingerprint()
         self.graph.nodes[node_id].update(**kwargs)
+        status = self.get_node(node_id, data=True)['status']
+        log.critical('Update node: {} status: {}'.format(node_id, status))
 
     def _add_node(self, node_id, data):
         """ Adding a node requires a mapping that includes "name" key. A
