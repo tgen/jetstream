@@ -80,7 +80,8 @@ def reparse_aribitrary(args, type_separator=':'):
                 argtype = 'default'
                 key = arg.lstrip('-')
 
-            log.debug('Adding parser key: {} type:{}'.format(key, argtype))
+            log.debug('Adding parser entry for key: "{}" type: "{}"'.format(
+                key, argtype))
             fn = argtype_fns[argtype]
             parser.add_argument(arg, type=fn, dest=key)
 
