@@ -8,8 +8,8 @@ import pkg_resources
 log = logging.getLogger()
 
 __version__ = pkg_resources.get_distribution("jetstream").version
-log_format = "[JS %(module)10s][%(asctime)s] %(message)s"
-verbose_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
+log_basic_format = "[\033[4m\033[92m\U0001F335 %(module)10s\033[0m] %(asctime)s: %(message)s"
+log_debug_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
 def create_parser():
@@ -32,7 +32,7 @@ def create_parser():
 
     main_parser.add_argument('--log-filemode')
 
-    main_parser.add_argument('--log-format', default=log_format)
+    main_parser.add_argument('--log-format', default=log_basic_format)
 
     main_parser.add_argument('--log-level', default='WARNING')
 
@@ -49,7 +49,7 @@ def main(args=None):
     args, remaining = parser.parse_known_args(args)
 
     if args.debug:
-        args.log_format = verbose_format
+        args.log_format = log_debug_format
         args.log_level = 'DEBUG'
 
     logging.basicConfig(

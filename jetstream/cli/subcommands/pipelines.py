@@ -128,10 +128,12 @@ def main(args=None):
 
     jetstream.workflows.run_workflow(wf)
 
-    failures = [nid for nid, n in wf.nodes(data=True) if n['status'] == 'failed']
-    if failures:
-        log.critical('Error: Some tasks failed! {}'.format(failures))
+    fails = [nid for nid, n in wf.nodes(data=True) if n['status'] == 'failed']
+    if fails:
+        log.critical('\u2620  Some tasks failed! {}'.format(fails))
         sys.exit(1)
+    else:
+        log.critical('\U0001F44D Success!')
 
 if __name__ == '__main__':
     main()

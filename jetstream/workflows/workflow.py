@@ -222,6 +222,7 @@ class Workflow:
     def _add_node(self, node_id, data):
         """ Adding a node requires a mapping that includes "name" key. A
         RuntimeError will be raised if the name already exists in the graph"""
+        log.debug('Adding node: {}'.format(node_id))
 
         if self.get_node(node_id):
             raise RuntimeError('Duplicate node id: {} in\n{}'.format(
@@ -248,6 +249,7 @@ class Workflow:
         provided for adding components to a workflow, and should be preferred
         over adding edges directly to the workflow.
         """
+        log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
         g = self.graph
 
         g.add_edge(from_node, to_node)
@@ -277,7 +279,7 @@ class Workflow:
                 if isinstance(before, str):
                     before = (before,)
 
-                before_pats = [re.compile(b) for b in before]
+                before_pats = [re.compile('^{}$'.format(b)) for b in before]
 
                 for pat in before_pats:
                     matches = filter(pat.match, self.nodes())
@@ -294,7 +296,7 @@ class Workflow:
                 if isinstance(after, str):
                     after = (after,)
 
-                after_pats = [re.compile(a) for a in after]
+                after_pats = [re.compile('^{}$'.format(a)) for a in after]
 
                 for pat in after_pats:
                     matches = filter(pat.match, self.nodes())

@@ -134,7 +134,7 @@ def _runner(workflow, run_id, run_path):
 
         else:
             node_id, node_data = node
-            log.critical('Sending to launch: {}'.format(node_id))
+            log.debug('Sending to launch: {}'.format(node_id))
 
             thread = ThreadWithReturnValue(
                 target=launch,
