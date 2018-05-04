@@ -78,8 +78,9 @@ def reparse_aribitrary(args, type_separator=':'):
                 argtype, _, key = arg.lstrip('-').partition(type_separator)
             else:
                 argtype = 'default'
-                key = arg
+                key = arg.lstrip('-')
 
+            log.debug('Adding parser key: {} type:{}'.format(key, argtype))
             fn = argtype_fns[argtype]
             parser.add_argument(arg, type=fn, dest=key)
 
