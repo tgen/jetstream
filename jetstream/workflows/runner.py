@@ -4,10 +4,9 @@ import re
 import subprocess
 import traceback
 import logging
+import ulid
 from collections import deque
 from threading import Thread
-
-import ulid
 from jetstream import utils
 from .workflow import save
 
@@ -51,7 +50,8 @@ def launch(node_id, node_data):
     process for the node, and knows how to handle node directives for
     saving stdout/stderr and piping in stdin.
     """
-    log.critical('Launching node process: {}'.format(node_id))
+    log.critical('Launching task: {}'.format(node_id))
+    log.info(utils.task_summary(node_id, node_data))
 
     open_fds = []
     result = {

@@ -1,10 +1,12 @@
+import os
+import sys
+import io
 import csv
 import fnmatch
 import gzip
 import json
 import logging
-import os
-import sys
+import textwrap
 from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
@@ -197,6 +199,14 @@ def yaml_loads(data):
     return yaml.load(data)
 
 
+def yaml_dumps(data):
+    stream = io.StringIO()
+    yaml.default_style = '|'
+    yaml.dump(data, stream=stream)
+    yaml.default_style = False
+    return stream.getvalue()
+
+
 def filter_records(records, criteria):
     """Given a list of mapping objects (records) and a criteria mapping,
     this function returns a list of objects that match filter
@@ -290,3 +300,19 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
             elif fnmatch.fnmatch(f, name):
                 yield os.path.join(dirname, f)
+
+
+def task_summary(node_id, node_data):
+    return yaml_dumps(node_data)
+    #
+    # template = "Command:\n{cmd}\nStdin:\n{stdin}\nStdout:\n" \
+    #           "{stdout}\nStderr:\n{stderr}"
+    #
+    # summary = template.format(
+    #     cmd=textwrap.indent(' '.join(node_data['cmd']), ' '*4),
+    #     stdin=textwrap.indent(str(node_data.get('stdin')), ' '*4),
+    #     stdout=textwrap.indent(str(node_data.get('stdout')), ' '*4),
+    #     stderr=textwrap.indent(str(node_data.get('stderr')), ' '*4)
+    # )
+    #
+    # return "Task summary:\n{}".format(textwrap.indent(summary, ' '*4))
