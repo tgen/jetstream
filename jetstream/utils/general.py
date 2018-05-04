@@ -201,9 +201,7 @@ def yaml_loads(data):
 
 def yaml_dumps(data):
     stream = io.StringIO()
-    yaml.default_style = '|'
     yaml.dump(data, stream=stream)
-    yaml.default_style = False
     return stream.getvalue()
 
 
@@ -303,16 +301,18 @@ def find(path, name=None):
 
 
 def task_summary(node_id, node_data):
-    return yaml_dumps(node_data)
-    #
-    # template = "Command:\n{cmd}\nStdin:\n{stdin}\nStdout:\n" \
-    #           "{stdout}\nStderr:\n{stderr}"
-    #
-    # summary = template.format(
-    #     cmd=textwrap.indent(' '.join(node_data['cmd']), ' '*4),
-    #     stdin=textwrap.indent(str(node_data.get('stdin')), ' '*4),
-    #     stdout=textwrap.indent(str(node_data.get('stdout')), ' '*4),
-    #     stderr=textwrap.indent(str(node_data.get('stderr')), ' '*4)
-    # )
-    #
-    # return "Task summary:\n{}".format(textwrap.indent(summary, ' '*4))
+    lines = list()
+    for k, v in node_data.items():
+        if k == 'cmd':
+            v = ' '.join(v)
+
+        text = "{}: ".format(k)
+        value = str(v)
+        if '\n' in value or len(value) > 80:
+            text += '|\n'
+            text += textwrap.indent(value, ' '*4)
+        else:
+            text += value
+        lines.append(text)
+
+    return '\n'.join(lines)
