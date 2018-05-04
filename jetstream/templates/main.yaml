@@ -35,9 +35,6 @@
   cmd: echo
 
 
-
-
-
 # Finalize the run
 - id: inform_complete
   after: alignment_is_done

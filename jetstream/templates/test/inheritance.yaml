@@ -1,0 +1,6 @@
+{% extends "test/debug.yaml" %}
+{% block main %}
+- id: get_hostname
+  cmd: hostname
+
+{% endblock %}

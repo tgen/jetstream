@@ -1,0 +1,4 @@
+- id: test_pipe_stdout_back_to_runner
+  after: {{ after }}
+  stdout: /dev/stdout
+  cmd: env

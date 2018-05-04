@@ -1,0 +1,15 @@
+
+{% for pair in project.config.run_parameters.dnapair %}
+- id: Mutation_burden
+  after: somatic_variant_calling
+  cmd: sbatch_wait -c1
+  stdin: |
+    #!/usr/bin/env python3
+    import jetstream
+    p = jetstream.Project()
+
+    normal_name = '{{ pair }}'.split(',')[0]
+    normal_sample = p.list_samples(sample_name=normal_name)
+    normal_kit = normal_sample['kit']
+
+{% endfor %}

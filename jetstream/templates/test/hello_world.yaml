@@ -1,0 +1,2 @@
+- id: hello_world
+  cmd: echo Hello, World
