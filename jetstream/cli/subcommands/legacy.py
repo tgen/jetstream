@@ -1,9 +1,8 @@
-import os
 import sys
-import csv
 import argparse
 import logging
 import jetstream
+
 
 log = logging.getLogger(__name__)
 
@@ -32,20 +31,6 @@ def build_parser():
     return parser
 
 
-def records_to_csv(records, outpath):
-    log.debug('to csv: {}\n{}'.format(outpath, records))
-
-    keys = set()
-    for row in records:
-        keys = keys.union(set(row.keys()))
-
-    log.debug('Found keys: {}'.format(keys))
-
-    with open(outpath, 'w') as fp:
-        dw = csv.DictWriter(fp, keys)
-        dw.writeheader()
-        dw.writerows(records)
-
 
 def main(args):
     parser = build_parser()
@@ -61,12 +46,4 @@ def main(args):
         jetstream.utils.json.dump(c, fp=sys.stdout)
 
     elif args.format == 'explode':
-        outdir = os.path.splitext(os.path.basename(args.path))[0]
-        os.mkdir(outdir)
-
-        log.critical('Exploding into: {}'.format(outdir))
-        records_to_csv(c['samples'], os.path.join(outdir, 'samples.csv'))
-        records_to_csv(c['data'], os.path.join(outdir, 'data.csv'))
-
-        with open(os.path.join(outdir, 'run_parameters.yaml'), 'w') as fp:
-            jetstream.utils.yaml.dump(c['run_parameters'], stream=fp)
+        jetstream.legacy.config.explode(c)

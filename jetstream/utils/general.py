@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
 from socket import gethostname
@@ -15,7 +16,6 @@ from ruamel.yaml import YAML
 yaml = YAML(typ='safe')
 yaml.default_flow_style = False
 log = logging.getLogger(__name__)
-
 
 
 TEST_RECORDS = [
@@ -161,6 +161,16 @@ def is_gzip(path, magic_number=b'\x1f\x8b'):
             return False
 
 
+def is_scalar(value):
+    if isinstance(value, (str,)):
+        return True
+
+    if isinstance(value, (Sequence, Mapping)):
+        return False
+    else:
+        return True
+
+
 def remove_prefix(string, prefix):
     if string.startswith(prefix):
         return string[len(prefix):]
@@ -187,18 +197,18 @@ def yaml_loads(data):
     return yaml.load(data)
 
 
-def filter_documents(docs, criteria):
-    """Given a list of mapping objects (docs) and a criteria mapping,
+def filter_records(records, criteria):
+    """Given a list of mapping objects (records) and a criteria mapping,
     this function returns a list of objects that match filter
     criteria."""
     matches = list()
-    for i in docs:
+    for i in records:
         for k, v in criteria.items():
             if k not in i:
-                log.debug('Dropping "{}" due to "{}" not in doc'.format(i, k))
+                log.debug('Drop "{}" due to "{}" not in doc'.format(i, k))
                 break
             if i[k] != v:
-                log.debug('Dropping "{}" due to "{}" not == "{}"'.format(i, k, v))
+                log.debug('Drop "{}" due to "{}" not == "{}"'.format(i, k, v))
                 break
         else:
             matches.append(i)
@@ -206,7 +216,7 @@ def filter_documents(docs, criteria):
 
 
 def table_to_records(path):
-    """Attempts to load a table, in any format, as a set of records"""
+    """Attempts to load a table, in any format, as a list of records"""
     r = list()
     with open(path, 'r') as fp:
         dialect = csv.Sniffer().sniff(fp.readline())
@@ -219,8 +229,30 @@ def table_to_records(path):
     return r
 
 
+def records_to_csv(records, outpath):
+    """Writes records out to a csv"""
+    if os.path.exists(outpath):
+        raise FileExistsError(outpath)
+
+    keys = set()
+    for record in records:
+        keys = keys.union(set(record.keys()))
+
+    log.debug('Found keys: {}'.format(keys))
+
+    with open(outpath, 'w') as fp:
+        dw = csv.DictWriter(fp, keys)
+        dw.writeheader()
+        for record in records:
+            # Convert non-scalar values to json strings
+            for key, value in record.items():
+                if not is_scalar(value):
+                    record[key] = json.dumps(value)
+        dw.writerows(records)
+
+
 def write_test_data(path, dialect='unix'):
-    """Writes test data out to a file. """
+    """Writes csv test data out to a file. """
     with open(path, 'w') as fp:
         w = csv.DictWriter(fp, fieldnames=['test', 'data'], dialect=dialect)
         w.writeheader()

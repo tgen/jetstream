@@ -38,9 +38,10 @@
 ### Validate dnaFami samples exist
 ### Validate rnaPair samples exist
 """
+import os
 import logging
 
-from jetstream.utils import Source
+from jetstream.utils import Source, records_to_csv, yaml
 
 log = logging.getLogger(__name__)
 
@@ -117,6 +118,23 @@ def loads(data):
         'data': data_objects,
         'samples': sample_objects
     }
+
+
+def explode(config, outdir=''):
+    if outdir:
+        os.mkdir(outdir)
+
+    samples_path = os.path.join(outdir, 'samples.csv')
+    data_path = os.path.join(outdir, 'data.csv')
+    run_parameters_path = os.path.join(outdir, 'run_parameters.yaml')
+
+    records_to_csv(config['samples'], samples_path)
+    records_to_csv(config['data'], data_path)
+
+    if os.path.exists(run_parameters_path):
+        raise FileExistsError(run_parameters_path)
+    with open(run_parameters_path, 'w') as fp:
+        yaml.dump(config['run_parameters'], stream=fp)
 
 
 def _split_sections(source):

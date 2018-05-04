@@ -176,7 +176,7 @@ class Project:
         sample_list = list(self.samples().values())
 
         if kwargs:
-            return jetstream.utils.filter_documents(sample_list, kwargs)
+            return jetstream.utils.filter_records(sample_list, kwargs)
         else:
             return sample_list
 
