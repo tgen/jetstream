@@ -1,8 +1,9 @@
 """Initiate a Jinja environment with template loaders that search
 locations set by arguments or environment variables. """
 import os
+import json
 from jinja2 import (Environment, PackageLoader, FileSystemLoader, ChoiceLoader,
-    StrictUndefined, Undefined)
+    StrictUndefined, Undefined, evalcontextfilter)
 
 project_loader = FileSystemLoader(os.path.join(os.getcwd(), 'templates'))
 package_loader = PackageLoader('jetstream', 'templates')
@@ -21,6 +22,11 @@ def envbool(value):
 def raise_helper(msg):
     """Allows "raise('msg')" to be used in templates"""
     raise Exception(msg)
+
+
+@evalcontextfilter
+def fromjson(eval_ctx, value):
+    return json.loads(value)
 
 
 def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
@@ -50,4 +56,5 @@ def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
     )
 
     env.globals['raise'] = raise_helper
+    env.filters['fromjson'] = fromjson
     return env
