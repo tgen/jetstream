@@ -14,7 +14,7 @@ def arg_parser():
     )
 
     parser.add_argument('action',
-                        choices=['init', 'data'])
+                        choices=['init', 'config', 'samples'])
 
     parser.add_argument('args', nargs=argparse.REMAINDER)
 
@@ -32,15 +32,7 @@ def init_arg_parser():
     return parser
 
 
-def init(args=None):
-    parser = init_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    jetstream.project.init(args.path)
-
-
-def data_arg_parser():
+def config_arg_parser():
     """arg parser for the data action"""
     parser = argparse.ArgumentParser(
         prog='jetstream project data',
@@ -61,8 +53,16 @@ def data_arg_parser():
     return parser
 
 
-def data(args=None):
-    parser = data_arg_parser()
+def init(args=None):
+    parser = init_arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    jetstream.project.init(args.path)
+
+
+def config(args=None):
+    parser =config_arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
@@ -77,6 +77,22 @@ def data(args=None):
         jetstream.utils.yaml.dump(p.config, stream=sys.stdout)
 
 
+def samples(args=None):
+    parser = config_arg_parser()
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    p = jetstream.Project(args.path)
+
+    if args.format == 'json':
+        if args.pretty:
+            print(jetstream.utils.json.dumps(p.samples(), indent=4))
+        else:
+            print(jetstream.utils.json.dumps(p.samples()))
+    elif args.format == 'yaml':
+        jetstream.utils.yaml.dump(p.samples(), stream=sys.stdout)
+
+
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
@@ -85,9 +101,11 @@ def main(args=None):
     if args.action in ('init',):
         init(args=args.args)
 
-    elif args.action in ('data',):
-        # TODO Commandline iterator for samples/data, useful for bash scripts
-        data(args=args.args)
+    elif args.action in ('config',):
+        config(args=args.args)
+
+    elif args.action in ('samples',):
+        samples(args=args.args)
 
     else:
         raise ValueError('Unknown action {}'.format(args.action))
