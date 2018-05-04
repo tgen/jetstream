@@ -42,13 +42,13 @@ def build_workflow(nodes):
     wf = Workflow()
 
     for node in nodes:
-        log.debug('Adding node to workflow: {}'.format(node))
+        log.debug('Adding task to workflow: {}'.format(node))
         wf.add_node(node_id=node['id'], **node)
 
     for node in nodes:
+        log.debug('Adding dependencies for task: {}'.format(node))
         # Before/After linking
         if 'before' in node:
-            log.debug('Adding dependency to node: {}'.format(node))
             wf.add_dependency(node['id'], before=node['before'])
 
         if 'after' in node:
