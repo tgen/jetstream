@@ -14,7 +14,7 @@ complete, etc.). Workflows can also be loaded from node-link data.
 Workflows can also be described in a template syntax. Workflow templates can
 contain variables to be filled in with project-specific data prior to loading.
 
-Template + data -render-> Workflow()
+Template + data --render--> Workflow()
 
 # Details
 

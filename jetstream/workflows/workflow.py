@@ -112,8 +112,6 @@ class Workflow:
         """ Returns results to the workflow """
         log.debug('Received results for {}'.format(node_id))
 
-        self.update(node_id, datetime_end=str(datetime.now()))
-
         if return_code != 0:
             self.fail_node(node_id, return_code=return_code, logs=logs)
         else:
@@ -125,6 +123,7 @@ class Workflow:
 
         self.update(
             node_id,
+            datetime_end=str(datetime.now()),
             status='complete',
             return_code=return_code,
             logs=logs
@@ -137,6 +136,7 @@ class Workflow:
 
         self.update(
             node_id,
+            datetime_end=str(datetime.now()),
             status='failed',
             return_code=return_code,
             logs=logs
@@ -259,11 +259,7 @@ class Workflow:
             raise NotDagError
 
     def add_node(self, node_id, **kwargs):
-        if 'cmd' not in kwargs or not kwargs['cmd']:
-            msg = "Node: '{}' is missing a required value for 'cmd'"
-            raise ValueError(msg.format(node_id))
-
-        if isinstance(kwargs['cmd'], str):
+        if 'cmd' in kwargs and isinstance(kwargs['cmd'], str):
             kwargs['cmd'] = shlex.split(kwargs['cmd'])
 
         self._add_node(node_id, kwargs)

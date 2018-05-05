@@ -83,7 +83,7 @@ def launch(node_id, node_data):
             stderr=err
         )
 
-        log.debug('Task "{}": Pid: {}'.format(node_id, p.pid))
+        log.debug('Task {}: Pid: {}'.format(node_id, p.pid))
 
         stdout, _ = p.communicate(input=stdin)
 
@@ -109,7 +109,7 @@ def launch(node_id, node_data):
     return result
 
 
-def _runner(workflow, run_id, run_path):
+def _runner(workflow, run_path):
     log.critical('Initialized: {}'.format(run_path))
     workflow_path = os.path.join(run_path, 'workflow.yaml')
     save(workflow, workflow_path)
@@ -123,7 +123,7 @@ def _runner(workflow, run_id, run_path):
             break
 
         if node is None:
-            for node_id, result in _handle_completed(tasks, run_id, run_path):
+            for node_id, result in _handle_completed(tasks, run_path):
                 workflow.__send__(
                     node_id=node_id,
                     return_code=result['return_code'],
@@ -134,6 +134,10 @@ def _runner(workflow, run_id, run_path):
 
         else:
             node_id, node_data = node
+
+            if node_data['cmd'] is None:
+                workflow.pass_node(node_id)
+
             log.debug('Sending to launch: {}'.format(node_id))
 
             thread = ThreadWithReturnValue(
@@ -147,7 +151,7 @@ def _runner(workflow, run_id, run_path):
     log.critical('Run complete!')
 
 
-def _handle_completed(tasks, run_id, run_path):
+def _handle_completed(tasks, run_path):
     """Cycle through the active tasks queue and return completed tasks. """
     sentinel = object()
     tasks.append(sentinel)
@@ -199,5 +203,5 @@ def run_workflow(workflow):
         record = {run_id: utils.fingerprint()}
         utils.yaml.dump(record, stream=fp)
 
-    _runner(workflow, run_id=run_id, run_path=run_path)
+    _runner(workflow, run_path=run_path)
 
