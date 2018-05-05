@@ -9,29 +9,16 @@
 # TODO
 # Gather input data
 
-{% if dna_module is defined %}
-{% with task_prefix='alignment_' %}
-{% filter replace('id:', 'ID:') %}
-{% include dna_module %}
-{% endfilter %}
+# Alignment Modules
+{% with after = "inform_start" %}
+{% include "dna_align_bwa_mem.yaml" %}
 {% endwith %}
-{% endif %}
 
-
-
-# RNA Alignment steps
-# TODO
-
-
-# Stuff between alignment and variant calling
 - id: alignment_is_done
   help: This is just a symbolic task that represents the point at which
     all of the alignment steps are done. It's completely unnecessary, but
     demonstrates how to specify "after" for multiple items. 
-  after: 
-    {% for sample in project.list_samples() %}
-    - merge_bams_{{ sample.sample_name }} 
-    {% endfor %}
+  after: merge_bams_.*
   cmd: echo
 
 
@@ -41,5 +28,6 @@
   cmd: bash
   stdin: |
     #!/bin/bash
-    echo Project all done $(date) > finished.txt
+    # email someone?
+    echo Project complete at: $(date)
 

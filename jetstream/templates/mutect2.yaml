@@ -1,64 +1,75 @@
-# Requirements:
-# dna_pair
-# ref.parallelization_intervals
+{# Ensure the tumor/normal values are provided and no funny business #}
+{% set gatk_version = "4.0.1.2" %}
+{% set normal = normal %}
+{% set tumor = tumor %}
+{% set dna_pair = "%s-%s"|format(normal.sample_name, tumor.sample_name) -%}
 
-{% for interval in ref.parallelization_intervals %}
-- id: Mutect2_{{ dna_pair }}_{{ interval }}
-  description: |
+
+{# This should not be necessary in the future when samples have a genome attribute #}
+{% set normal_genome = 'hs37d5_tgen' %}
+{% set tumor_genome = 'hs37d5_tgen' %}
+{# if not normal.genome == tumor.genome %}{{ raise('Normal/Tumor genome mismatch') }}{% endif #}
+{% set ref_genome = ref.genomes[normal_genome] -%}
+
+
+- id: Mutect2_{{ dna_pair }}_start
+  help: |
     Launch Mutect2 on a dna-pair for a single interval.
 
-    This path to the bam files is computed by assuming they are in a 
-    directory with the 
+    This path to the bam files are assumed to be located in
+    <sample_name>/<sample_name>.bam
+  methods: |
+    Somatic variants in {{ normal.sample_name }} were called with Mutect2 in GATK v{{ gatk_version }}
+  cmd: echo
 
-  cmd: sbatch_wait -c2 -N Mutect2_{{ dna_pair }}_{{ interval }}
+
+{% for interval in ref_genome.batch_intervals %}
+- id: Mutect2_{{ dna_pair }}_{{ loop.index }}
+  after: Mutect2_{{ dna_pair }}_start
+  cmd: sbatch_wait -c4 -J Mutect2_{{ dna_pair }}_{{ loop.index }}
   stdin: |
     #!/bin/bash
     set -eu
-    module load gatk/4.0.1.2
+    module load gatk/{{ gatk_version }}
 
-    DNAPAIR_LINE="{{ dna_pair }}"
-    PAIR_NAME="${DNAPAIR_LINE//,/-}"
-    PAIR=(${DNAPAIR_LINE//,/ })
-    
-    NORMAL_NAME=${PAIR[0]}
-    NORMAL_BAM="${NORMAL_NAME}/{$NORMAL_NAME}.bam"
+    # TODO Add these args back in?
+    # --germline-resource af-only-gnomad.vcf.gz \
+    # --af-of-alleles-not-in-resource 0.00003125 \
+    # --panel-of-normals pon.vcf.gz \
 
-    TUMOR_NAME=${PAIR[1]}
-    TUMOR_BAM="${TUMOR_NAME}/${TUMOR_NAME}.bam"
+    mkdir -p temp/{{ dna_pair }}/mutect/
 
     gatk Mutect2 \
-      -R {{ ref.genome_index }} \
-      -I ${NORMAL_BAM} \
-      -I ${TUMOR_BAM} \
-      -L {{ interval }} \
-      -tumor ${TUMOR_NAME} \
-      -normal ${NORMAL_NAME} \
-      --germline-resource af-only-gnomad.vcf.gz \
-      --af-of-alleles-not-in-resource 0.00003125 \
-      --panel-of-normals pon.vcf.gz \
-      -O temp/${PAIR_NAME}/mutect/${PAIR_NAME}_{{ interval }}.vcf
+      -R {{ ref_genome.fasta_path }} \
+      -I "{{ normal.sample_name }}/{{ normal.sample_name }}.bam" \
+      -I "{{ tumor.sample_name }}/{{ tumor.sample_name }}.bam" \
+      {% if interval is string %}
+      -L "{{ interval }}" \
+      {% else %}
+      {% for i in interval %}
+      -L "{{ i }}" \
+      {% endfor %}
+      {% endif %}
+      -normal "{{ normal.sample_name }}" \
+      -tumor "{{ tumor.sample_name }}" \
+      -O "temp/{{ dna_pair }}/mutect/{{ dna_pair }}_{{ loop.index }}.vcf"
 
 {% endfor %}
 
 - id: Mutect_merge_steps_{{ dna_pair }}
   description:
     Merges together the mutect stepwise vcfs into a final vcf
-  after: 
-    {% for interval in ref.parallelization_intervals %}
-    - Mutect_{{ dna_pair }}_{{ interval }} 
-    {% endfor %}
-  cmd: sbatch_wait -c2
+  after: Mutect2_{{ dna_pair }}_.*
+  cmd: sbatch_wait -c2 -J Mutect_merge_steps_{{ dna_pair }}
   stdin: |
     #!/bin/bash
     set -eu
-    module load gatk/4.0.1.2
+    module load gatk/{{ gatk_version }}
 
-    DNAPAIR_LINE="{{ dna_pair }}"
-    PAIR_NAME="${DNAPAIR_LINE//,/-}"
-
+    mkdir -p {{ dna_pair }}/mutect
+    
     gatk MergeVcfs \
-      {% for interval in ref.parallelization_intervals %}
-      I="temp/${PAIR_NAME}/mutect/{PAIR_NAME}_{{ interval }}.vcf" \
+      {% for interval in ref_genome.batch_intervals %}
+      --INPUT "temp/{{ dna_pair }}/mutect/{{ dna_pair }}_{{ loop.index }}.vcf" \
       {% endfor %}
-      O="${PAIR_NAME}/mutect/${PAIR_NAME}.vcf"
-
+      --OUTPUT "{{ dna_pair }}/mutect/{{ dna_pair }}.vcf"
