@@ -303,7 +303,7 @@ def find(path, name=None):
 def task_summary(node_id, node_data):
     lines = list()
     for k, v in node_data.items():
-        if k == 'cmd':
+        if k == 'cmd' and v is not None:
             v = ' '.join(v)
 
         text = "{}: ".format(k)

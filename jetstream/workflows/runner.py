@@ -80,7 +80,8 @@ def launch(node_id, node_data):
             node_data['cmd'],
             stdin=subprocess.PIPE,
             stdout=out,
-            stderr=err
+            stderr=err,
+            shell=True
         )
 
         log.debug('Task {}: Pid: {}'.format(node_id, p.pid))
@@ -136,16 +137,18 @@ def _runner(workflow, run_path):
             node_id, node_data = node
 
             if node_data['cmd'] is None:
+                log.debug('Autocomplete null command: {}'.format(node_id))
                 workflow.pass_node(node_id)
+            else:
+                log.debug('Sending to launch: {}'.format(node_id))
 
-            log.debug('Sending to launch: {}'.format(node_id))
+                thread = ThreadWithReturnValue(
+                    target=launch,
+                    args=(node_id, node_data)
+                )
+                thread.start()
+                tasks.append((node_id, thread))
 
-            thread = ThreadWithReturnValue(
-                target=launch,
-                args=(node_id, node_data)
-            )
-            thread.start()
-            tasks.append((node_id, thread))
             save(workflow, workflow_path)
 
     log.critical('Run complete!')

@@ -14,8 +14,7 @@ log_debug_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)
 
 def create_parser():
     main_parser = argparse.ArgumentParser(
-        description='Available subcommands '
-                    'are: {}'.format(get_subcommands()),
+        description='Available subcommands are: {}'.format(get_subcommands()),
         epilog='Use \'jetstream <subcommand> -h/--help\' for help '
                'specific commands.',
         add_help=False)
@@ -34,7 +33,7 @@ def create_parser():
 
     main_parser.add_argument('--log-format', default=log_basic_format)
 
-    main_parser.add_argument('--log-level', default='WARNING')
+    main_parser.add_argument('--log-level', default='INFO')
 
     return main_parser
 
@@ -60,7 +59,7 @@ def main(args=None):
     )
 
     log.debug('Jetstream {}'.format(__version__))
-    log.debug(sys.argv)
+    log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
 
@@ -74,7 +73,9 @@ def main(args=None):
             '.subcommands.' + args.subcommand,
             package=__package__)
 
-        log.debug('Launch {} remaining args: {}'.format(mod, remaining))
+        log.debug('Launch {} args: {}'.format(
+            mod.__name__, ' '.join(remaining)))
+
         mod.main(remaining)
 
     except ModuleNotFoundError:

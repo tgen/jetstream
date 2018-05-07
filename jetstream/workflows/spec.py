@@ -15,8 +15,7 @@ SPEC = {
             },
             'cmd': {
                 'description': 'Array of command arguments',
-                'type': list,
-                'required': True
+                'type': list
             },
             'stdin': {
                 'description': 'Data to be sent to the command stdin',
