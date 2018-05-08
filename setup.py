@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 package = 'jetstream'
 version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
 with open(version_file, 'r') as fp:
-    __version__ = fp.read()
+    __version__ = fp.readline().strip()
 
 
 def read(fname):
