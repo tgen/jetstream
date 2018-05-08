@@ -226,7 +226,7 @@ class Workflow:
 
         if self.get_node(node_id):
             raise RuntimeError('Duplicate node id: {} in\n{}'.format(
-                id, self))
+                node_id, self.nodes()))
 
         # All nodes get a status attribute that the workflow uses to identify
         # nodes that are ready to be executed.
@@ -334,6 +334,26 @@ def from_node_link_data(data):
 
 def to_node_link_data(wf):
     return json_graph.node_link_data(wf.graph)
+
+
+def to_cytoscape_json(wf, path):
+    """Export a workflow as a cytoscape JSON file
+
+    Cytoscape is good for vizualizing network graphs. It complains about
+    node data that is not strings, so all node data is converted to a
+    string on export. This causes the cytoscape json files to be a one-way
+    export, they cannot be loaded back into a workflow.
+    :param wf: Workflow object
+    :return: None
+    """
+    data = nx.cytoscape_data(wf.graph)
+
+    for n in data['elements']['nodes']:
+        for k, v in n['data'].items():
+            n['data'][k] = str(v)
+
+    with open(path, 'w') as fp:
+        json.dump(data, fp, indent=4)
 
 
 def load(path, loader=utils.yaml_load):
