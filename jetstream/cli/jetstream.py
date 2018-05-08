@@ -24,7 +24,7 @@ def create_parser():
     main_parser.add_argument('-v', '--version', action='version',
                       version=__version__)
 
-    main_parser.add_argument('--debug', action='store_true',
+    main_parser.add_argument('--verbose', action='store_true',
                              help='Alias for lowest level logging')
 
     main_parser.add_argument('--log-filename')
@@ -47,7 +47,7 @@ def main(args=None):
     parser = create_parser()
     args, remaining = parser.parse_known_args(args)
 
-    if args.debug:
+    if args.verbose:
         args.log_format = log_debug_format
         args.log_level = 'DEBUG'
 
@@ -68,7 +68,7 @@ def main(args=None):
         sys.exit(1)
 
     try:
-        # This dynamically imports the requested subcommand
+        # This dynamically imports the requested sub-command
         mod = importlib.import_module(
             '.subcommands.' + args.subcommand,
             package=__package__)
