@@ -27,9 +27,9 @@ def create_parser():
     main_parser.add_argument('--verbose', action='store_true',
                              help='Alias for lowest level logging')
 
-    main_parser.add_argument('--log-filename')
+    main_parser.add_argument('--log-filename', default=None)
 
-    main_parser.add_argument('--log-filemode')
+    main_parser.add_argument('--log-filemode', default='a')
 
     main_parser.add_argument('--log-format', default=log_basic_format)
 
@@ -58,7 +58,7 @@ def main(args=None):
         level=getattr(logging, args.log_level)
     )
 
-    log.debug('Jetstream {}'.format(__version__))
+    log.critical('version {}'.format(__version__))
     log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
