@@ -4,19 +4,6 @@ import logging
 import jetstream
 
 log = logging.getLogger(__name__)
-RUN_DATA_DIR = '.jetstream'
-
-
-data_loaders = {
-    '.txt': jetstream.utils.table_to_records,
-    '.csv': jetstream.utils.table_to_records,
-    '.mer': jetstream.utils.table_to_records,
-    '.tsv': jetstream.utils.table_to_records,
-    '.json': jetstream.utils.json_load,
-    '.yaml': jetstream.utils.yaml_load,
-    '.yml': jetstream.utils.yaml_load,
-    '.config': jetstream.legacy.config.load,
-}
 
 
 class ProjectDataNotFound(Exception):
@@ -54,8 +41,9 @@ class Project:
     """
     def __init__(self, path=None):
         self.path = path or os.getcwd()
-        self.config_path = os.path.join(self.path, 'config')
-        self.temp_path = os.path.join(self.path, 'temp')
+        self.index_path = os.path.join(self.path, jetstream.project_index)
+        self.config_path = os.path.join(self.path, jetstream.project_config)
+        self.temp_path = os.path.join(self.path, jetstream.project_config)
         self.name = os.path.basename(self.path)
         self.config = dict()
         self._run_id = ''
@@ -67,13 +55,11 @@ class Project:
         if not os.path.isdir(self.path):
             raise NotAProject('Not a directory: {}'.format(self.path))
 
-        target = os.path.join(self.path, RUN_DATA_DIR)
-        if not os.path.exists(target):
-            raise NotAProject('Data dir does not exist {}'.format(target))
+        if not os.path.exists(self.index_path):
+            raise NotAProject('Index dir does not exist {}'.format(self.index_path))
 
-        target = os.path.join(self.path, RUN_DATA_DIR)
-        if not os.path.isdir(target):
-            raise NotAProject('Data dir is not a dir {}'.format(target))
+        if not os.path.isdir(self.index_path):
+            raise NotAProject('Index dir is not a dir {}'.format(self.index_path))
 
         self._load_project_config_files()
         log.critical('Loaded project: {}'.format(self.path))
@@ -119,7 +105,7 @@ class Project:
     def runs(self):
         """Find all run folders for this project"""
         runs = []
-        run_data_dir = os.path.join(self.path, RUN_DATA_DIR)
+        run_data_dir = os.path.join(self.path, jetstream.project_index)
         for i in os.listdir(run_data_dir):
             p = os.path.join(run_data_dir, i)
             if os.path.isdir(p):
@@ -188,11 +174,11 @@ def init(path=None):
             os.makedirs(path, exist_ok=True)
             os.chdir(path)
 
-        os.makedirs('.jetstream', exist_ok=True)
-        os.makedirs('config', exist_ok=True)
-        os.makedirs('temp', exist_ok=True)
+        os.makedirs(jetstream.project_index, exist_ok=True)
+        os.makedirs(jetstream.project_config, exist_ok=True)
+        os.makedirs(jetstream.project_temp, exist_ok=True)
 
-        created_path = os.path.join('.jetstream', 'created')
+        created_path = os.path.join(jetstream.project_index, 'created')
         if not os.path.exists(created_path):
             with open(created_path, 'w') as fp:
                 created = jetstream.utils.fingerprint()
@@ -210,7 +196,7 @@ def loadable_files(directory):
     for file in os.listdir(directory):
         path = os.path.join(directory, file)
         if os.path.isfile(path) \
-                and path.endswith(tuple(data_loaders.keys())):
+                and path.endswith(tuple(jetstream.data_loaders.keys())):
             yield path
 
 
@@ -223,7 +209,7 @@ def name_a_path(path):
 def load_data_file(path):
     """Attempts to load a data file from path, raises Value error
     if an suitable loader function is not found in data_loaders"""
-    for ext, fn in data_loaders.items():
+    for ext, fn in jetstream.data_loaders.items():
         if path.endswith(ext):
             loader = fn
             break

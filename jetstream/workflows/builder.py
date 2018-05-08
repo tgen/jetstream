@@ -1,7 +1,6 @@
 """Workflow builder module contains functions required for building a workflow
 object from a workflow template (yaml file)"""
 import logging
-from jetstream import utils
 from jetstream.workflows import Workflow
 from jetstream.workflows import spec
 

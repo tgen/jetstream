@@ -7,7 +7,9 @@ import logging
 import ulid
 from collections import deque
 from threading import Thread
+import jetstream
 from jetstream import utils
+from jetstream.workflows import to_cytoscape_json
 from .workflow import save
 
 log = logging.getLogger(__name__)
@@ -191,7 +193,7 @@ def _handle_completed(tasks, run_path):
 
 
 def run_workflow(workflow):
-    parent = os.environ.get('JETSTREAM_RUNPATH', '.jetstream')
+    parent = os.environ.get('JETSTREAM_RUNPATH', jetstream.project_index)
 
     run_id = new_run_id()
     run_path = os.path.join(parent, run_id)
@@ -207,4 +209,5 @@ def run_workflow(workflow):
         utils.yaml.dump(record, stream=fp)
 
     _runner(workflow, run_path=run_path)
+    to_cytoscape_json(workflow, os.path.join(run_path, 'workflow.json'))
 

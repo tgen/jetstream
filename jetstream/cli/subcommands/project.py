@@ -133,7 +133,7 @@ def task_summary(args=None):
         else:
             run_id = args.run
 
-    run_path = os.path.join(p.path, '.jetstream', run_id)
+    run_path = os.path.join(p.path, jetstream.project_index, run_id)
     workflow_path = os.path.join(run_path, 'workflow.yaml')
     wf = jetstream.workflows.load(workflow_path)
     tasks = dict(wf.nodes(data=True))
@@ -143,7 +143,8 @@ def task_summary(args=None):
             task = tasks[task_id]
             print(jetstream.utils.task_summary(task_id, task))
     else:
-        print(list(tasks.keys()))
+        for t in tasks.keys():
+            print(t)
 
 
 def runs(args=None):
@@ -155,7 +156,7 @@ def runs(args=None):
 
     for r in p.runs():
         try:
-            created = os.path.join(p.path, '.jetstream', r, 'created.yaml')
+            created = os.path.join(p.path, p.index_path, r, 'created.yaml')
             with open(created, 'r') as fp:
                 print(fp.read())
         except Exception as e:

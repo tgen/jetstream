@@ -7,6 +7,9 @@
   stdout: env.log
   cmd: env
 
+- id: null_command
+  cmd: null
+
 {% block main %}
 - id: say_hello
   help: >
