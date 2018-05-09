@@ -40,7 +40,10 @@ setup(
     ],
     extras_require={
         'dev': [
-            'mkdocs',
+            'sphinx-argparse',
+            'sphinx-autobuild',
+            'sphinx-rtd-theme',
+            'bumpversion'
         ]
     },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
