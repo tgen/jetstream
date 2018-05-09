@@ -53,10 +53,11 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
         https://samtools.github.io/hts-specs/
 
-    Unknown tags will raise a TypeError unless 'strict' is False
+    Unknown tags will raise a `TypeError` unless 'strict' is False
 
     :param strict: Raise error for unknown read group tags
-    :return: Read group string
+    :type strict: bool
+    :return: str
     """
     if unknown and strict:
         raise TypeError('Unknown read group tags: {}'.format(unknown))
@@ -73,54 +74,42 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
     return '\t'.join(final)
 
-# TODO:
-# def cna_index_template(refdict):
-#     with open(refdict, 'r') as fp:
-#         lines = fp.readlines()
-#
-#     seqs_to_print = {i: None for i in range(1, 25)}
-#
-#     for l in lines:
-#         groups = parse_refdict_line(l)
-#
-#         if groups is None:
-#             continue
-#
-#     lines = [parse_refdict_line(l) for l in lines]
-
 
 class Source(str):
-    """String subclass that includes a "line_numbers" property for tracking
+    """String subclass that includes a `line_numbers` property for tracking
     the source code line numbers after lines are split up.
 
     I considered making this an object composed of a string and line number:
 
-    ```python
-    class Source(object):
-        def __init__(self, line_number, data):
-          self.line_number = line_number
-          self.data = data
+    .. code-block:: python
 
-    line = Source(0, 'Hello World')
-    ```
+        class Source(object):
+            def __init__(self, line_number, data):
+              self.line_number = line_number
+              self.data = data
+
+        line = Source(0, 'Hello World')
+
 
     But, I think it actually complicates most use cases. For example, if the
     source lines were stored in a list, we might want to count a pattern. This
     is easy with a list of strings:
 
-    ```python
+    .. code-block:: python
+
         res = mylist.count('pattern')
-    ```
+
 
     With a custom class you would be forced to do something like:
 
-    ```python
+    .. code-block:: python
+
          res = Sum([line for line in lines if line.data == 'pattern'])
-    ```
+
 
     I think this string subclass inheritance pattern is more difficult to
     explain upfront, but it's much is easier to work with downstream. This class
-    behaves exactly like a string except in one case: str.splitlines() which
+    behaves exactly like a string except in one case: `str.splitlines()` which
     generates a list of Source objects instead of strings. """
     def __new__(cls, data='', line_number=None):
         line = super(Source, cls).__new__(cls, data)
@@ -128,11 +117,13 @@ class Source(str):
         return line
 
     def splitlines(self, *args, **kwargs):
+        """Break source code into a list of source lines."""
         lines = super(Source, self).splitlines(*args, **kwargs)
         lines = [Source(data, line_number=i) for i, data in enumerate(lines)]
         return lines
 
     def print_ln(self):
+        """Format this string along with its line number"""
         return '{}: {}'.format(self.line_number, self)
 
 
@@ -151,7 +142,7 @@ def read_lines_allow_gzip(path):
 
 
 def is_gzip(path, magic_number=b'\x1f\x8b'):
-    """ Returns True if the path is gzipped """
+    """Returns True if the path is gzipped."""
     if os.path.exists(path) and not os.path.isfile(path):
         raise OSError("This should only be used with regular files because"
                       "otherwise it will lose some data.")
@@ -163,11 +154,13 @@ def is_gzip(path, magic_number=b'\x1f\x8b'):
             return False
 
 
-def is_scalar(value):
-    if isinstance(value, (str,)):
+def is_scalar(obj):
+    """Returns `True` if the `obj` should be considered
+    a scalar for YAML serialization. """
+    if isinstance(obj, (str,)):
         return True
 
-    if isinstance(value, (Sequence, Mapping)):
+    if isinstance(obj, (Sequence, Mapping)):
         return False
     else:
         return True
@@ -181,34 +174,45 @@ def remove_prefix(string, prefix):
 
 
 def json_load(path):
+    """Load a json file from path"""
     with open(path, 'r') as fp:
         return json.load(fp)
 
 
 def json_loads(data):
+    """Load json data"""
     return json.loads(data)
+
+
+def json_dumps(obj):
+    """Attempt to convert `obj` to a JSON string"""
+    stream = io.StringIO()
+    json.dump(obj, stream=stream)
+    return stream.getvalue()
 
 
 # TODO Handle multi-document yaml files gracefully
 def yaml_load(path):
+    """Load a yaml file from `path`"""
     with open(path, 'r') as fp:
         return yaml.load(fp)
 
 
 def yaml_loads(data):
+    """Load yaml data"""
     return yaml.load(data)
 
 
-def yaml_dumps(data):
+def yaml_dumps(obj):
+    """Attempt to convert `obj` to a YAML string"""
     stream = io.StringIO()
-    yaml.dump(data, stream=stream)
+    yaml.dump(obj, stream=stream)
     return stream.getvalue()
 
 
 def filter_records(records, criteria):
-    """Given a list of mapping objects (records) and a criteria mapping,
-    this function returns a list of objects that match filter
-    criteria."""
+    """Given a list of mapping objects (`records`) and a criteria mapping,
+    this function returns a list of objects that match filter criteria."""
     matches = list()
     for i in records:
         for k, v in criteria.items():
@@ -224,7 +228,10 @@ def filter_records(records, criteria):
 
 
 def table_to_records(path):
-    """Attempts to load a table, in any format, as a list of records"""
+    """Attempts to load a table, in any format, as a list of dictionaries
+
+    :param path: Path to a table file
+    :return: :list """
     r = list()
     with open(path, 'r') as fp:
         dialect = csv.Sniffer().sniff(fp.readline())
@@ -238,7 +245,7 @@ def table_to_records(path):
 
 
 def records_to_csv(records, outpath):
-    """Writes records out to a csv"""
+    """Writes records (list of dictionaries) out to a csv file"""
     if os.path.exists(outpath):
         raise FileExistsError(outpath)
 
@@ -270,7 +277,7 @@ def write_test_data(path, dialect='unix'):
 
 
 def fingerprint(to_json=False):
-    """Gather system info for recording changes made to projects."""
+    """Gather system info as a dictionary or JSON string."""
     fp = {
         'datetime': str(datetime.now()),
         'user': getuser(),
@@ -291,7 +298,7 @@ def fingerprint(to_json=False):
 
 
 def find(path, name=None):
-    """Sorta behaves like bash find"""
+    """Similar to BSD find, finds files matching name pattern."""
     for dirname, subdirs, files in os.walk(path):
         for f in files:
             if name is None:
@@ -301,6 +308,7 @@ def find(path, name=None):
 
 
 def task_summary(node_id, node_data):
+    """Generate a string summary for a task."""
     lines = list()
     for k, v in node_data.items():
         if k == 'cmd' and v is not None:

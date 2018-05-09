@@ -34,7 +34,7 @@ def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
 
     Templates are loaded by a Jinja2 ChoiceLoader that includes
     [<project>/templates, <package>/templates]. Project templates can
-     be ignored by setting include_project_templates=False."""
+    be ignored by setting include_project_templates=False."""
     loaders = [package_loader]
 
     if include_project_templates:

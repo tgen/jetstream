@@ -12,11 +12,12 @@ project_temp = 'temp'
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
-from jetstream import settings, utils, legacy, workflows
+from jetstream import utils, legacy, workflows
 from jetstream.workflows import Workflow
 from jetstream.project import Project
 from jetstream.jinja import template_env, package_loader
 
+Project = Project
 
 data_loaders = {
     '.txt': utils.table_to_records,

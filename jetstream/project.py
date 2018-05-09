@@ -6,12 +6,6 @@ import jetstream
 log = logging.getLogger(__name__)
 
 
-class ProjectDataNotFound(Exception):
-    """Raised when a reference to project data is made for a
-    file that does not exist. """
-    pass
-
-
 class NotAProject(Exception):
     pass
 
@@ -79,7 +73,7 @@ class Project:
         config = dict()
         project_legacy_config = None
         for path in loadable_files(self.config_path):
-            name = name_a_path(path)
+            name = path_root(path)
 
             # Handle legacy configs, see docstring
             if path.endswith('.config') and name == self.name:
@@ -200,14 +194,14 @@ def loadable_files(directory):
             yield path
 
 
-def name_a_path(path):
-    """ Names a path by removing its directories and extension """
+def path_root(path):
+    """Returns path minus its directories and extension"""
     # TODO this might need some more rules in the future
     return os.path.splitext(os.path.basename(path))[0]
 
 
 def load_data_file(path):
-    """Attempts to load a data file from path, raises Value error
+    """Attempts to load a data file from path, raises :ValueError
     if an suitable loader function is not found in data_loaders"""
     for ext, fn in jetstream.data_loaders.items():
         if path.endswith(ext):

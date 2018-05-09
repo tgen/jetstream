@@ -114,7 +114,7 @@ def launch(node_id, node_data):
 
 def _runner(workflow, run_path):
     log.critical('Initialized: {}'.format(run_path))
-    workflow_path = os.path.join(run_path, 'workflow.yaml')
+    workflow_path = os.path.join(run_path, 'workflow')
     save(workflow, workflow_path)
 
     tasks = deque()
@@ -204,7 +204,7 @@ def run_workflow(workflow):
     log.debug('Making new run {}'.format(run_path))
     os.mkdir(run_path)
 
-    with open(os.path.join(run_path, 'created.yaml'), 'w') as fp:
+    with open(os.path.join(run_path, 'created'), 'w') as fp:
         record = {run_id: utils.fingerprint()}
         utils.yaml.dump(record, stream=fp)
 

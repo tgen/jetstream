@@ -1,4 +1,6 @@
-"""Command line utility for generating project reports """
+"""Generate project reports.
+
+This tool only works with Pegasus/Medusa projects."""
 import argparse
 import logging
 
@@ -10,9 +12,13 @@ log = logging.getLogger(__name__)
 def arg_parser():
     parser = argparse.ArgumentParser(description=__doc__)
 
-    parser.add_argument('project', nargs='+')
+    parser.add_argument('project', nargs='+',
+                        help='Path to a Pegasus/Medusa project. Multiple '
+                             'projects can be given.')
 
-    parser.add_argument('--fast', action='store_true', default=False)
+    parser.add_argument('--fast', action='store_true', default=False,
+                        help='Only reports whether or not the project is'
+                             'complete. This skips the job status reporting.')
 
     parser.add_argument('--all', action='store_true', default=False,
                         help='Report on all projects even if they\'re complete.'

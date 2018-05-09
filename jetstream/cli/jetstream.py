@@ -12,20 +12,19 @@ log_basic_format = "[\033[4m\033[92m\U0001F335 %(module)10s\033[0m] %(asctime)s:
 log_debug_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s"
 
 
-def create_parser():
+def arg_parser():
     main_parser = argparse.ArgumentParser(
-        description='Available subcommands are: {}'.format(get_subcommands()),
-        epilog='Use \'jetstream <subcommand> -h/--help\' for help '
+        description='Available sub-commands are: {}'.format(get_subcommands()),
+        epilog='Use ``jetstream <subcommand> -h/--help`` for help '
                'specific commands.',
         add_help=False)
 
-    main_parser.add_argument('subcommand', nargs='?')
+    main_parser.add_argument('subcommand', nargs='?', help='command name')
 
     main_parser.add_argument('-v', '--version', action='version',
                       version=__version__)
 
-    main_parser.add_argument('--verbose', action='store_true',
-                             help='Alias for lowest level logging')
+    main_parser.add_argument('--verbose', action='store_true')
 
     main_parser.add_argument('--log-filename', default=None)
 
@@ -40,11 +39,11 @@ def create_parser():
 
 def get_subcommands():
     from jetstream.cli.subcommands import __all__ as subcommands
-    return subcommands
+    return ', '.join(subcommands)
 
 
 def main(args=None):
-    parser = create_parser()
+    parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
 
     if args.verbose:

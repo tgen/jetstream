@@ -8,20 +8,24 @@ Note: This command is primarily intended for debugging template issues. To
 render, build, and run a workflow in one step use "jetstream_pipelines".
 """
 import logging
-
 import jetstream
-from jetstream.cli.subcommands.pipelines import arg_parser, reparse_aribitrary
+from jetstream.cli.subcommands.pipelines import arg_parser as base_parser
+from jetstream.cli.subcommands.pipelines import reparse_aribitrary
 
 log = logging.getLogger(__name__)
 
 
-def main(args=None):
-    parser = arg_parser()
+def arg_parser():
+    parser = base_parser()
     parser.epilog = __doc__
     parser.add_argument('-s', '--string', action='store_true', default=False,
                         help='Render a templete from a string instead of '
                              'reading a file.')
+    return parser
 
+
+def main(args=None):
+    parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 

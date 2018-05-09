@@ -1,12 +1,24 @@
 """Run a Jetstream pipeline
 
-All arguments following the name of the pipeline are considered template data
-values and will be ignored by the argument parser initially. Any options listed
-below must be given BEFORE the workflow name (first positional argument) The
-key must start with two hyphens and the value is the next argument. Values can
-be JSON strings.
+All arguments following the name of the pipeline are considered template
+variable data and will be ignored by the argument parser initially. Any command
+options listed below *must* be given *before* the template name.
+However, logging arguments (see ``jetstream -h``) are special and can be
+included anywhere.
 
-    jetstream pipelines <options> <template> [ --<key> <value> ]
+Template variable data
+-----------------------
+
+Is usually included as data files in ``<project>/config``, but variables can
+also be given as command arguments. They are provided as arugment pairs:
+``--<key> <value>``. The key must start with two hyphens and the value is the
+next argument.
+
+Variables can also include a type with the syntax ``--<type>:<key> <value>``.
+Some popular types are "file", "json", and "yaml". Files will be handled with
+``jetstream.data_loaders`` according to their extension. All others will
+evaluated by the appropriate loader function. Variables with no type declared
+will be strings.
 
 """
 import sys
@@ -53,6 +65,9 @@ def arg_parser():
 # Loader functions for typed arbitrary arguments
 argtype_fns = {
     "default": str,
+    "str": str,
+    "int": int,
+    "float": float,
     "file": jetstream.project.load_data_file,
     "json": jetstream.utils.json_loads,
     "yaml": jetstream.utils.yaml_loads,
@@ -60,14 +75,17 @@ argtype_fns = {
 
 
 def reparse_aribitrary(args, type_separator=':'):
-    """Reparses sequence of arbitrary arguments "--<type>:<key> <value>"
+    """Reparses sequence of arbitrary arguments ``--<type>:<key> <value>``
 
-    This works by first building an argument parser specifically for the
-    arguments present in the list. First we look for any items that
-    start with '--', then adding an argument to the parser with the given
-    key and type (type is optional, str is the default).
+    This works by building an argument parser configured specifically for the
+    arguments present in the list. First any arguments that start with
+    ``--`` are selected for creating a new parsing handler. If
+    ``type_separator`` is present in the raw argument, it's split to determine
+    type and key. The default type for arguments without the separator is
+    ``str``. Then an argument is added to the parser with the given type
+    and key ().
 
-    After building the parser, the args are parsed and namespace is returned
+    After building the parser, the args are reparsed and namespace is returned
     as a dictionary. """
     parser = argparse.ArgumentParser(add_help=False)
 
