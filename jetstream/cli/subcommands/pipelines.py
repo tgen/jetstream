@@ -6,19 +6,19 @@ options listed below *must* be given *before* the template name.
 However, logging arguments (see ``jetstream -h``) are special and can be
 included anywhere.
 
-Template variable data
------------------------
+*Template variable data:*
 
-Is usually included as data files in ``<project>/config``, but variables can
-also be given as command arguments. They are provided as arugment pairs:
+Template variable data is usually saved to files in
+``<project>/config``, but command arguments can also be used to pass variable
+data to templates. Variables are specified as argument pairs:
 ``--<key> <value>``. The key must start with two hyphens and the value is the
 next argument.
 
-Variables can also include a type with the syntax ``--<type>:<key> <value>``.
+Variables can also be typed with the syntax ``--<type>:<key> <value>``.
 Some popular types are "file", "json", and "yaml". Files will be handled with
 ``jetstream.data_loaders`` according to their extension. All others will
 evaluated by the appropriate loader function. Variables with no type declared
-will be strings.
+will be loaded as strings.
 
 """
 import sys
