@@ -2,16 +2,18 @@
 locations set by arguments or environment variables. """
 import os
 import json
-from jinja2 import (Environment, PackageLoader, FileSystemLoader, ChoiceLoader,
-    StrictUndefined, Undefined, evalcontextfilter)
+import logging
+import jetstream
+from types import MethodType
+from jinja2 import (Environment, FileSystemLoader, meta,
+                    StrictUndefined, Undefined, evalcontextfilter)
 
-project_loader = FileSystemLoader(os.path.join(os.getcwd(), 'templates'))
-package_loader = PackageLoader('jetstream', 'templates')
+log = logging.getLogger(__name__)
 
-PROJECT_TEMPLATES_ENVVAR = 'JETSTREAM_PROJECT_TEMPLATES'
+SITE_TEMPLATES_ENVVAR = 'JETSTREAM_SITE_TEMPLATES'
 STRICT_ENVVAR = 'JETSTREAM_STRICT'
 
-PROJECT_TEMPLATES = bool(os.environ.get(PROJECT_TEMPLATES_ENVVAR, 1))
+SITE_TEMPLATES = bool(os.environ.get(SITE_TEMPLATES_ENVVAR, 1))
 STRICT = bool(os.environ.get(STRICT_ENVVAR, 1))
 
 
@@ -29,32 +31,67 @@ def fromjson(eval_ctx, value):
     return json.loads(value)
 
 
-def template_env(include_project_templates=PROJECT_TEMPLATES, strict=STRICT):
+def get_children(env, template):
+    source, filename, loader = env.loader.get_source(env, template)
+    parsed = env.parse(source)
+
+    children = meta.find_referenced_templates(parsed)
+
+    for c in children:
+        yield c
+
+        for d in get_children(env, c):
+            yield d
+
+
+def get_source(env, template):
+    res = {template: env.loader.get_source(env, template)[:2]}
+
+    for c in get_children(env, template):
+        res[c] =  env.loader.get_source(env, c)[:2]
+
+    return res
+
+
+def get_template_with_source(self, template, *args, **kwargs):
+    t = self.get_template(template, *args, **kwargs)
+    t.source = get_source(self, template)
+    return t
+
+
+def template_env(template_dirs=None, include_site_templates=SITE_TEMPLATES,
+                 strict=STRICT):
     """Start a Jinja2 Environment with the given template directories.
 
-    Templates are loaded by a Jinja2 ChoiceLoader that includes
+    Templates are loaded by a Jinja2 ChoiceLoader.  that includes
     [<project>/templates, <package>/templates]. Project templates can
     be ignored by setting include_project_templates=False."""
-    loaders = [package_loader]
+    search_path = list()
 
-    if include_project_templates:
-        loaders.insert(0, project_loader)
+    if template_dirs:
+        search_path.extend(template_dirs)
+
+    if include_site_templates:
+        search_path.append(jetstream.site_template_path)
 
     if strict:
         undefined_handler = StrictUndefined
     else:
         undefined_handler = Undefined
 
-    os.environ[PROJECT_TEMPLATES_ENVVAR] = envbool(include_project_templates)
+    os.environ[SITE_TEMPLATES_ENVVAR] = envbool(include_site_templates)
     os.environ[STRICT_ENVVAR] = envbool(strict)
 
     env = Environment(
         trim_blocks=True,
         lstrip_blocks=True,
-        loader=ChoiceLoader(loaders),
+        loader=FileSystemLoader(search_path),
         undefined=undefined_handler
     )
 
+    env.get_template_with_source = MethodType(get_template_with_source, env)
     env.globals['raise'] = raise_helper
     env.filters['fromjson'] = fromjson
+
+    log.debug('Jinja environment loader: {}'.format(dir(env.loader)))
     return env
