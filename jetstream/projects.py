@@ -15,8 +15,10 @@ class NotARun(Exception):
 
 
 class Project:
-    """Internal representation of a project. A project is a directory
-    with a run data dir ('project/.jetstream'). Additionally there are
+    """Interact with a Jetstream project.
+
+    Internal representation of a project. A project is a directory
+    with a run data dir ('project/.jetstream'). Additionally, there are
     some data files describing the contents and settings of the project.
     This object provides an interface for easy access to project info.
 
@@ -38,6 +40,7 @@ class Project:
         self.index_path = os.path.join(self.path, jetstream.project_index)
         self.config_path = os.path.join(self.path, jetstream.project_config)
         self.temp_path = os.path.join(self.path, jetstream.project_config)
+        self.manifest = os.path.join(self.path, jetstream.project_manifest)
         self.name = os.path.basename(self.path)
         self.config = dict()
         self._run_id = ''
@@ -99,7 +102,7 @@ class Project:
     def runs(self):
         """Find all run folders for this project"""
         runs = []
-        run_data_dir = os.path.join(self.path, jetstream.project_index)
+        run_data_dir = os.path.join(self.path, jetstream.run_history)
         for i in os.listdir(run_data_dir):
             p = os.path.join(run_data_dir, i)
             if os.path.isdir(p):
@@ -160,6 +163,63 @@ class Project:
         else:
             return sample_list
 
+    def new_run(self):
+        return RunInstance(project=self)
+
+    def load_run(self, run_id=None):
+        if run_id is None:
+            try:
+                run_id = self.runs()[-1]
+            except IndexError:
+                log.critical('No run instances found in project!')
+                return None
+
+        return RunInstance(project=self, run_id=run_id)
+
+
+class RunInstance(object):
+    def __init__(self, project=None, run_id=None):
+        if project is None:
+            project = Project()
+
+        self.project_path = project.path
+        self.info = None
+
+        if run_id is None:
+            self.id = jetstream.utils.run_id()
+            self._create()
+        else:
+            self.id = run_id
+            self._reload()
+
+    def __repr__(self):
+        return '<{} at {}>'.format(self.__class__, self.path)
+
+    @property
+    def path(self):
+        return os.path.join(self.project_path, jetstream.run_history, self.id)
+
+    @property
+    def info_path(self):
+        return os.path.join(self.path, 'run_info')
+
+    def _reload(self):
+        if not os.path.exists(self.path):
+            msg = '{} does not appear to be a run in the project {}. No ' \
+                  'run history not found in: {}.'
+            log.warning(msg.format(self.id, self.project_path, self.path))
+
+        self.info = jetstream.utils.yaml_load(self.info_path)
+
+    def _create(self):
+        self.info = jetstream.utils.fingerprint()
+        self.info['parent'] = os.environ.get('JETSTREAM_RUNID')
+
+        os.makedirs(self.path, exist_ok=True)
+
+        with open(self.info_path, 'w') as fp:
+            jetstream.utils.yaml.dump(vars(self), fp)
+
 
 def init(path=None):
     cwd = os.getcwd()
@@ -169,6 +229,7 @@ def init(path=None):
             os.chdir(path)
 
         os.makedirs(jetstream.project_index, exist_ok=True)
+        os.makedirs(jetstream.run_history, exist_ok=True)
         os.makedirs(jetstream.project_config, exist_ok=True)
         os.makedirs(jetstream.project_temp, exist_ok=True)
 
