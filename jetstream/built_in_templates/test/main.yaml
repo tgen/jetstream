@@ -5,10 +5,18 @@
 
 - id: env_info
   stdout: env.log
+  after: sys_info
   cmd: env
 
 - id: null_command
+  after: env_info
   cmd: null
+
+{% for i in range(5) %}
+- id: test_range_{{ loop.index }}
+  after: null_command
+  cmd: echo {{ loop.index }}
+{% endfor %}
 
 {% block main %}
 - id: say_hello
