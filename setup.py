@@ -48,7 +48,7 @@ setup(
     },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
     package_data={
-        'jetstream': ['templates/*', 'etc/*']
+        'jetstream': ['built_in_templates/*', 'etc/*']
     },
     entry_points={
         'console_scripts': [
