@@ -4,6 +4,11 @@ import logging
 
 log = logging.getLogger(__name__)
 
+# TODO
+# stdin_uri stdout_uri etc.
+# these could specify that stdin/out/err is a URI and should be handled
+# by a URI loader.
+
 SPEC = {
     'name': 'Jetstream node properties definition',
     'spec': {
