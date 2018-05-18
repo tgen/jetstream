@@ -1,5 +1,4 @@
 """Interact with jetstream projects."""
-import os
 import sys
 import argparse
 import logging
@@ -85,9 +84,6 @@ def tasks_arg_parser():
     parser.add_argument('--path', default='.',
                         help='Jetstream project path')
 
-    parser.add_argument('-r', '--run', default='latest',
-                        help='Run ID (defaults to latest)')
-
     return parser
 
 
@@ -109,7 +105,7 @@ def init(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    jetstream.project.init(args.path)
+    jetstream.projects.init(args.path)
 
 
 def config(args=None):
@@ -150,19 +146,8 @@ def tasks(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project(args.path)
-
-    if args.run == 'latest':
-        run_id = p.latest_run()
-    else:
-        if not args.run in p.runs():
-            raise ValueError("Run ID {} not found in project.".format(args.run))
-        else:
-            run_id = args.run
-
-    run_path = os.path.join(p.path, jetstream.project_index, run_id)
-    workflow_path = os.path.join(run_path, 'workflow')
-    wf = jetstream.workflows.load(workflow_path)
-    tasks = dict(wf.nodes(data=True))
+    wf = p.load_workflow()
+    tasks = dict(wf.tasks(data=True))
 
     if args.task_id:
         for task_id in args.task_id:
@@ -181,13 +166,7 @@ def runs(args=None):
     p = jetstream.Project(args.path)
 
     for r in p.runs():
-        try:
-            created = os.path.join(p.path, p.index_path, r, 'created')
-            with open(created, 'r') as fp:
-                print(fp.read())
-        except Exception as e:
-            log.exception(e)
-
+       print(r.id, r.info.get('datetime'))
 
 
 def main(args=None):
