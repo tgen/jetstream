@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 import pkg_resources
+import jetstream
 
 log = logging.getLogger()
 
@@ -17,9 +18,12 @@ def arg_parser():
         description='Available sub-commands are: {}'.format(get_subcommands()),
         epilog='Use ``jetstream <subcommand> -h/--help`` for help '
                'specific commands.',
-        add_help=False)
+        add_help=True)
 
-    main_parser.add_argument('subcommand', nargs='?', help='command name')
+    main_parser.add_argument('subcommand', nargs='?', help='subcommand name')
+
+    main_parser.add_argument('remainder', nargs=argparse.REMAINDER,
+                             help=argparse.SUPPRESS)
 
     main_parser.add_argument('-v', '--version', action='version',
                       version=__version__)
@@ -34,8 +38,38 @@ def arg_parser():
 
     main_parser.add_argument('--log-level', default='INFO')
 
+    main_parser.add_argument('--ignore-undefined', dest='strict',
+                             action='store_false',
+                             help='Suppress errors normally raised when a '
+                                  'workflow variable is undefined')
+
+    main_parser.add_argument('--template-dir', action='append',
+                             help='Specify template search path. If this '
+                                  'argument is not set, only built-in templates '
+                                  'will be searched. This argument can be used '
+                                  'multiple times.')
+
+    main_parser.add_argument('--no-site-templates', dest='site_templates',
+                        action='store_false',
+                        help='Don\'t include built-in templates in search path')
+
     return main_parser
 
+# TODO Argument parsing behavior
+# I've configured this parser to capture all args after the subcommand name
+# and pass them directly to the subcommand. This allows subcommands to declare
+# arguments with the same values, more importantly it means that no arguments
+# will be cherry-picked from the command string. For example:
+#
+# jetstream pipelines main.yaml --log-level DEBUG
+#
+# Will result in a template variable "log-level" with the value "DEBUG".
+#
+# Another way this could behave is that, all of the arguments described here
+# are granted a "special" status where they are cherry-picked by the parser and
+# evaluated prior to any subcommand evaluation. This would mean that a template
+# variable could never be declared with any key that occurs in these arguments.
+# Not sure which is the best pattern right now, revisit this later.
 
 def get_subcommands():
     from jetstream.cli.subcommands import __all__ as subcommands
@@ -44,7 +78,7 @@ def get_subcommands():
 
 def main(args=None):
     parser = arg_parser()
-    args, remaining = parser.parse_known_args(args)
+    args = parser.parse_args(args)
 
     if args.verbose:
         args.log_format = log_debug_format
@@ -61,21 +95,26 @@ def main(args=None):
     log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
+    jetstream.config_environment(
+        template_dirs=args.template_dir,
+        strict=args.strict,
+        include_site_templates=args.site_templates
+    )
 
     if args.subcommand is None:
         parser.print_help()
         sys.exit(1)
 
     try:
-        # This dynamically imports the requested sub-command
+        # Dynamically import the requested sub-command
         mod = importlib.import_module(
             '.subcommands.' + args.subcommand,
             package=__package__)
 
         log.debug('Launch {} args: {}'.format(
-            mod.__name__, ' '.join(remaining)))
+            mod.__name__, ' '.join(args.remainder)))
 
-        mod.main(remaining)
+        mod.main(args.remainder)
 
     except ModuleNotFoundError:
         log.debug(traceback.format_exc())
