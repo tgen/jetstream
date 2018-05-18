@@ -1,23 +1,25 @@
 import os
-import pkg_resources
+from pkg_resources import get_distribution, resource_filename
 
-__version__ = pkg_resources.get_distribution("jetstream").version
+__version__ = get_distribution('jetstream').version
 
+site_template_path = resource_filename('jetstream', 'built_in_templates')
+task_id_template = 'js{}'
 project_index = 'jetstream'
 project_config = 'config'
 project_temp = 'temp'
+project_logs = 'logs'
+project_manifest = os.path.join(project_index, 'manifest')
+project_workflow = os.path.join(project_index, 'workflow')
+project_history = os.path.join(project_index, 'history')
 
 # This prevents numpy from starting a million threads when imported. The
 # graph library, networkx, uses scipy/numpy. TODO switch to another graph lib
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
-from jetstream import utils, legacy, workflows
-from jetstream.workflows import Workflow
-from jetstream.project import Project
-from jetstream.jinja import template_env, package_loader
+from jetstream import utils, legacy
 
-Project = Project
 
 data_loaders = {
     '.txt': utils.table_to_records,
@@ -31,11 +33,14 @@ data_loaders = {
 }
 
 
-def load_project(path=None):
-    return Project(path)
+from jetstream import legacy, templates, runners, projects, workflows
+from jetstream.workflows import Workflow
+from jetstream.projects import Project
 
 
-def load_workflow(path):
-    wf_data = utils.yaml_load(path)
-    return Workflow.from_node_link_data(wf_data)
+env = templates.load_environment()
 
+
+def config_environment(*args, **kwargs):
+    global env
+    env = templates.load_environment(*args, **kwargs)
