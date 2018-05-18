@@ -26,7 +26,7 @@
   cmd: say Hello, world
 {% endblock %}
 
-{% with after = "env_info" %}
+{% with after = "test_range_.*" %}
 {% include "test/show_env.yaml" %}
 {% endwith %}
 
