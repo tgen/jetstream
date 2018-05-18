@@ -18,11 +18,12 @@ STRICT = bool(os.environ.get(STRICT_ENVVAR, 1))
 
 
 def envbool(value):
+    """Convert value to a boolean environment variable: str "0" or "1" """
     return str(int(bool(value)))
 
 
 def raise_helper(msg):
-    """Allows "raise('msg')" to be used in templates"""
+    """Allow "raise('msg')" to be used in templates"""
     raise Exception(msg)
 
 
@@ -48,7 +49,7 @@ def get_source(env, template):
     res = {template: env.loader.get_source(env, template)[:2]}
 
     for c in get_children(env, template):
-        res[c] =  env.loader.get_source(env, c)[:2]
+        res[c] = env.loader.get_source(env, c)[:2]
 
     return res
 
@@ -59,8 +60,8 @@ def get_template_with_source(self, template, *args, **kwargs):
     return t
 
 
-def template_env(template_dirs=None, include_site_templates=SITE_TEMPLATES,
-                 strict=STRICT):
+def load_environment(template_dirs=None, include_site_templates=SITE_TEMPLATES,
+        strict=STRICT):
     """Start a Jinja2 Environment with the given template directories.
 
     Templates are loaded by a Jinja2 ChoiceLoader.  that includes
@@ -93,5 +94,5 @@ def template_env(template_dirs=None, include_site_templates=SITE_TEMPLATES,
     env.globals['raise'] = raise_helper
     env.filters['fromjson'] = fromjson
 
-    log.debug('Jinja environment loader: {}'.format(dir(env.loader)))
+    log.critical('Template loader: {}'.format(env.loader.searchpath))
     return env
