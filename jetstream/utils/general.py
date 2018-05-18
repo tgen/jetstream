@@ -6,12 +6,16 @@ import fnmatch
 import gzip
 import json
 import logging
+import ulid
+import time
 import textwrap
+import jetstream
 from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
 from socket import gethostname
 from uuid import getnode
+from urllib.parse import quote as urlquote
 from pkg_resources import get_distribution
 from ruamel.yaml import YAML
 
@@ -73,6 +77,35 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
             final.append('{}:{}'.format(field, value))
 
     return '\t'.join(final)
+
+
+class LogisticDelay:
+    def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
+        self.max = max
+        self.inflection = inflection
+        self.sharpness = sharpness
+        self.ignore = ignore
+        self.i = 0
+
+    def wait(self):
+        self.i += 1
+        delay = self.delay(self.i)
+        time.sleep(delay)
+
+    def reset(self):
+        self.i = 0
+
+    def delay(self, i):
+        if i > self.ignore:
+            c = self.max
+            a = self.inflection
+            e = 2.718281828459045
+            k = self.sharpness
+
+            return c / (1 + a * e ** (-k * (i - a)))
+
+        else:
+            return 0
 
 
 class Source(str):
@@ -184,11 +217,15 @@ def json_loads(data):
     return json.loads(data)
 
 
-def json_dumps(obj):
+def json_dumps(obj, *args, **kwargs):
     """Attempt to convert `obj` to a JSON string"""
     stream = io.StringIO()
-    json.dump(obj, stream=stream)
+    json.dump(obj, fp=stream, sort_keys=True, *args, **kwargs)
     return stream.getvalue()
+
+
+def json_dump(obj, *args, **kwargs):
+    return json.dump(obj, sort_keys=True, *args, **kwargs)
 
 
 # TODO Handle multi-document yaml files gracefully
@@ -208,6 +245,10 @@ def yaml_dumps(obj):
     stream = io.StringIO()
     yaml.dump(obj, stream=stream)
     return stream.getvalue()
+
+
+def hash_dict(obj):
+    return hash(json_dumps(obj))
 
 
 def filter_records(records, criteria):
@@ -279,6 +320,7 @@ def write_test_data(path, dialect='unix'):
 def fingerprint(to_json=False):
     """Gather system info as a dictionary or JSON string."""
     fp = {
+        'id': jetstream.task_id_template.format(ulid.new().str),
         'datetime': str(datetime.now()),
         'user': getuser(),
         'version': str(get_distribution("jetstream")),
@@ -288,7 +330,8 @@ def fingerprint(to_json=False):
         'pid': os.getpid(),
         'args': sys.argv,
         'hostname': gethostname(),
-        'pwd': os.getcwd()
+        'pwd': os.getcwd(),
+        'parent': os.environ.get('JETSTREAM_RUNID')
     }
 
     if to_json:
@@ -324,3 +367,7 @@ def task_summary(node_id, node_data):
         lines.append(text)
 
     return '\n'.join(lines)
+
+
+def cleanse_filename(s):
+    return urlquote(s)
