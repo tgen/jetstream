@@ -46,7 +46,7 @@ kit to the TGen pipeline. Three types of files will need to be created:
 
         A) Target intervals file padded by 100bp
         B) All exonic intervals (taken from the reference GTF) that
-        intersect any interval in "A"
+           intersect any interval in "A"
 
 
     CNA index .bed
