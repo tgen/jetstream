@@ -1,20 +1,17 @@
 """Network graph model of computational workflows
 
-The `Workflow()` class models workflows as a directed-acyclic graph where nodes
-are tasks to complete, and edges represent dependencies between those tasks. It
-has methods for building workflows (add_task, add_dependency) in addition to
-the methods required for executing a workflow (__next__, fail,
-complete, etc.).
+The `Workflow` class models computational workflows as a directed-acyclic graph,
+where nodes are tasks to complete, and edges represent dependencies between
+those tasks. It includes methods for building workflows (add_task,
+add_dependency) in addition to the methods required for executing a workflow
+(__next__, fail, complete, reset, etc.).
 
-
-Intro
-=======
 
 Workflows are built by rendering a template with data. Templates are text
-documents describing a set of tasks, and can include dynamic elements through
-templating syntax. Data can be saved in files located in the config directory
-of project, or given as arguments to template (see Project.render or
-Project.run).
+documents that describe a set of tasks to complete, and they can include
+dynamic elements through templating syntax. Data can be saved in files located
+in the config directory of project, or given as arguments to template (see
+Project.render or Project.run).
 
 ..
 
@@ -25,7 +22,7 @@ Building a Workflow
 
 Templates are a set of tasks described in YAML format:
 
-.. highlight:: yaml
+.. code-block:: yaml
 
    - id: align_fastqs
     cmd: bwa mem grch37.fa sampleA_R1_001.fastq.gz sampleA_R2_001.fastq.gz
@@ -36,7 +33,7 @@ Templates are a set of tasks described in YAML format:
 
 Dependencies can be specified in a task with "before" or "after":
 
-.. highlight:: yaml
+.. code-block:: yaml
 
   - id: align_fastqs
     cmd: bwa mem grch37.fa sampleA_R1_001.fastq.gz sampleA_R2_001.fastq.gz
@@ -48,7 +45,7 @@ Dependencies can be specified in a task with "before" or "after":
 
 or, equivalently:
 
-.. highlight:: yaml
+.. code-block:: yaml
 
   - id: align_fastqs
     cmd: bwa mem grch37.fa sampleA_R1_001.fastq.gz sampleA_R2_001.fastq.gz
@@ -60,7 +57,7 @@ or, equivalently:
 
 Finally, Jinja templating can be used to add dynamic elements.
 
-.. highlight:: ansible
+.. code-block:: ansible
 
     {% for sample in project.config.samples %}
 
@@ -81,7 +78,7 @@ to complete, and edges represent dependencies between those tasks.
 
 
 Upfront workflow rendering
-===========================
+---------------------------
 
 Rendering a template is a dynamic procedure that uses input data and template
 directives to generate a set of tasks. But, after those tasks are used to build
@@ -89,9 +86,11 @@ a workflow, the resulting workflow is a final, complete, description of the
 commands required, and the order in which they should be executed.
 
 Workflows do not change in response to events that occur during runtime. If a
-node exists in a workflow, the runner will always launch it. Unlike other
+task exists in a workflow, the runner will always launch it. Unlike other
 worklow engines, there is no flow control (conditionals, loops, etc.) contained
-in the tasks themselves. Flexibility is enabled by templates.
+in the tasks themselves. Flexibility is enabled by templates. The only
+exception to this is that a task will automatically fail if any of its
+dependencies fails.
 
 Cases where flexibility during runtime may be necessary:
 
@@ -367,7 +366,8 @@ class Workflow:
             return True
 
     def status(self, task_id=None):
-        """ Returns the status of a node or all nodes if "node_id" is None. """
+        """ Returns the status of a task. Returns status of all tasks if
+        "task_id" is None. """
         if task_id is not None:
             return self.graph.nodes[task_id]['status']
         else:
@@ -382,12 +382,13 @@ class Workflow:
         workflow is preserved. If a workflow contains overlapping node ids
         this will essentially extend the workflow.
 
+        ::
 
-             G (new_wf) -->    H (self)     =   self.graph
-        ---------------------------------------------------
-            (A)new                              (A)complete
-             |         --->   (A)complete   =    |
-            (B)new                              (B)new
+                 G (new_wf) -->    H (self)     =   self.graph
+            ---------------------------------------------------
+                (A)new                              (A)complete
+                 |         --->   (A)complete   =    |
+                (B)new                              (B)new
 
 
         :param new_wf: Another workflow to add to this workflow

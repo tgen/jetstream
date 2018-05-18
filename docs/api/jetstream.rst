@@ -15,13 +15,14 @@ Subpackages
     jetstream.legacy
     jetstream.test
     jetstream.utils
-    jetstream.workflows
 
 Submodules
 ----------
 
 .. toctree::
 
-   jetstream.jinja
-   jetstream.project
+   jetstream.projects
+   jetstream.runners
+   jetstream.templates
+   jetstream.workflows
 

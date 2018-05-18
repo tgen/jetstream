@@ -21,18 +21,15 @@ help:
 
 .PHONY: api test docs
 
-api:
+html:
 	echo "Building API documents..."
-	rm -r api/
+	rm -r _build/ api/ || true
 	sphinx-apidoc -feMT -o api/ ../jetstream/
 	for f in api/*.rst; do\
 		perl -pi -e 's/(module|package)$$// if $$. == 1' $$f ;\
 	done
-	$(MAKE) -C . html
+	
+	$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 
-docs: api
-	$(MAKE) -C . html
 
-test: api
-	sphinx-autobuild . _build
 

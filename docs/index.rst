@@ -13,12 +13,6 @@ Welcome to Jetstream's documentation!
    Installation <installation.rst>
    Command-line Interface <usage.rst>
    Troubleshooting <troubleshooting.rst>
-
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Development:
-
-   Source <https://github.com/tgen/jetstream>
    API Documentation <api/jetstream.rst>
    Contributing <contributing.rst>
+   Source <https://github.com/tgen/jetstream>

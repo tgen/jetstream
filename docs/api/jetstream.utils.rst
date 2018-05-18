@@ -20,4 +20,5 @@ Submodules
 .. toctree::
 
    jetstream.utils.general
+   jetstream.utils.spec
 
