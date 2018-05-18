@@ -2,6 +2,7 @@ import os
 import traceback
 import logging
 import jetstream
+from jetstream.runners import BaseRunner
 
 log = logging.getLogger(__name__)
 
@@ -37,14 +38,16 @@ class Project:
     """
     def __init__(self, path=None):
         self.path = path or os.getcwd()
-        self.index_path = os.path.join(self.path, jetstream.project_index)
-        self.config_path = os.path.join(self.path, jetstream.project_config)
-        self.temp_path = os.path.join(self.path, jetstream.project_config)
-        self.manifest = os.path.join(self.path, jetstream.project_manifest)
-        self.name = os.path.basename(self.path)
         self.config = dict()
-        self._run_id = ''
-        self._run_path = ''
+        self.name = os.path.basename(self.path)
+
+        self.workflow_path = os.path.join(self.path, jetstream.project_workflow)
+        self.index_path = os.path.join(self.path, jetstream.project_index)
+        self.run_history = os.path.join(self.path, jetstream.project_history)
+        self.config_path = os.path.join(self.path, jetstream.project_config)
+        self.temp_path = os.path.join(self.path, jetstream.project_temp)
+        self.log_path = os.path.join(self.path, jetstream.project_logs)
+        self.manifest = os.path.join(self.path, jetstream.project_manifest)
 
         if not os.path.exists(self.path):
             raise NotAProject('Path does not exist: {}'.format(self.path))
@@ -53,13 +56,47 @@ class Project:
             raise NotAProject('Not a directory: {}'.format(self.path))
 
         if not os.path.exists(self.index_path):
-            raise NotAProject('Index dir does not exist {}'.format(self.index_path))
+            raise NotAProject('Index dir does not exist {}'.format(
+                self.index_path))
 
         if not os.path.isdir(self.index_path):
-            raise NotAProject('Index dir is not a dir {}'.format(self.index_path))
+            raise NotAProject('Index dir is not a dir {}'.format(
+                self.index_path))
 
         self._load_project_config_files()
         log.critical('Loaded project: {}'.format(self.path))
+
+    def __repr__(self):
+        return '<Project path={}>'.format(self.path)
+
+    @staticmethod
+    def init(path=None):
+        cwd = os.getcwd()
+        try:
+            if path is not None:
+                os.makedirs(path, exist_ok=True)
+                os.chdir(path)
+
+            os.makedirs(jetstream.project_index, exist_ok=True)
+            os.makedirs(jetstream.project_history, exist_ok=True)
+            os.makedirs(jetstream.project_config, exist_ok=True)
+            os.makedirs(jetstream.project_temp, exist_ok=True)
+            os.makedirs(jetstream.project_logs, exist_ok=True)
+
+            created_path = os.path.join(jetstream.project_index, 'created')
+            if not os.path.exists(created_path):
+                with open(created_path, 'w') as fp:
+                    created = jetstream.utils.fingerprint()
+                    jetstream.utils.yaml.dump(created, stream=fp)
+                log.critical('Initialized project: {}'.format(os.getcwd()))
+            else:
+                log.critical('Reinitialized project: {}'.format(os.getcwd()))
+
+        finally:
+            os.chdir(cwd)
+
+    def serialize(self):
+        return {k: v for k, v in vars(self).items() if not k.startswith('_')}
 
     def _load_project_config_files(self):
         """Loads all data files in the project/config as values in the
@@ -95,26 +132,48 @@ class Project:
 
         self.config = config
 
-    def serialize(self):
-        """Returns a dictionary of all data available for this project"""
-        return vars(self)
+    def save_workflow(self, wf):
+        wf.save(self.workflow_path)
+
+    def load_workflow(self):
+        try:
+            wf = jetstream.workflows.load_workflow(self.workflow_path)
+        except FileNotFoundError:
+            wf = jetstream.workflows.Workflow()
+
+        return wf
 
     def runs(self):
         """Find all run folders for this project"""
         runs = []
-        run_data_dir = os.path.join(self.path, jetstream.run_history)
-        for i in os.listdir(run_data_dir):
-            p = os.path.join(run_data_dir, i)
-            if os.path.isdir(p):
-                runs.append(i)
+        run_data_dir = os.path.join(self.path, jetstream.project_history)
+
+        for i in sorted(os.listdir(run_data_dir)):
+            try:
+                runs.append(Run(self, i))
+            except Exception as e:
+                log.critical('Error loading run: {}'.format(e))
+
         return runs
 
     def latest_run(self):
         try:
-            latest = sorted(self.runs())[-1]
-            return latest
+            return self.runs()[-1]
         except IndexError:
             return None
+
+    def new_run(self):
+        """Create a new Run"""
+        data = jetstream.utils.fingerprint()
+        run_id = data['id']
+        path = os.path.join(self.path, jetstream.project_history, run_id)
+
+        os.makedirs(path, exist_ok=True)
+
+        with open(os.path.join(path, 'created'), 'w') as fp:
+            jetstream.utils.yaml.dump(data, fp)
+
+        return Run(self, run_id)
 
     def samples(self):
         """Build a dictionary of all sample records in project.config.
@@ -163,87 +222,58 @@ class Project:
         else:
             return sample_list
 
-    def new_run(self):
-        return RunInstance(project=self)
+    def render(self, template, additional_data=None):
+        if additional_data is None:
+            additional_data = dict()
 
-    def load_run(self, run_id=None):
-        if run_id is None:
-            try:
-                run_id = self.runs()[-1]
-            except IndexError:
-                log.critical('No run instances found in project!')
-                return None
+        temp = jetstream.env.get_template_with_source(template)
+        return temp.render(project=self, **additional_data)
 
-        return RunInstance(project=self, run_id=run_id)
+    def run(self, template, additional_data=None, runner_class=BaseRunner):
+        if additional_data is None:
+            additional_data = dict()
+
+        run = self.new_run()
+        temp = jetstream.env.get_template_with_source(template)
+        run.save(jetstream.utils.yaml_dumps(temp.source), 'template')
+
+        tasks = temp.render(project=self, **additional_data)
+        run.save(tasks, 'tasks')
+
+        workflow = jetstream.workflows.build_workflow(tasks)
+        run.save(str(workflow), 'workflow')
+
+        project_workflow = self.load_workflow()
+        project_workflow.retry()
+        project_workflow.compose(workflow)
+
+        project_workflow.project = self
+
+        runner = runner_class(project_workflow)
+        return runner.start()
 
 
-class RunInstance(object):
-    def __init__(self, project=None, run_id=None):
-        if project is None:
-            project = Project()
-
-        self.project_path = project.path
-        self.info = None
-
-        if run_id is None:
-            self.id = jetstream.utils.run_id()
-            self._create()
-        else:
-            self.id = run_id
-            self._reload()
+class Run(object):
+    def __init__(self, project, run_id):
+        self.id = run_id
+        self.project = project
+        self.path = os.path.join(project.path, jetstream.project_history, self.id)
+        self.info = self._load_command_info()
 
     def __repr__(self):
-        return '<{} at {}>'.format(self.__class__, self.path)
+        return '<Run {}: {}>'.format(self.id, self.info.get('datetime'))
 
-    @property
-    def path(self):
-        return os.path.join(self.project_path, jetstream.run_history, self.id)
+    def _load_command_info(self):
+        return jetstream.utils.yaml_load(os.path.join(self.path, 'created'))
 
-    @property
-    def info_path(self):
-        return os.path.join(self.path, 'run_info')
-
-    def _reload(self):
-        if not os.path.exists(self.path):
-            msg = '{} does not appear to be a run in the project {}. No ' \
-                  'run history not found in: {}.'
-            log.warning(msg.format(self.id, self.project_path, self.path))
-
-        self.info = jetstream.utils.yaml_load(self.info_path)
-
-    def _create(self):
-        self.info = jetstream.utils.fingerprint()
-        self.info['parent'] = os.environ.get('JETSTREAM_RUNID')
-
-        os.makedirs(self.path, exist_ok=True)
-
-        with open(self.info_path, 'w') as fp:
-            jetstream.utils.yaml.dump(vars(self), fp)
+    def save(self, data, filename):
+        """Save something to the run history"""
+        with open(os.path.join(self.path, filename), 'w') as fp:
+            fp.write(data)
 
 
 def init(path=None):
-    cwd = os.getcwd()
-    try:
-        if path is not None:
-            os.makedirs(path, exist_ok=True)
-            os.chdir(path)
-
-        os.makedirs(jetstream.project_index, exist_ok=True)
-        os.makedirs(jetstream.run_history, exist_ok=True)
-        os.makedirs(jetstream.project_config, exist_ok=True)
-        os.makedirs(jetstream.project_temp, exist_ok=True)
-
-        created_path = os.path.join(jetstream.project_index, 'created')
-        if not os.path.exists(created_path):
-            with open(created_path, 'w') as fp:
-                created = jetstream.utils.fingerprint()
-                jetstream.utils.yaml.dump(created, stream=fp)
-            log.critical('Initialized project: {}'.format(os.getcwd()))
-        else:
-            log.critical('Reinitialized project: {}'.format(os.getcwd()))
-
-    finally:
-        os.chdir(cwd)
+    return Project.init(path)
 
 
 def loadable_files(directory):
@@ -256,7 +286,7 @@ def loadable_files(directory):
 
 
 def path_root(path):
-    """Returns path minus its directories and extension"""
+    """Returns path minus directories and extension"""
     # TODO this might need some more rules in the future
     return os.path.splitext(os.path.basename(path))[0]
 
