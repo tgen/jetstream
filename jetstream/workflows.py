@@ -195,7 +195,7 @@ class Workflow:
                 pending = True
 
             if self.task_ready(task_id):
-                log.critical('Releasing task for execution: {}'.format(task_id))
+                log.critical('Next task ready: {}'.format(task_id))
 
                 self.update(
                     task_id,
