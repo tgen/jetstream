@@ -46,6 +46,8 @@ def arg_parser():
     parser.add_argument('--kvarg-separator', default=':',
                         help='Specify an alternate separator for kvargs')
 
+    parser.add_argument('-r', '--render-only', action='store_true')
+
     parser.add_argument('--runner', default='BaseRunner',
                         help=argparse.SUPPRESS)
 
@@ -83,6 +85,14 @@ def main(args=None):
     )
 
     p = jetstream.Project()
+
+    if args.render_only:
+        text = p.render(
+            template=args.template,
+            additional_data=vars(kvargs_data)
+        )
+        print(text)
+        sys.exit(0)
 
     runner = getattr(jetstream.runners, args.runner)
 
