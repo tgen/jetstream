@@ -31,7 +31,7 @@
 {% endwith %}
 
 - id: test_nested_workflows
-  cmd: jetstream pipelines test/hello_world.yaml
+  cmd: jetstream --log-level DEBUG pipelines test/hello_world.yaml
 
 - id: test_log_capture
   cmd: bash
