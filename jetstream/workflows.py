@@ -103,7 +103,6 @@ internally.
 """
 import re
 import logging
-import shlex
 import shutil
 import networkx as nx
 from datetime import datetime
@@ -116,6 +115,40 @@ log = logging.getLogger(__name__)
 class NotDagError(Exception):
     """ Raised when an action would result in a network that is not a DAG """
     pass
+
+
+def save(workflow, path):
+    lock_path = path + '.lock'
+    data = to_node_link_data(workflow)
+
+    with open(lock_path, 'w') as fp:
+        log.debug('Saving workflow to {}'.format(lock_path))
+        utils.yaml.dump(data, fp)
+
+    log.debug('Moving {} -> {}'.format(lock_path, path))
+    return shutil.move(lock_path, path)
+
+
+def auto_save(f):
+    """ Decorator for workflow methods that should cause the workflow
+    be saved. """
+    err = 'Autosave requires Workflow.path or Workflow.project to be set'
+
+    def decorator(workflow, *args, **kwargs):
+        if workflow.auto_save:
+            res = f(workflow, *args, **kwargs)
+
+            if workflow.path is None and workflow.project is None:
+                raise ValueError(err)
+            else:
+                save(workflow, workflow.path or workflow.project.workflow_path)
+
+            return res
+
+        else:
+            return f(workflow, *args, **kwargs)
+
+    return decorator
 
 
 class Workflow:
@@ -134,9 +167,12 @@ class Workflow:
 
     Workflows can be loaded from existing graphs with the data argument or
     from_node_link_data() method. """
-    def __init__(self, project=None, graph=None, throttle_requests=10):
+    def __init__(self, project=None, graph=None, auto_save=False, path=None,
+                 throttle_requests=10):
         self.project = project
         self.graph = graph or nx.DiGraph(_backup=dict())
+        self.auto_save = auto_save
+        self.path = path
         self.throttle_requests = throttle_requests
         self._throttle = utils.LogisticDelay(max=int(self.throttle_requests))
 
@@ -221,6 +257,7 @@ class Workflow:
 
         return self.graph.add_node(node_id, **data)
 
+
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between components. Edges run
         FROM one node TO another node that it depends upon. Nodes can have
@@ -262,6 +299,7 @@ class Workflow:
         else:
             return fallback
 
+    @auto_save
     def update(self, task_id, **kwargs):
         """ Change the status of a node. """
         self.last_update = utils.fingerprint()
@@ -296,14 +334,13 @@ class Workflow:
         for d in self.graph.predecessors(task_id):
             self.fail(d, logs='Dependency failed: {}'.format(task_id))
 
+    @auto_save
     def add_task(self, task_id, **kwargs):
         """ Add a task to the workflow. """
-        if 'cmd' in kwargs and isinstance(kwargs['cmd'], str):
-            kwargs['cmd'] = shlex.split(kwargs['cmd'])
-
         self._add_node(task_id, kwargs)
         return task_id
 
+    @auto_save
     def add_dependency(self, task_id, before=None, after=None):
         """ Add a dependency to a task. """
         if task_id not in self.graph:
@@ -425,23 +462,9 @@ class Workflow:
             if task_data['status'] == 'pending':
                 self.reset(task_id)
 
-    def save(self, path=None):
-        """ Serialize and save the workflow to path. """
-        if (path is None) and (getattr(self, 'project') is None):
-            raise ValueError('Workflow path is None and this workflow has not '
-                             'been assigned to a project. Provide a path or '
-                             'set Workflow.project to a jetstream.Project '
-                             'instance.')
+    def save(self):
+        return save(self, self.path or self.project.path)
 
-        path = path or self.project.workflow_path
-
-        lock_path = path + '.lock'
-        data = to_node_link_data(self)
-
-        with open(lock_path, 'w') as fp:
-            utils.yaml.dump(data, fp)
-
-        shutil.move(lock_path, path)
 
 
 def from_node_link_data(data):

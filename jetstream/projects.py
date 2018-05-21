@@ -132,9 +132,6 @@ class Project:
 
         self.config = config
 
-    def save_workflow(self, wf):
-        wf.save(self.workflow_path)
-
     def load_workflow(self):
         try:
             wf = jetstream.workflows.load_workflow(self.workflow_path)
@@ -248,6 +245,7 @@ class Project:
         project_workflow.compose(workflow)
 
         project_workflow.project = self
+        project_workflow.auto_save = True
 
         runner = runner_class(project_workflow)
         return runner.start()

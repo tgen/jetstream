@@ -60,9 +60,7 @@ class BaseRunner(object):
         self._last_save = time.time()
 
     def _yield(self):
-        # TODO smarter yield here
-        self.workflow.save()
-        time.sleep(.1)
+        pass
 
     def _launch(self, task_id, task):
         """Launch a task
@@ -191,6 +189,16 @@ class BaseRunner(object):
         else:
             log.critical('\U0001F44D Run complete!')
             return 0
+
+    # def start(self):
+    #
+    #     try:
+    #         return self._start()
+    #
+    #     except Exception:
+    #         for t in self._task_queue:
+    #             t.
+    #         self._task_queue
 
 
 def setup_io_objs(task_id, task, out_dir):
