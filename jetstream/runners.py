@@ -72,9 +72,13 @@ class BaseRunner(object):
 
         fds = setup_io_objs(task_id, task, self.workflow.project.log_path)
         rc = 1
-        stdout = None
-        stderr = None
         logs = None
+        stdout_path = fds['stdout_path']
+        stderr_path = fds['stderr_path']
+
+        log.debug('Task ID: {}'.format(task_id))
+        log.debug(task)
+        log.debug(fds)
 
         try:
             p = subprocess.Popen(
@@ -87,8 +91,6 @@ class BaseRunner(object):
 
             p.communicate(input=fds['stdin_data'])
             rc = p.returncode
-            stdout = fds['stdout_path']
-            stderr = fds['stderr_path']
 
             for fd in fds['fds']:
                 fd.close()
@@ -99,7 +101,7 @@ class BaseRunner(object):
             logs = "Error in launcher!\n{}".format(traceback.format_exc())
 
         finally:
-            return rc, logs, stdout, stderr
+            return rc, logs, stdout_path, stderr_path
 
 
     def _handle_completed(self):
@@ -125,7 +127,7 @@ class BaseRunner(object):
         return
 
     def start(self):
-        log.critical('Initialized:\n{}'.format(self.workflow))
+        log.debug('Initialized:\n{}'.format(self.workflow))
         self._yield()
 
         while 1:
@@ -140,21 +142,21 @@ class BaseRunner(object):
                     if result is None:
                         self.workflow.fail(task_id, logs='Thread crash!')
                     else:
-                        rc, logs, stdout, stderr = result
+                        rc, logs, stdout_path, stderr_path = result
 
                         if rc != 0:
                             self.workflow.fail(
                                 task_id,
                                 return_code=rc,
-                                stdout=stdout,
-                                stderr=stderr,
+                                stdout_path=stdout_path,
+                                stderr_path=stderr_path,
                                 logs=logs)
                         else:
                             self.workflow.complete(
                                 task_id,
                                 return_code=rc,
-                                stdout=stdout,
-                                stderr=stderr,
+                                stdout_path=stdout_path,
+                                stderr_path=stderr_path,
                                 logs=logs)
 
             else:
@@ -182,6 +184,8 @@ class BaseRunner(object):
 
         fails = [tid for tid, t in self.workflow.tasks(data=True)
                  if t['status'] == 'failed']
+
+        log.critical('Workflow complete!')
 
         if fails:
             log.critical('\u2620  Some tasks failed! {}'.format(fails))

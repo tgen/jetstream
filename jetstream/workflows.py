@@ -431,7 +431,18 @@ class Workflow:
         :param new_wf: Another workflow to add to this workflow
         :return: None
         """
+        existing_task_backup = self.graph.graph['_backup'].copy()
+        new_task_backup = new_wf.graph.graph['_backup'].copy()
+
+        log.debug('existing task backup: {}'.format(existing_task_backup))
+        log.debug('new task backup: {}'.format(new_task_backup))
+
+        existing_task_backup.update(new_task_backup)
+
+        log.debug('merged task backup: {}'.format(existing_task_backup))
+
         self.graph = nx.compose(new_wf.graph, self.graph)
+        self.graph.graph['_backup'] = existing_task_backup
 
     def compose_all(self, *wfs):
         """ Compose this workflow with multiple other workflows.
@@ -462,9 +473,14 @@ class Workflow:
             if task_data['status'] == 'pending':
                 self.reset(task_id)
 
-    def save(self):
-        return save(self, self.path or self.project.path)
+    def save(self, path=None):
+        if path is None:
+            path = self.path or getattr(self.project, 'path', None)
 
+            if path is None:
+                raise ValueError('No path has been set for this workflow!')
+
+        return save(self, path)
 
 
 def from_node_link_data(data):
@@ -535,5 +551,4 @@ def build_workflow(tasks):
         # need to revisit and think about how to address edge
         # cases: out directive with no ins, number of matches
         # allowed per in/out etc.
-
     return wf

@@ -41,6 +41,7 @@ class Project:
         self.config = dict()
         self.name = os.path.basename(self.path)
 
+        self.pid_file = os.path.join(self.path, jetstream.project_pid_file)
         self.workflow_path = os.path.join(self.path, jetstream.project_workflow)
         self.index_path = os.path.join(self.path, jetstream.project_index)
         self.run_history = os.path.join(self.path, jetstream.project_history)
@@ -230,25 +231,38 @@ class Project:
         if additional_data is None:
             additional_data = dict()
 
-        run = self.new_run()
-        temp = jetstream.env.get_template_with_source(template)
-        run.save(jetstream.utils.yaml_dumps(temp.source), 'template')
+        # The changes to workflow composition caused nested workflows
+        # to generate endless loops. Disabling nested workflows via
+        # pid files for now until I can rework the workflow composition.
+        if os.path.exists(self.pid_file):
+            raise FileExistsError(self.pid_file)
+        else:
+            with open(self.pid_file, 'w') as fp:
+                jetstream.utils.yaml.dump(jetstream.utils.fingerprint(), fp)
 
-        tasks = temp.render(project=self, **additional_data)
-        run.save(tasks, 'tasks')
+        try:
+            run = self.new_run()
+            temp = jetstream.env.get_template_with_source(template)
+            run.save(jetstream.utils.yaml_dumps(temp.source), 'template')
 
-        workflow = jetstream.workflows.build_workflow(tasks)
-        run.save(str(workflow), 'workflow')
+            tasks = temp.render(project=self, **additional_data)
+            run.save(tasks, 'tasks')
 
-        project_workflow = self.load_workflow()
-        project_workflow.retry()
-        project_workflow.compose(workflow)
+            workflow = jetstream.workflows.build_workflow(tasks)
+            run.save(str(workflow), 'workflow')
 
-        project_workflow.project = self
-        project_workflow.auto_save = True
+            existing_workflow = self.load_workflow()
+            existing_workflow.retry()
 
-        runner = runner_class(project_workflow)
-        return runner.start()
+            existing_workflow.compose(workflow)
+            existing_workflow.project = self
+            existing_workflow.auto_save = True
+
+            runner = runner_class(existing_workflow)
+            return runner.start()
+
+        finally:
+            os.remove(self.pid_file)
 
 
 class Run(object):

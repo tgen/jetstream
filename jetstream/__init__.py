@@ -9,6 +9,7 @@ project_index = 'jetstream'
 project_config = 'config'
 project_temp = 'temp'
 project_logs = 'logs'
+project_pid_file = os.path.join(project_index, 'pid')
 project_manifest = os.path.join(project_index, 'manifest')
 project_workflow = os.path.join(project_index, 'workflow')
 project_history = os.path.join(project_index, 'history')
