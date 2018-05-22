@@ -1,7 +1,7 @@
 
 {% for i in range(tasks) %}
 
-- id: task_{{ i }}
+- id: stress_true_{{ i }}
   cmd: "true"
 
 {% endfor %}
