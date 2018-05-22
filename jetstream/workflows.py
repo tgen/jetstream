@@ -105,6 +105,7 @@ import re
 import logging
 import shutil
 import networkx as nx
+import time
 from datetime import datetime
 from networkx.readwrite import json_graph
 from jetstream import utils
@@ -120,13 +121,14 @@ class NotDagError(Exception):
 def save(workflow, path):
     lock_path = path + '.lock'
     data = to_node_link_data(workflow)
+    now = time.time()
 
     with open(lock_path, 'w') as fp:
         log.debug('Saving workflow to {}'.format(lock_path))
         utils.yaml.dump(data, fp)
 
     log.debug('Moving {} -> {}'.format(lock_path, path))
-    return shutil.move(lock_path, path)
+    shutil.move(lock_path, path)
 
 
 def auto_save(f):
@@ -136,14 +138,18 @@ def auto_save(f):
 
     def decorator(workflow, *args, **kwargs):
         if workflow.auto_save:
-            res = f(workflow, *args, **kwargs)
-
             if workflow.path is None and workflow.project is None:
                 raise ValueError(err)
-            else:
-                save(workflow, workflow.path or workflow.project.workflow_path)
 
-            return res
+            now = time.time()
+
+            if (now - workflow._last_save) > workflow.save_interval:
+                res = f(workflow, *args, **kwargs)
+                save(workflow, workflow.path or workflow.project.workflow_path)
+                workflow._last_save = now
+                return res
+            else:
+                return f(workflow, *args, **kwargs)
 
         else:
             return f(workflow, *args, **kwargs)
@@ -167,12 +173,14 @@ class Workflow:
 
     Workflows can be loaded from existing graphs with the data argument or
     from_node_link_data() method. """
-    def __init__(self, project=None, graph=None, auto_save=False, path=None,
-                 throttle_requests=10):
+    def __init__(self, project=None, graph=None, path=None, auto_save=False,
+                 save_interval=10, throttle_requests=10):
         self.project = project
         self.graph = graph or nx.DiGraph(_backup=dict())
-        self.auto_save = auto_save
         self.path = path
+        self.auto_save = auto_save
+        self._last_save = 0
+        self.save_interval = save_interval
         self.throttle_requests = throttle_requests
         self._throttle = utils.LogisticDelay(max=int(self.throttle_requests))
 

@@ -252,11 +252,11 @@ class Project:
             run.save(str(workflow), 'workflow')
 
             existing_workflow = self.load_workflow()
-            existing_workflow.retry()
-
             existing_workflow.compose(workflow)
             existing_workflow.project = self
             existing_workflow.auto_save = True
+
+            existing_workflow.retry()
 
             runner = runner_class(existing_workflow)
             return runner.start()
