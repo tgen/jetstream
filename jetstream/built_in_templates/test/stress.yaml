@@ -1,0 +1,7 @@
+
+{% for i in range(tasks) %}
+
+- id: task_{{ i }}
+  cmd: "true"
+
+{% endfor %}
