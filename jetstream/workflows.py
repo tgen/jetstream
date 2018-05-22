@@ -441,13 +441,7 @@ class Workflow:
         """
         existing_task_backup = self.graph.graph['_backup'].copy()
         new_task_backup = new_wf.graph.graph['_backup'].copy()
-
-        log.debug('existing task backup: {}'.format(existing_task_backup))
-        log.debug('new task backup: {}'.format(new_task_backup))
-
         existing_task_backup.update(new_task_backup)
-
-        log.debug('merged task backup: {}'.format(existing_task_backup))
 
         self.graph = nx.compose(new_wf.graph, self.graph)
         self.graph.graph['_backup'] = existing_task_backup
@@ -483,7 +477,7 @@ class Workflow:
 
     def save(self, path=None):
         if path is None:
-            path = self.path or getattr(self.project, 'path', None)
+            path = self.path or getattr(self.project, 'workflow_path', None)
 
             if path is None:
                 raise ValueError('No path has been set for this workflow!')
