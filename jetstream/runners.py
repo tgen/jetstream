@@ -1,10 +1,11 @@
 import os
 import time
+import signal
 import subprocess
 import traceback
 import logging
 from collections import deque
-from threading import Thread
+from threading import Thread, Event
 from jetstream import utils
 
 log = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class BaseRunner(object):
     up new ways of running them."""
     def __init__(self, workflow, project=None):
         self.workflow = workflow
+        self.kill = Event()
 
         if project is not None:
             self.workflow.project = project
@@ -62,13 +64,17 @@ class BaseRunner(object):
     def _yield(self):
         pass
 
+    def _signal_handler(self, sig, frame):
+        log.critical('{} received!'.format(signal.Signals(2).name))
+        self.kill.set()
+
     def _launch(self, task_id, task):
         """Launch a task
 
         This function launches the task command as a subprocess, and knows how
         to handle task directives for saving stdout/stderr and piping in stdin
         data."""
-        log.debug('Launching task: {}'.format(task_id))
+        log.critical('Launching task: {}'.format(task_id))
 
         fds = setup_io_objs(task_id, task, self.workflow.project.log_path)
         rc = 1
@@ -89,7 +95,7 @@ class BaseRunner(object):
                 shell=True
             )
 
-            p.communicate(input=fds['stdin_data'])
+            _wait_for_process(p, self.kill, stdin=fds['stdin_data'])
             rc = p.returncode
 
             for fd in fds['fds']:
@@ -102,7 +108,6 @@ class BaseRunner(object):
 
         finally:
             return rc, logs, stdout_path, stderr_path
-
 
     def _handle_completed(self):
         """Cycle through the active tasks queue and return completed tasks. """
@@ -127,7 +132,8 @@ class BaseRunner(object):
         return
 
     def start(self):
-        log.debug('Initialized:\n{}'.format(self.workflow))
+        log.debug('Initialized!')
+        signal.signal(signal.SIGINT, self._signal_handler)
         self._yield()
 
         while 1:
@@ -196,15 +202,26 @@ class BaseRunner(object):
             log.critical('\U0001F44D Run complete!')
             return 0
 
-    # def start(self):
-    #
-    #     try:
-    #         return self._start()
-    #
-    #     except Exception:
-    #         for t in self._task_queue:
-    #             t.
-    #         self._task_queue
+
+def _wait_for_process(p, event, stdin=None, interval=1):
+    if stdin is not None:
+        p.stdin.write(input)
+        p.stdin.close()
+
+    log.debug('Waiting for PID: {}'.format(p.pid))
+
+    while 1:
+        try:
+            if event.is_set():
+                p.kill()
+                break
+            else:
+                p.communicate(timeout=interval)
+                break
+        except subprocess.TimeoutExpired:
+            pass
+
+    return p
 
 
 def setup_io_objs(task_id, task, out_dir):
