@@ -124,10 +124,10 @@ def save(workflow, path):
     now = time.time()
 
     with open(lock_path, 'w') as fp:
-        log.debug('Saving workflow to {}'.format(lock_path))
+        log.critical('Saving workflow to {}'.format(lock_path))
         utils.yaml.dump(data, fp)
 
-    log.debug('Moving {} -> {}'.format(lock_path, path))
+    log.critical('Moving {} -> {}'.format(lock_path, path))
     shutil.move(lock_path, path)
 
 
@@ -146,7 +146,7 @@ def auto_save(f):
             if (now - workflow._last_save) > workflow.save_interval:
                 res = f(workflow, *args, **kwargs)
                 save(workflow, workflow.path or workflow.project.workflow_path)
-                workflow._last_save = now
+                workflow._last_save = time.time()
                 return res
             else:
                 return f(workflow, *args, **kwargs)
