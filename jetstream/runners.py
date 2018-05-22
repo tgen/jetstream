@@ -187,6 +187,8 @@ class BaseRunner(object):
 
         log.critical('Workflow complete!')
 
+        self.workflow.save()
+
         if fails:
             log.critical('\u2620  Some tasks failed! {}'.format(fails))
             return 1
