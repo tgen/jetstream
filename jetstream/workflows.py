@@ -121,14 +121,13 @@ class NotDagError(Exception):
 def save(workflow, path):
     lock_path = path + '.lock'
     data = to_node_link_data(workflow)
-    now = time.time()
 
     with open(lock_path, 'w') as fp:
-        log.critical('Saving workflow to {}'.format(lock_path))
+        log.critical('Saving workflow...'.format(lock_path))
         utils.yaml.dump(data, fp)
 
-    log.critical('Moving {} -> {}'.format(lock_path, path))
     shutil.move(lock_path, path)
+    log.critical('Workflow saved to {}'.format(path))
 
 
 def auto_save(f):
@@ -174,12 +173,12 @@ class Workflow:
     Workflows can be loaded from existing graphs with the data argument or
     from_node_link_data() method. """
     def __init__(self, project=None, graph=None, path=None, auto_save=False,
-                 save_interval=10, throttle_requests=10):
+                 save_interval=60, throttle_requests=10):
         self.project = project
         self.graph = graph or nx.DiGraph(_backup=dict())
         self.path = path
         self.auto_save = auto_save
-        self._last_save = 0
+        self._last_save = time.time()
         self.save_interval = save_interval
         self.throttle_requests = throttle_requests
         self._throttle = utils.LogisticDelay(max=int(self.throttle_requests))
@@ -189,6 +188,9 @@ class Workflow:
 
     def __str__(self):
         return utils.yaml_dumps(to_node_link_data(self))
+
+    def __len__(self):
+        return len(self.graph)
 
     def __iter__(self):
         return self
@@ -203,8 +205,6 @@ class Workflow:
                 pending = True
 
             if self.task_ready(task_id):
-                log.critical('Next task ready: {}'.format(task_id))
-
                 self.update(
                     task_id,
                     status='pending',
@@ -312,13 +312,16 @@ class Workflow:
         """ Change the status of a node. """
         self.last_update = utils.fingerprint()
         self.graph.nodes[task_id].update(**kwargs)
-        log.debug('Update task: {} kwargs: {}'.format(task_id, kwargs))
         self._throttle.reset()
 
     def complete(self, task_id, *, return_code=0, **kwargs):
-        """ Complete a task. """
-        log.critical('Task complete: {}'.format(task_id))
+        """ Complete a task.
 
+        :param task_id: str task id
+        :param return_code: int
+        :param kwargs: any additional information to add to the task data
+        :return: None
+        """
         self.update(
             task_id,
             datetime_end=str(datetime.now()),
@@ -328,9 +331,13 @@ class Workflow:
         )
 
     def fail(self, task_id, *, return_code=1, **kwargs):
-        """ Fail a task. This also fails any tasks dependent on task_id. """
-        log.critical('Task failed: {}'.format(task_id))
+        """ Fail a task. This also fails any tasks dependent on task_id.
 
+        :param task_id: str task id
+        :param return_code: int
+        :param kwargs: any additional information to add to the task data
+        :return: None
+        """
         self.update(
             task_id,
             datetime_end=str(datetime.now()),
@@ -520,6 +527,8 @@ def build_workflow(tasks):
     """ Given a sequence of nodes (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
     built. """
+    log.critical('Building workflow...')
+
     if isinstance(tasks, str):
         # If tasks are not loaded yaml yet, do it automatically
         tasks = utils.yaml_loads(tasks)

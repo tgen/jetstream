@@ -1,31 +1,124 @@
 import os
 import time
 import signal
-import subprocess
-import traceback
 import logging
+import subprocess
 from collections import deque
-from threading import Thread, Event
+from threading import Event
 from jetstream import utils
 
 log = logging.getLogger(__name__)
 
 
-class ThreadWithReturnValue(Thread):
-    def __init__(self, group=None, target=None, name=None, args=(), kwargs=None,
-                 *, daemon=None):
-        Thread.__init__(self, group, target, name, args, kwargs, daemon=daemon)
-        self._return = None
+class BaseTask(object):
+    def __init__(self, task_id, task_data):
+        self.task_id = task_id
+        self.task_data = task_data
+        self.stdout_path = None
+        self.stderr_path = None
+        self.extras = dict()
+        self.returncode = -123
 
-    def run(self):
-        if self._target is not None:
-            self._return = self._target(*self._args, **self._kwargs)
+        self.stdin_data = task_data.get('stdin')
+        if self.stdin_data is not None:
+            self.stdin_data = self.stdin_data.encode()
+
+    def poll(self):
+        raise NotImplementedError
+
+    def kill(self):
+        raise NotImplementedError
+
+    def wait(self):
+        raise NotImplementedError
+
+    def launch(self):
+        raise NotImplementedError
+
+
+class LocalTask(BaseTask):
+    """ LocalTasks start a process on the local machine.
+
+    Extras can be used to store information about this task that is only
+    applicable to a particular type of task."""
+    def __init__(self, task_id, task_data):
+        super(LocalTask, self).__init__(task_id, task_data)
+        self._launched = False
+        self._proc = None
+        self.fds = set()
+        self._stdout_fd = None
+        self._stderr_fd = None
+        self._setup_out_paths()
+        self._setup_out_fds()
+
+    def _default_stdout(self):
+        default_filename = utils.cleanse_filename(self.task_id)
+        path = os.path.join('logs', default_filename + '.log')
+        return path
+
+    def _setup_out_paths(self):
+        self.stdout_path = self.task_data.get('stdout', self._default_stdout())
+        self.stderr_path = self.task_data.get('stderr', self.stdout_path)
+
+    def _setup_out_fds(self):
+        os.makedirs('logs', exist_ok=True)
+        stdout_fd = open(self.stdout_path, 'w')
+        self.fds.add(stdout_fd)
+        self._stdout_fd = stdout_fd
+
+        if self.stderr_path == self.stdout_path:
+            self._stderr_fd = subprocess.STDOUT
         else:
-            raise RuntimeError('Threads must have a target function')
+            stderr_fd = open(self.stderr_path, 'w')
+            self.fds.add(stderr_fd)
+            self._stderr_fd = stderr_fd
 
-    def join(self, **kwargs):
-        Thread.join(self, **kwargs)
-        return self._return
+    @property
+    def proc(self):
+        if self._proc is None:
+            raise AttributeError('This task has not been launched!')
+        else:
+            return self._proc
+
+    def poll(self):
+        return self.proc.poll()
+
+    def kill(self):
+        return self.proc.kill()
+
+    def wait(self):
+        self.returncode = self.proc.wait()
+
+        for fd in self.fds:
+            fd.close()
+
+        return self.returncode
+
+    def launch(self):
+        """Launch this task, returns True if launch successful"""
+        self._launched = True
+
+        try:
+            p = subprocess.Popen(
+                self.task_data.get('cmd') or 'true',
+                stdin=subprocess.PIPE,
+                stdout=self._stdout_fd,
+                stderr=self._stderr_fd,
+                shell=True
+            )
+
+            self.extras['pid'] = p.pid
+            self.extras['args'] = p.args
+
+            if self.stdin_data is not None:
+                p.stdin.write(self.stdin_data)
+                p.stdin.close()
+
+            self._proc = p
+            return True
+
+        except BlockingIOError:
+            return False
 
 
 class BaseRunner(object):
@@ -51,149 +144,54 @@ class BaseRunner(object):
     (like the path to direct stdout/err for a local process). But, the door
     is intentionally left open to expand/refine task directives and dream
     up new ways of running them."""
-    def __init__(self, workflow, project=None):
+
+    task_types = {
+        'local': LocalTask,
+        # 'slurm': SlurmTask
+    }
+
+    def __init__(self, workflow,  max_tasks=1000, update_frequency=30):
+        self.task_queue = deque()
         self.workflow = workflow
-        self.kill = Event()
+        self._update_frequency = update_frequency
+        self._max_tasks = max_tasks
+        self._kill = Event()
+        self._pause = False
+        self._last_update = time.time()
+        self._completed = len([s for s in self.workflow.status()
+                               if s == 'complete'])
 
-        if project is not None:
-            self.workflow.project = project
-
-        self._task_queue = deque()
-        self._last_save = time.time()
+    def kill(self):
+        log.critical('Halting run!')
+        self._kill.set()
 
     def _yield(self):
-        pass
+        # TODO Scheduler to manage periodic status reports
+        if time.time() - self._last_update > self._update_frequency:
+            msg = 'Watching {q_len} tasks. {complete}/{total} tasks completed.'
+
+            log.critical(msg.format(
+                q_len=len(self.task_queue),
+                complete=self._completed,
+                total=len(self.workflow)
+            ))
+
+            self._last_update = time.time()
 
     def _signal_handler(self, sig, frame):
         log.critical('{} received!'.format(signal.Signals(2).name))
-        self.kill.set()
+        self.kill()
 
-    def _launch(self, task_id, task):
-        """Launch a task
-
-        This function launches the task command as a subprocess, and knows how
-        to handle task directives for saving stdout/stderr and piping in stdin
-        data."""
-        log.critical('Launching task: {}'.format(task_id))
-
-        fds = setup_io_objs(task_id, task, self.workflow.project.log_path)
-        rc = 1
-        logs = None
-        stdout_path = fds['stdout_path']
-        stderr_path = fds['stderr_path']
-
-        log.debug('Task ID: {}'.format(task_id))
-        log.debug(task)
-        log.debug(fds)
+    def _finalize(self):
+        log.critical('Finalizing run...')
 
         try:
-            p = subprocess.Popen(
-                task.get('cmd') or 'true',
-                stdin=subprocess.PIPE,
-                stdout=fds['stdout_fd'],
-                stderr=fds['stderr_fd'],
-                shell=True
-            )
-
-            _wait_for_process(p, self.kill, stdin=fds['stdin_data'])
-            rc = p.returncode
-
-            for fd in fds['fds']:
-                fd.close()
-
-        except Exception as e:
+            self.workflow.save()
+        except ValueError as e:
             log.exception(e)
-            rc = 1
-            logs = "Error in launcher!\n{}".format(traceback.format_exc())
-
-        finally:
-            return rc, logs, stdout_path, stderr_path
-
-    def _handle_completed(self):
-        """Cycle through the active tasks queue and return completed tasks. """
-        sentinel = object()
-        self._task_queue.append(sentinel)
-
-        task = self._task_queue.popleft()
-        while task is not sentinel:
-            task_id, thread = task
-
-            if thread.is_alive():
-                self._task_queue.append(task)
-            else:
-                try:
-                    yield task_id, thread.join(timeout=1)
-                except TimeoutError:
-                    self._task_queue.append(task)
-                    log.critical('Thread timeout error: {}'.format(task_id))
-
-            task = self._task_queue.popleft()
-
-        return
-
-    def start(self):
-        log.debug('Initialized!')
-        signal.signal(signal.SIGINT, self._signal_handler)
-        self._yield()
-
-        while 1:
-            try:
-                task = next(self.workflow)
-            except StopIteration:
-                log.debug('Workflow raised StopIteration')
-                break
-
-            if task is None:
-                for task_id, result in self._handle_completed():
-                    if result is None:
-                        self.workflow.fail(task_id, logs='Thread crash!')
-                    else:
-                        rc, logs, stdout_path, stderr_path = result
-
-                        if rc != 0:
-                            self.workflow.fail(
-                                task_id,
-                                return_code=rc,
-                                stdout_path=stdout_path,
-                                stderr_path=stderr_path,
-                                logs=logs)
-                        else:
-                            self.workflow.complete(
-                                task_id,
-                                return_code=rc,
-                                stdout_path=stdout_path,
-                                stderr_path=stderr_path,
-                                logs=logs)
-
-            else:
-                task_id, node_data = task
-
-                if node_data['cmd'] is None:
-                    log.debug('Autocomplete null command: {}'.format(task_id))
-
-                    self.workflow.complete(task_id)
-
-                else:
-                    log.debug('Sending to launch: {}'.format(task_id))
-
-                    thread = ThreadWithReturnValue(
-                        target=self._launch,
-                        name=task_id,
-                        args=(task_id, node_data)
-                    )
-
-                    thread.start()
-
-                    self._task_queue.append((task_id, thread))
-
-            self._yield()
 
         fails = [tid for tid, t in self.workflow.tasks(data=True)
                  if t['status'] == 'failed']
-
-        log.critical('Workflow complete!')
-
-        self.workflow.save()
 
         if fails:
             log.critical('\u2620  Some tasks failed! {}'.format(fails))
@@ -202,68 +200,157 @@ class BaseRunner(object):
             log.critical('\U0001F44D Run complete!')
             return 0
 
+    def _handle_completed(self, task):
+        """ When a completed task is found, this method is called. """
+        task.wait()
 
-def _wait_for_process(p, event, stdin=None, interval=1):
-    if stdin is not None:
-        p.stdin.write(input)
-        p.stdin.close()
+        if task.returncode != 0:
+            self.workflow.fail(
+                task.task_id,
+                return_code=task.returncode,
+                stdout_path=task.stdout_path,
+                stderr_path=task.stderr_path)
 
-    log.debug('Waiting for PID: {}'.format(p.pid))
+        else:
+            self.workflow.complete(
+                task.task_id,
+                return_code=task.returncode,
+                stdout_path=task.stdout_path,
+                stderr_path=task.stderr_path)
 
-    while 1:
-        try:
-            if event.is_set():
-                p.kill()
+        self._completed += 1
+
+    def _launch_task(self, task_id, task_data):
+        task_type = task_data.get('type', 'local')
+        t = self.task_types[task_type](task_id, task_data)
+        t.launch()
+
+        self.task_queue.append(t)
+
+    def _handle_task_queue(self):
+        """ Cycle through the task queue once. """
+        sentinel = object()
+        self.task_queue.append(sentinel)
+        task = self.task_queue.popleft()
+
+        while task is not sentinel:
+            if self._kill.is_set():
+                task.kill()
+
+            if task.poll() is None:
+                self.task_queue.append(task)
+            else:
+                self._handle_completed(task)
+                self._pause = False
+
+            self._yield()
+            task = self.task_queue.popleft()
+
+        return
+
+    def _check_for_new_tasks(self):
+        max_new_submissions = self._max_tasks - len(self.task_queue)
+        for i in range(max_new_submissions):
+            if self._kill.is_set():
+                break
+
+            task = next(self.workflow)
+
+            if task is None:
                 break
             else:
-                p.communicate(timeout=interval)
+                task_id, task_data = task
+
+                if task_data.get('cmd') is None:
+                    self.workflow.complete(task_id)
+                else:
+                    self._launch_task(task_id, task_data)
+
+            self._yield()
+
+    def start(self):
+        """ Don't override """
+        log.critical('Initialized!')
+        signal.signal(signal.SIGINT, self._signal_handler)
+
+        while 1:
+            if self._kill.is_set():
                 break
-        except subprocess.TimeoutExpired:
-            pass
 
-    return p
+            try:
+                self._check_for_new_tasks()
+            except StopIteration:
+                break
 
+            self._handle_task_queue()
 
-def setup_io_objs(task_id, task, out_dir):
-    res = {'sdtin_data': None, 'fds': set()}
+        while len(self.task_queue) > 0:
+            self._handle_task_queue()
 
-    # Stdout is task stdout path or a log file named by task id
-    if 'stdout' in task:
-        filename =  utils.cleanse_filename(task['stdout'])
-        stdout_path = os.path.join(out_dir, filename)
-        stdout_fd = open(stdout_path, 'w')
-        res['fds'].add(stdout_fd)
-    else:
-        default_filename = utils.cleanse_filename(task_id)
-        stdout_path = os.path.join(out_dir, default_filename + '.log')
-        stdout_fd = open(stdout_path, 'w')
-        res['fds'].add(stdout_fd)
+        return self._finalize()
 
-    res['stdout_path'] = stdout_path
-    res['stdout_fd'] = stdout_fd
+# import sched
+# class SchedRunner(object):
+#     def __init__(self, workflow, max_tasks=1000):
+#         self.workflow = workflow
+#         self.max_tasks = max_tasks
+#
+#         self._scheduler = sched.scheduler()
+#         self.task_queue = deque()
+#
+#         self._kill = Event()
+#         self._pause = False
+#         self._launched = 0
+#         self._completed = 0
+#
+#
+#     def _launch_task(self, task_id, task_data):
+#         task_type = task_data.get('type', 'local')
+#         t = BaseRunner.task_types[task_type](task_id, task_data)
+#         t.launch()
+#
+#         self.task_queue.append(t)
+#
+#     def _check_for_new_tasks(self):
+#         n =  self.max_tasks - len(self.task_queue)
+#
+#         log.critical('Checking for new tasks (max {})...'.format(n))
+#
+#         for i in range(n):
+#             if self._kill.is_set():
+#                 break
+#
+#             task = next(self.workflow)
+#
+#             if task is None:
+#                 break
+#             else:
+#                 task_id, task_data = task
+#
+#                 if task_data.get('cmd') is None:
+#                     self.workflow.complete(task_id)
+#                 else:
+#                     self._launch_task(task_id, task_data)
+#
+#     def log_updates(self):
+#         log.critical('Watching {} tasks.'.format(len(self.task_queue)))
+#         log.critical('{} tasks launched and {} tasks completed.'.format(
+#             self._launched, self._completed))
+#         self._scheduler.enter(3, 0, self.log_updates)
+#
+#     def start(self):
+#         self._scheduler.enter(3, 0, self.log_updates)
+#         self._scheduler.run(blocking=False)
+#
+#         while 1:
+#             try:
+#                 self._check_for_new_tasks()
+#                 time.sleep(1)
+#             except StopIteration:
+#                 break
+#
+#         print(self._scheduler.queue)
 
-    # Stderr is task stderr path or joined with stdout
-    if 'stderr' in task:
-        filename = utils.cleanse_filename(task['stderr'])
-        stderr_path = os.path.join(out_dir, filename)
-        stderr_fd = open(stderr_path, 'w')
-        res['fds'].add(stderr_fd)
-    else:
-        stderr_path = stdout_path
-        stderr_fd = subprocess.STDOUT
-
-    res['stderr_path'] = stderr_path
-    res['stderr_fd'] = stderr_fd
-
-    # Stdin data is encoded from str(stdin) or None
-    if 'stdin' in task:
-        stdin_data = str(task['stdin']).encode()
-    else:
-        stdin_data = None
-
-    res['stdin_data'] = stdin_data
-
-    return res
 
 
 def split_fds(task):
