@@ -1,55 +1,4 @@
-""" Slurm tasks are jobs launched on a Slurm scheduler
-
-Slurm-specific task directives:
-
-mem
-----
-
-Specify the real memory required per node. Default units are megabytes unless
-the SchedulerParameters configuration parameter includes the "default_gbytes"
-option for gigabytes. Different units can be specified using the suffix
-[K|M|G|T]. Default value is DefMemPerNode and the maximum value is
-MaxMemPerNode. If configured, both parameters can be seen using the scontrol
-show config command. This parameter would generally be used if whole nodes are
-allocated to jobs (SelectType=select/linear). Also see --mem-per-cpu. --mem
-and --mem-per-cpu are mutually exclusive.
-
-NOTE: A memory size specification of zero is treated as a special case and
-grants the job access to all of the memory on each node. If the job is
-allocated multiple nodes in a heterogeneous cluster, the memory limit on each
-node will be that of the node in the allocation with the smallest memory size
-(same limit will apply to every node in the job's allocation).
-
-NOTE: Enforcement of memory limits currently relies upon the task/cgroup
-plugin or enabling of accounting, which samples memory use on a periodic basis
-(data need not be stored, just collected). In both cases memory use is based
-upon the job's Resident Set Size (RSS). A task may exceed the memory limit
-until the next periodic accounting sample.
-
-cpus
------
-Advise the Slurm controller that ensuing job steps will require ncpus number
-of processors per task. Without this option, the controller will just try to
-allocate one processor per task.
-
-time
------
-
-Set a limit on the total run time of the job allocation. If the requested time
-limit exceeds the partition's time limit, the job will be left in a PENDING
-state (possibly indefinitely). The default time limit is the partition's
-default time limit. When the time limit is reached, each task in each job step
-is sent SIGTERM followed by SIGKILL. The interval between signals is specified
-by the Slurm configuration parameter KillWait. The OverTimeLimit configuration
-parameter may permit the job to run longer than scheduled. Time resolution is
-one minute and second values are rounded up to the next minute.
-
-A time limit of zero requests that no time limit be imposed. Acceptable time
-formats include "minutes", "minutes:seconds", "hours:minutes:seconds",
-"days-hours", "days-hours:minutes" and "days-hours:minutes:seconds".
-
-
-"""
+""" Slurm batch scheduler utilities """
 import re
 import time
 import subprocess
@@ -59,6 +8,7 @@ from jetstream.runners import BaseTask
 log = logging.getLogger(__name__)
 
 slurm_max_req_freq = 30
+slurm_sacct_delay_window = 60
 slurm_sacct_delimiter = '\037'
 slurm_submission_pattern = re.compile(r"Submitted batch job (\d*)")
 slurm_job_id_pattern = re.compile(r"(?P<jobid>\d*)\.?(?P<taskid>.*)")
@@ -107,20 +57,101 @@ passed_states = {'COMPLETED'}
 
 
 class SlurmTask(BaseTask):
+    """ Start a task with Slurm batch scheduler.
+
+    BaseTask Directive Handling
+    ============================
+
+    cmd
+    ----
+
+    Will be wrapped with ``sbatch --wrap "<cmd>"``
+
+    stdin
+    ------
+
+    Will be piped to sbatch stdin fd. Note this behavior is different than LocalTask, 
+    where data is written directly to the command stdin fd. 
+
+    stdout
+    -------
+
+    ``sbatch -o "<stdout>" ``if present. Otherwise, ``sbatch -o "logs/<task_id>.log"``
+
+    stderr
+    -------
+
+    ``sbatch -e "<stderr>"`` if present. Otherwise sbatch will join stderr with stdout. 
+
+    SlurmTask Specific Directive Handling
+    ======================================
+
+    mem
+    ----
+
+    Passed to ``sbatch --mem "<mem>"``
+
+    Specify the real memory required per node. Default units are megabytes unless
+    the SchedulerParameters configuration parameter includes the "default_gbytes"
+    option for gigabytes. Different units can be specified using the suffix
+    [K|M|G|T]. Default value is DefMemPerNode and the maximum value is
+    MaxMemPerNode. If configured, both parameters can be seen using the scontrol
+    show config command. This parameter would generally be used if whole nodes are
+    allocated to jobs (SelectType=select/linear). Also see --mem-per-cpu. --mem
+    and --mem-per-cpu are mutually exclusive.
+
+    NOTE: A memory size specification of zero is treated as a special case and
+    grants the job access to all of the memory on each node. If the job is
+    allocated multiple nodes in a heterogeneous cluster, the memory limit on each
+    node will be that of the node in the allocation with the smallest memory size
+    (same limit will apply to every node in the job's allocation).
+
+    NOTE: Enforcement of memory limits currently relies upon the task/cgroup
+    plugin or enabling of accounting, which samples memory use on a periodic basis
+    (data need not be stored, just collected). In both cases memory use is based
+    upon the job's Resident Set Size (RSS). A task may exceed the memory limit
+    until the next periodic accounting sample.
+
+    cpus
+    -----
+
+    Passed to ``sbatch -c "<cpus>"``
+
+    Advise the Slurm controller that ensuing job steps will require ncpus number
+    of processors per task. Without this option, the controller will just try to
+    allocate one processor per task.
+
+    time
+    -----
+
+    Passed to ``sbatch -t "<time>"``
+
+    Set a limit on the total run time of the job allocation. If the requested time
+    limit exceeds the partition's time limit, the job will be left in a PENDING
+    state (possibly indefinitely). The default time limit is the partition's
+    default time limit. When the time limit is reached, each task in each job step
+    is sent SIGTERM followed by SIGKILL. The interval between signals is specified
+    by the Slurm configuration parameter KillWait. The OverTimeLimit configuration
+    parameter may permit the job to run longer than scheduled. Time resolution is
+    one minute and second values are rounded up to the next minute.
+
+    A time limit of zero requests that no time limit be imposed. Acceptable time
+    formats include "minutes", "minutes:seconds", "hours:minutes:seconds",
+    "days-hours", "days-hours:minutes" and "days-hours:minutes:seconds".
+
+    """
+
     def __init__(self, task_id, task_directives):
         super(SlurmTask, self).__init__(task_id, task_directives)
-        self._launched = False
-        self._job = None
 
     def poll(self):
-        return self._job.poll()
+        return self.proc.poll()
 
     def kill(self):
-        return self._job.cancel()
+        return self.proc.kill()
 
     def wait(self):
-        self.returncode = self._job.wait()
-        return self.returncode
+        return self.proc.wait()
 
     def launch(self):
         self._launched = True
@@ -140,8 +171,11 @@ class SlurmTask(BaseTask):
         if 'time' in self.task_directives:
             args.extend(['-t', self.task_directives['time']])
 
+        if 'cmd' in self.task_directives:
+            args.extend(['--wrap', self.task_directives['cmd']])
+
         try:
-            self._job = sbatch(*args, stdin_data=self.stdin_data)
+            self.proc = sbatch(*args, stdin_data=self.stdin_data)
             return True
         except Exception as e:
             log.exception(e)
@@ -152,104 +186,93 @@ class Sopen(object):
     _watching = set()
     _last_poll = 0
 
-    def __init__(self, jid, cluster=None, job_data=None):
+    def __init__(self, jid, cluster=None, creation_time=None):
         """Tracks a Slurm job and provides methods similar to a Popen object"""
         Sopen._watching.add(self)
 
         self.jid = str(jid)
         self.cluster = cluster
-
-        if job_data is not None:
-            self.job_data = job_data
-        else:
-            self.job_data = dict()
+        self.creation_time = creation_time or time.time()
+        self.returncode = None
+        self.job_data = None
 
     def __repr__(self):
         return "Sopen({})".format(self.jid)
 
-    @property
-    def status(self):
-        try:
-            state = self.job_data['State']
-            if state not in slurm_states:
-                return 'COMPLETED'
-            else:
-                return state
-        except KeyError:
-            return None
-
-    @property
-    def returncode(self):
-        try:
-            return int(self.job_data['ExitCode'].partition(':')[0])
-        except KeyError:
-            return None
-
     def poll(self):
-        if self.status is None:
-            self.update()
+        """ Check if the job is active. Set and return returncode attribute. 
+        Otherwise, returns None 
 
-        if self.status in active_states:
-            return None
-        else:
-            return self.returncode
+        If Sopen.returncode is not None, it will be removed from Sopen._watching.
+        
+        Polling any Sopen object will trigger a batch update request for all 
+        instances in Sopen._watching. This event is limited to one request 
+        every slurm_max_req_freq seconds. """
+        self._batch_update()
+        self._set_returncode()
 
-    def cancel(self):
-        return scancel('-j', self.jid)
-
-    def wait(self, timeout=None):
-        started = time.time()
-
-        while 1:
-            if self.status in inactive_states:
-                break
-            else:
-                self.update()
-
-                elapsed = time.time() - started
-                if timeout and elapsed > timeout:
-                    raise TimeoutError
+        if self in Sopen._watching and self.returncode is not None:
+            Sopen._watching.remove(self)
 
         return self.returncode
 
-    def update(self, force=False):
-        """ Request a status update from Slurm. """
-        if force:
-            self.job_data = get_one(self.jid)
+    def terminate(self):
+        """ Stop the job. This is an alias for kill() """
+        return self.kill()
 
-        elif Sopen._watching:
-            # Requesting an update for any Sopen object will automatically
-            # batch the update request along with any other Sopen instances.
-            # This event is limited to one request every slurm_max_req_freq
-            # seconds.
+    def kill(self):
+        """ Stop the job. The scancel command is used """
+        return scancel(self.jid)
 
+    def wait(self, timeout=None):
+        """ Wait for job to terminate. Set and return returncode attribute. """
+        started = time.time()
+
+        while 1:
+            if self.poll() is not None:
+                break
+            else:
+                elapsed = time.time() - started
+                if timeout and elapsed > timeout:
+                    raise TimeoutError
+            time.sleep(.1)
+
+        return self.returncode
+
+    def _set_returncode(self):
+        if self.job_data is not None:
+            try:
+                if self.job_data['State'] not in active_states:
+                    self.returncode = int(self.job_data['ExitCode'].partition(':')[0])
+            except KeyError:
+                self._failed_to_update_job_state()
+
+    def _failed_to_update_job_state(self):
+        if time.time() - self.creation_time > slurm_sacct_delay_window:
+            self._state = 'FAILED_TO_RETRIEVE_SACCT_DATA'
+            self._returncode = -123
+
+    def _batch_update(self):
+        """ Request status updates for all Sopen objects in Sopen._watching. """
+        if Sopen._watching:
             now = time.time()
             if now - Sopen._last_poll < slurm_max_req_freq:
                 return
 
-            data = get_all(*[j.jid for j in Sopen._watching])
+            sacct_data = sacct_get_all(*[j.jid for j in Sopen._watching])
+            Sopen._last_poll = time.time()
+            log.critical('Received status updates for: {}'.format(list(sacct_data.keys())))
 
-            _prune = []
             for job in Sopen._watching:
                 log.critical('Updating: {}'.format(job))
-                try:
-                    job.job_data = data[job.jid]
-                except KeyError:
-                    _prune.append(job)
 
-            for i in _prune:
-                Sopen._watching.remove(i)
-
-            if self.status in inactive_states:
-                Sopen._watching.remove(self)
+                if job.jid in sacct_data:
+                    job.job_data = sacct_data[job.jid]
+                else:
+                    job._failed_to_update_job_state()
 
 
 def _sacct_request(*job_ids):
-    global slurm_last_poll
-
-    delay_until = slurm_last_poll + slurm_max_req_freq
-    time.sleep(max(0, delay_until - time.time()))
-
     if not job_ids:
         raise ValueError('Missing required argument "job_ids"')
 
@@ -262,7 +285,6 @@ def _sacct_request(*job_ids):
     log.critical('Launching: {}'.format(' '.join(cmd)))
     res = subprocess.check_output(cmd).decode()
 
-    slurm_last_poll = time.time()
     return res
 
 
@@ -299,7 +321,7 @@ def _parse_sacct(data):
     return jobs
 
 
-def get_one(job_id):
+def sacct_get_one(job_id):
     """Get job data for a single job. This raises an exception if the
     job is not found in the sacct results. """
     job_id = str(job_id)
@@ -308,7 +330,7 @@ def get_one(job_id):
     return jobs[job_id]
 
 
-def get_all(*job_ids):
+def sacct_get_all(*job_ids):
     """ Get job data for multiple jobs. """
     job_ids = tuple(str(j) for j in job_ids)
     data = _sacct_request(*job_ids)
@@ -325,7 +347,7 @@ def get_all(*job_ids):
 def scancel(*args):
     cmd_args = ('scancel',) + args
 
-    log.debug('Launching: {}'.format(cmd_args))
+    log.critical('Launching: {}'.format(cmd_args))
     return subprocess.call(cmd_args)
 
 
@@ -335,7 +357,7 @@ def sbatch(*args, stdin_data=None):
     if stdin_data and not isinstance(stdin_data, bytes):
         stdin_data = stdin_data.encode()
 
-    log.debug('Launching: {}'.format(cmd_args))
+    log.critical('Launching: {}'.format(' '.join(cmd_args)))
     p = subprocess.Popen(
         cmd_args,
         stdin=subprocess.PIPE,
