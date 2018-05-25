@@ -19,6 +19,7 @@ class BaseTask(object):
         self.stdin_data = None
         self.extras = dict()
         self.returncode = None
+        self._proc = None
 
         if self.task_directives.get('stdout'):
             self.stdout_path = self.task_directives['stdout']
@@ -30,6 +31,16 @@ class BaseTask(object):
 
         self.stdin_data = task_directives.get('stdin')
 
+    @property
+    def proc(self):
+        if self._proc is None:
+            raise AttributeError('This task has not been launched yet!')
+        else:
+            return self._proc
+
+    @proc.setter
+    def proc(self, value):
+        self._proc = value
 
     def poll(self):
         raise NotImplementedError
@@ -70,13 +81,6 @@ class LocalTask(BaseTask):
             stderr_fd = open(self.stderr_path, 'w')
             self.fds.add(stderr_fd)
             self._stderr_fd = stderr_fd
-
-    @property
-    def proc(self):
-        if self._proc is None:
-            raise AttributeError('This task has not been launched!')
-        else:
-            return self._proc
 
     def poll(self):
         return self.proc.poll()
@@ -261,8 +265,19 @@ class BaseRunner(object):
                 break
             else:
                 task_id, task_data = task
+                
+                # TODO REVISIT This seems clunky, and I have a feeling it will cause
+                # confusion in the future, but... Tasks that are local (or default
+                # type) should have a command. If not, it's probably a symbolic task,
+                # only added for coordinating execution dependencies. These tasks can
+                # be completed immediately, without the need for launching anything. 
+                # BUT, other task types with a null command still need to be executed,
+                # because they have an "implicit" command. SlurmTasks always launch
+                # sbatch for example. 
 
-                if task_data.get('cmd') is None:
+                task_type = task_data.get('type')
+                command = task_data.get('cmd')
+                if task_type in (None, 'local') and command is None:
                     self.workflow.complete(task_id)
                 else:
                     self._launch_task(task_id, task_data)
