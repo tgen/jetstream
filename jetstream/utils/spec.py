@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 # by a URI loader.
 
 SPEC = {
-    'name': 'Jetstream node properties definition',
+    'name': 'Jetstream task directives',
     'spec': {
         'node_properties': {
             'id': {
