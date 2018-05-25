@@ -250,37 +250,36 @@ class Workflow:
             self.graph.nodes[node_id].update(status='new')
 
     def _add_node(self, node_id, data):
-        """ Adding a node requires a mapping that includes "name" key. A
-        RuntimeError will be raised if the name already exists in the graph"""
+        """ Adding a node requires unique node_id. A RuntimeError will be
+        raised if the node_id already exists in the graph"""
         log.debug('Adding node: {}'.format(node_id))
 
         if self.get_task(node_id):
             raise ValueError('Duplicate node id: {}'.format(node_id))
 
-        # All nodes get a status attribute that the workflow uses to identify
-        # nodes that are ready to be executed.
+        # All nodes get a status attribute that the workflow uses to determine
+        # which nodes are ready to be executed.
         data['status'] = 'new'
 
         self._backup_node(node_id, data)
 
         return self.graph.add_node(node_id, **data)
 
-
     def _add_edge(self, from_node, to_node):
-        """ Edges represent dependencies between components. Edges run
-        FROM one node TO another node that it depends upon. Nodes can have
-        multiple edges, but not multiple instances of the same edge.
+        """ Edges represent dependencies between tasks. Edges run FROM one node
+        TO another node that it depends upon. Nodes can have multiple edges,
+        but not multiple instances of the same edge (multigraph).
 
             Child ----- Depends Upon -----> Parent
          (from_node)                       (to_node)
 
-        This means that the out-degree of a node represents the number
-        of dependencies it has. A node with zero out-edges is a "root"
-        node, or a component with no dependencies.
+        This means that the out-degree of a node represents the number of
+        dependencies it has. A node with zero out-edges is a "root" node, or a
+        task with no dependencies.
 
-        The methods ".add_component_before()" and ".add_component_after()" are
-        provided for adding components to a workflow, and should be preferred
-        over adding edges directly to the workflow.
+        The "add_dependency" method is provided for adding dependencies to a
+        workflow, and should be preferred over adding edges directly to the
+        workflow graph.
         """
         log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
 
@@ -524,7 +523,7 @@ def load_workflow(path):
 
 
 def build_workflow(tasks):
-    """ Given a sequence of nodes (dictionaries with properties described in
+    """ Given a sequence of tasks (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
     built. """
     log.critical('Building workflow...')
@@ -562,4 +561,5 @@ def build_workflow(tasks):
         # need to revisit and think about how to address edge
         # cases: out directive with no ins, number of matches
         # allowed per in/out etc.
+
     return wf

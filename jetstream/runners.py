@@ -11,17 +11,25 @@ log = logging.getLogger(__name__)
 
 
 class BaseTask(object):
-    def __init__(self, task_id, task_data):
+    def __init__(self, task_id, task_directives):
         self.task_id = task_id
-        self.task_data = task_data
+        self.task_directives = task_directives
         self.stdout_path = None
         self.stderr_path = None
+        self.stdin_data = None
         self.extras = dict()
-        self.returncode = -123
+        self.returncode = None
 
-        self.stdin_data = task_data.get('stdin')
-        if self.stdin_data is not None:
-            self.stdin_data = self.stdin_data.encode()
+        if self.task_directives.get('stdout'):
+            self.stdout_path = self.task_directives['stdout']
+        else:
+            default_filename = utils.cleanse_filename(self.task_id)
+            self.stdout_path = os.path.join('logs', default_filename + '.log')
+
+        self.stderr_path = self.task_directives.get('stderr', self.stdout_path)
+
+        self.stdin_data = task_directives.get('stdin')
+
 
     def poll(self):
         raise NotImplementedError
@@ -48,17 +56,7 @@ class LocalTask(BaseTask):
         self.fds = set()
         self._stdout_fd = None
         self._stderr_fd = None
-        self._setup_out_paths()
         self._setup_out_fds()
-
-    def _default_stdout(self):
-        default_filename = utils.cleanse_filename(self.task_id)
-        path = os.path.join('logs', default_filename + '.log')
-        return path
-
-    def _setup_out_paths(self):
-        self.stdout_path = self.task_data.get('stdout', self._default_stdout())
-        self.stderr_path = self.task_data.get('stderr', self.stdout_path)
 
     def _setup_out_fds(self):
         os.makedirs('logs', exist_ok=True)
@@ -100,7 +98,7 @@ class LocalTask(BaseTask):
 
         try:
             p = subprocess.Popen(
-                self.task_data.get('cmd') or 'true',
+                self.task_directives.get('cmd') or 'true',
                 stdin=subprocess.PIPE,
                 stdout=self._stdout_fd,
                 stderr=self._stderr_fd,
@@ -111,6 +109,9 @@ class LocalTask(BaseTask):
             self.extras['args'] = p.args
 
             if self.stdin_data is not None:
+                if not isinstance(self.stdin_data, bytes):
+                    self.stdin_data = self.stdin_data.encode()
+
                 p.stdin.write(self.stdin_data)
                 p.stdin.close()
 
