@@ -2,17 +2,9 @@ import os
 import traceback
 import logging
 import jetstream
-from jetstream.runners import BaseRunner
+from jetstream import WorkflowRunner
 
 log = logging.getLogger(__name__)
-
-
-class NotAProject(Exception):
-    pass
-
-
-class NotARun(Exception):
-    pass
 
 
 class Project:
@@ -51,18 +43,19 @@ class Project:
         self.manifest = os.path.join(self.path, jetstream.project_manifest)
 
         if not os.path.exists(self.path):
-            raise NotAProject('Path does not exist: {}'.format(self.path))
+            msg = 'Path does not exist: {}'.format(self.path)
+            raise jetstream.NotAProject(msg)
 
         if not os.path.isdir(self.path):
-            raise NotAProject('Not a directory: {}'.format(self.path))
+            raise jetstream.NotAProject('Not a directory: {}'.format(self.path))
 
         if not os.path.exists(self.index_path):
-            raise NotAProject('Index dir does not exist {}'.format(
-                self.index_path))
+            msg = 'Index dir does not exist {}'.format(self.index_path)
+            raise jetstream.NotAProject(msg)
 
         if not os.path.isdir(self.index_path):
-            raise NotAProject('Index dir is not a dir {}'.format(
-                self.index_path))
+            msg = 'Index dir is not a dir {}'.format(self.index_path)
+            raise jetstream.NotAProject(msg)
 
         self._load_project_config_files()
         log.critical('Loaded project: {}'.format(self.path))
@@ -227,7 +220,7 @@ class Project:
         temp = jetstream.env.get_template_with_source(template)
         return temp.render(project=self, **additional_data)
 
-    def run(self, template, additional_data=None, runner_class=BaseRunner):
+    def run(self, template, additional_data=None, runner_class=WorkflowRunner):
         if additional_data is None:
             additional_data = dict()
 

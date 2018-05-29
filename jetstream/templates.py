@@ -64,9 +64,9 @@ def load_environment(template_dirs=None, include_site_templates=SITE_TEMPLATES,
         strict=STRICT):
     """Start a Jinja2 Environment with the given template directories.
 
-    Templates are loaded by a Jinja2 ChoiceLoader.  that includes
-    [<project>/templates, <package>/templates]. Project templates can
-    be ignored by setting include_project_templates=False."""
+    Templates are loaded by a Jinja2 FilesystemLoader that includes built-in
+    templates by default. The search path is also extended to include any
+    directories in template_dirs."""
     search_path = list()
 
     if template_dirs:

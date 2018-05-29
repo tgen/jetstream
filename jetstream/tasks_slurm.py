@@ -3,7 +3,7 @@ import re
 import time
 import subprocess
 import logging
-from jetstream.runners import BaseTask
+from jetstream.tasks import BaseTask
 
 log = logging.getLogger(__name__)
 
@@ -70,18 +70,20 @@ class SlurmTask(BaseTask):
     stdin
     ------
 
-    Will be piped to sbatch stdin fd. Note this behavior is different than LocalTask, 
-    where data is written directly to the command stdin fd. 
+    Will be piped to sbatch stdin fd. Note this behavior is different than
+    LocalTask, where data is written directly to the command stdin fd.
 
     stdout
     -------
 
-    ``sbatch -o "<stdout>" ``if present. Otherwise, ``sbatch -o "logs/<task_id>.log"``
+    ``sbatch -o "<stdout>"`` if present.
+    Otherwise, ``sbatch -o "logs/<task_id>.log"``
 
     stderr
     -------
 
-    ``sbatch -e "<stderr>"`` if present. Otherwise sbatch will join stderr with stdout. 
+    ``sbatch -e "<stderr>"`` if present.
+    Otherwise sbatch will join stderr with stdout.
 
     SlurmTask Specific Directive Handling
     ======================================
@@ -91,52 +93,53 @@ class SlurmTask(BaseTask):
 
     Passed to ``sbatch --mem "<mem>"``
 
-    Specify the real memory required per node. Default units are megabytes unless
-    the SchedulerParameters configuration parameter includes the "default_gbytes"
-    option for gigabytes. Different units can be specified using the suffix
-    [K|M|G|T]. Default value is DefMemPerNode and the maximum value is
-    MaxMemPerNode. If configured, both parameters can be seen using the scontrol
-    show config command. This parameter would generally be used if whole nodes are
-    allocated to jobs (SelectType=select/linear). Also see --mem-per-cpu. --mem
-    and --mem-per-cpu are mutually exclusive.
+    Specify the real memory required per node. Default units are megabytes
+    unless the SchedulerParameters configuration parameter includes the
+    "default_gbytes" option for gigabytes. Different units can be specified
+    using the suffix [K|M|G|T]. Default value is DefMemPerNode and the maximum
+    value is MaxMemPerNode. If configured, both parameters can be seen using
+    the scontrol show config command. This parameter would generally be used if
+    whole nodes are allocated to jobs (SelectType=select/linear). Also see
+    --mem-per-cpu. --mem and --mem-per-cpu are mutually exclusive.
 
     NOTE: A memory size specification of zero is treated as a special case and
     grants the job access to all of the memory on each node. If the job is
-    allocated multiple nodes in a heterogeneous cluster, the memory limit on each
-    node will be that of the node in the allocation with the smallest memory size
-    (same limit will apply to every node in the job's allocation).
+    allocated multiple nodes in a heterogeneous cluster, the memory limit on
+    each node will be that of the node in the allocation with the smallest
+    memory size (same limit will apply to every node in the job's allocation).
 
     NOTE: Enforcement of memory limits currently relies upon the task/cgroup
-    plugin or enabling of accounting, which samples memory use on a periodic basis
-    (data need not be stored, just collected). In both cases memory use is based
-    upon the job's Resident Set Size (RSS). A task may exceed the memory limit
-    until the next periodic accounting sample.
+    plugin or enabling of accounting, which samples memory use on a periodic
+    basis (data need not be stored, just collected). In both cases memory use
+    is based upon the job's Resident Set Size (RSS). A task may exceed the
+    memory limit until the next periodic accounting sample.
 
     cpus
     -----
 
     Passed to ``sbatch -c "<cpus>"``
 
-    Advise the Slurm controller that ensuing job steps will require ncpus number
-    of processors per task. Without this option, the controller will just try to
-    allocate one processor per task.
+    Advise the Slurm controller that ensuing job steps will require ncpus
+    number of processors per task. Without this option, the controller will
+    just try to allocate one processor per task.
 
     time
     -----
 
     Passed to ``sbatch -t "<time>"``
 
-    Set a limit on the total run time of the job allocation. If the requested time
-    limit exceeds the partition's time limit, the job will be left in a PENDING
-    state (possibly indefinitely). The default time limit is the partition's
-    default time limit. When the time limit is reached, each task in each job step
-    is sent SIGTERM followed by SIGKILL. The interval between signals is specified
-    by the Slurm configuration parameter KillWait. The OverTimeLimit configuration
-    parameter may permit the job to run longer than scheduled. Time resolution is
-    one minute and second values are rounded up to the next minute.
+    Set a limit on the total run time of the job allocation. If the requested
+    time limit exceeds the partition's time limit, the job will be left in a
+    PENDING state (possibly indefinitely). The default time limit is the
+    partition's default time limit. When the time limit is reached, each task
+    in each job step is sent SIGTERM followed by SIGKILL. The interval between
+    signals is specified by the Slurm configuration parameter KillWait. The
+    OverTimeLimit configuration parameter may permit the job to run longer than
+    scheduled. Time resolution is one minute and second values are rounded up
+    to the next minute.
 
-    A time limit of zero requests that no time limit be imposed. Acceptable time
-    formats include "minutes", "minutes:seconds", "hours:minutes:seconds",
+    A time limit of zero requests that no time limit be imposed. Acceptable
+    time formats include "minutes", "minutes:seconds", "hours:minutes:seconds",
     "days-hours", "days-hours:minutes" and "days-hours:minutes:seconds".
 
     """
@@ -154,7 +157,6 @@ class SlurmTask(BaseTask):
         return self.proc.wait()
 
     def launch(self):
-        self._launched = True
         args = ['-J', self.task_id]
 
         if self.stdout_path != self.stderr_path:
@@ -162,16 +164,16 @@ class SlurmTask(BaseTask):
         else:
             args.extend(['-o', self.stdout_path])
 
-        if 'cpus' in self.task_directives:
+        if 'cpus' in self.task_directives and self.task_directives['cpus']:
             args.extend(['-c', self.task_directives['cpus']])
 
-        if 'mem' in self.task_directives:
+        if 'mem' in self.task_directives and self.task_directives['mem']:
             args.extend(['--mem', self.task_directives['mem']])
 
-        if 'time' in self.task_directives:
+        if 'time' in self.task_directives and  self.task_directives['time']:
             args.extend(['-t', self.task_directives['time']])
 
-        if 'cmd' in self.task_directives:
+        if 'cmd' in self.task_directives and self.task_directives['cmd']:
             args.extend(['--wrap', self.task_directives['cmd']])
 
         try:
@@ -182,13 +184,20 @@ class SlurmTask(BaseTask):
             return False
 
 
-class Sopen(object):
+class SbatchJob(object):
     _watching = set()
     _last_poll = 0
 
     def __init__(self, jid, cluster=None, creation_time=None):
-        """Tracks a Slurm job and provides methods similar to a Popen object"""
-        Sopen._watching.add(self)
+        """ Tracks a Slurm job with an API similar to a Popen object.
+
+        :param jid: Slurm Job ID to track
+        :param cluster: Cluster name the job where the job was submitted
+        :param creation_time: (Optional) Unix time stamp when the job was
+        created. Wiggle room for receiving results from sacct is given to jobs
+        that were created recently.
+        """
+        SbatchJob._watching.add(self)
 
         self.jid = str(jid)
         self.cluster = cluster
@@ -199,11 +208,41 @@ class Sopen(object):
     def __repr__(self):
         return "Sopen({})".format(self.jid)
 
+    @staticmethod
+    def _batch_update():
+        """ Request status updates for all Sopen objects in Sopen._watching."""
+        if SbatchJob._watching:
+            now = time.time()
+            if now - SbatchJob._last_poll < slurm_max_req_freq:
+                return
+
+            sacct_data = sacct_get_all(*[j.jid for j in SbatchJob._watching])
+            SbatchJob._last_poll = time.time()
+            log.critical('Received status updates for: {}'.format(
+                list(sacct_data.keys())))
+
+            for job in SbatchJob._watching:
+                log.critical('Updating: {}'.format(job))
+
+                if job.jid in sacct_data:
+                    job.job_data = sacct_data[job.jid]
+                else:
+                    job.failed_to_update_job_state()
+
+    def _set_returncode(self):
+        if self.job_data is not None:
+            try:
+                if self.job_data['State'] not in active_states:
+                    rc = self.job_data['ExitCode'].partition(':')[0]
+                    self.returncode = int(rc)
+            except KeyError:
+                self.failed_to_update_job_state()
+
     def poll(self):
         """ Check if the job is active. Set and return returncode attribute. 
         Otherwise, returns None 
 
-        If Sopen.returncode is not None, it will be removed from Sopen._watching.
+        If Sopen.returncode is not None, it will be removed from Sopen._watching
         
         Polling any Sopen object will trigger a batch update request for all 
         instances in Sopen._watching. This event is limited to one request 
@@ -211,8 +250,8 @@ class Sopen(object):
         self._batch_update()
         self._set_returncode()
 
-        if self in Sopen._watching and self.returncode is not None:
-            Sopen._watching.remove(self)
+        if self in SbatchJob._watching and self.returncode is not None:
+            SbatchJob._watching.remove(self)
 
         return self.returncode
 
@@ -239,37 +278,9 @@ class Sopen(object):
 
         return self.returncode
 
-    def _set_returncode(self):
-        if self.job_data is not None:
-            try:
-                if self.job_data['State'] not in active_states:
-                    self.returncode = int(self.job_data['ExitCode'].partition(':')[0])
-            except KeyError:
-                self._failed_to_update_job_state()
-
-    def _failed_to_update_job_state(self):
+    def failed_to_update_job_state(self):
         if time.time() - self.creation_time > slurm_sacct_delay_window:
-            self._state = 'FAILED_TO_RETRIEVE_SACCT_DATA'
-            self._returncode = -123
-
-    def _batch_update(self):
-        """ Request status updates for all Sopen objects in Sopen._watching. """
-        if Sopen._watching:
-            now = time.time()
-            if now - Sopen._last_poll < slurm_max_req_freq:
-                return
-
-            sacct_data = sacct_get_all(*[j.jid for j in Sopen._watching])
-            Sopen._last_poll = time.time()
-            log.critical('Received status updates for: {}'.format(list(sacct_data.keys())))
-
-            for job in Sopen._watching:
-                log.critical('Updating: {}'.format(job))
-
-                if job.jid in sacct_data:
-                    job.job_data = sacct_data[job.jid]
-                else:
-                    job._failed_to_update_job_state()
+            self.returncode = -123
 
 
 def _sacct_request(*job_ids):
@@ -312,7 +323,7 @@ def _parse_sacct(data):
                 row['_steps'] = list()
                 jobs[jobid] = row
         else:
-            if not jobid in jobs:
+            if jobid not in jobs:
                 jobs[jobid] = {'_steps': list()}
 
             jobs[jobid]['_steps'].append(row)
@@ -337,7 +348,7 @@ def sacct_get_all(*job_ids):
     jobs = _parse_sacct(data)
 
     for job_id in job_ids:
-        if not job_id in jobs:
+        if job_id not in jobs:
             msg = 'Error fetching job data for {}'.format(job_id)
             log.critical(msg)
 
@@ -371,5 +382,4 @@ def sbatch(*args, stdin_data=None):
 
     jid, _, cluster = stdout.decode().strip().partition(';')
     log.critical("Submitted batch job {}".format(jid))
-    return Sopen(jid, cluster=cluster)
-
+    return SbatchJob(jid, cluster=cluster)

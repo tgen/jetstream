@@ -48,7 +48,7 @@ def arg_parser():
 
     parser.add_argument('-r', '--render-only', action='store_true')
 
-    parser.add_argument('--runner', default='BaseRunner',
+    parser.add_argument('--runner', default='WorkflowRunner',
                         help=argparse.SUPPRESS)
 
     return parser
@@ -94,7 +94,7 @@ def main(args=None):
         print(text)
         sys.exit(0)
 
-    runner = getattr(jetstream.runners, args.runner)
+    runner = getattr(jetstream.runner, args.runner)
 
     rc = p.run(
         template=args.template,

@@ -102,20 +102,16 @@ internally.
 
 """
 import re
+import time
 import logging
 import shutil
-import networkx as nx
-import time
 from datetime import datetime
+import networkx as nx
 from networkx.readwrite import json_graph
+import jetstream
 from jetstream import utils
 
 log = logging.getLogger(__name__)
-
-
-class NotDagError(Exception):
-    """ Raised when an action would result in a network that is not a DAG """
-    pass
 
 
 def save(workflow, path):
@@ -184,7 +180,7 @@ class Workflow:
         self._throttle = utils.LogisticDelay(max=int(self.throttle_requests))
 
         if not nx.is_directed_acyclic_graph(self.graph):
-            raise NotDagError
+            raise jetstream.NotDagError
 
     def __str__(self):
         return utils.yaml_dumps(to_node_link_data(self))
@@ -287,7 +283,7 @@ class Workflow:
 
         if not nx.is_directed_acyclic_graph(self.graph):
             self.graph.remove_edge(from_node, to_node)
-            raise NotDagError
+            raise jetstream.NotDagError
 
     def tasks(self, *args, **kwargs):
         """ Access tasks in the workflow. """

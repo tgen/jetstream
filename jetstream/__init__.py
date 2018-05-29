@@ -37,6 +37,7 @@ project_history = os.path.join(project_index, 'history')
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
+from jetstream.exc import *
 from jetstream import utils, legacy
 
 
@@ -52,9 +53,13 @@ data_loaders = {
 }
 
 
-from jetstream import legacy, templates, runners, projects, workflows
+from jetstream.tasks_local import LocalTask
+from jetstream.tasks_slurm import SlurmTask
+from jetstream.runner import WorkflowRunner
 from jetstream.workflows import Workflow
 from jetstream.projects import Project
+from jetstream import templates, projects, workflows
+
 
 
 env = templates.load_environment()
