@@ -16,8 +16,8 @@ log_debug_format = "[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)
 def arg_parser():
     main_parser = argparse.ArgumentParser(
         description='Available sub-commands are: {}'.format(get_subcommands()),
-        epilog='Use ``jetstream <subcommand> -h/--help`` for help '
-               'specific commands.',
+        epilog='Use \'jetstream <subcommand> -h/--help\' for help '
+               'with specific commands.',
         add_help=False)
 
     main_parser.add_argument('subcommand', nargs='?', help='subcommand name')
@@ -88,7 +88,7 @@ def main(args=None):
         level=getattr(logging, args.log_level)
     )
 
-    log.critical('version {}'.format(__version__))
+    log.critical('Version {}'.format(__version__))
     log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 

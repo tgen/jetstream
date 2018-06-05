@@ -94,5 +94,5 @@ def load_environment(template_dirs=None, include_site_templates=SITE_TEMPLATES,
     env.globals['raise'] = raise_helper
     env.filters['fromjson'] = fromjson
 
-    log.critical('Template loader: {}'.format(env.loader.searchpath))
+    log.debug('Template loader: {}'.format(env.loader.searchpath))
     return env

@@ -200,6 +200,7 @@ class Workflow:
                 pending = True
 
             if self.task_ready(task_id):
+                log.critical('Task ready: {}'.format(task_id))
                 self.update(
                     task_id,
                     status='pending',
@@ -309,7 +310,7 @@ class Workflow:
        # self._throttle.reset()
 
     def send(self, task_id, return_code):
-        log.critical('Received {}: {}'.format(task_id, return_code))
+        log.critical('Task done {}: {}'.format(task_id, return_code))
         if return_code != 0:
             self.fail(task_id)
         else:
@@ -563,5 +564,6 @@ def build_workflow(tasks):
         # need to revisit and think about how to address edge
         # cases: out directive with no ins, number of matches
         # allowed per in/out etc.
-
+    
+    log.critical('Workflow ready: {}'.format(wf))
     return wf

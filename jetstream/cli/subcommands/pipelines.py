@@ -1,29 +1,25 @@
 """Run a Jetstream pipeline
 
-All arguments following the name of the pipeline are considered template
-variable data and will be ignored by the argument parser initially. Any command
-options listed below *must* be given *before* the template name.
-However, logging arguments (see ``jetstream -h``) are special and can be
-included anywhere.
+Template variable data is usually saved as files in ``<project>/config``, but 
+command arguments can also be used to pass variable data to templates. All 
+arguments remaining after parsing the command line (arguments that are not 
+listed in the help section) will be treated as template variable data (kvargs):
 
-*Template variable data:*
+Template variable arguments should follow the syntax: ``--<key> <value>``. 
+The key must start with two hyphens and the value is the following argument. The 
+variable type can be explicitly set with the syntax ``--<type>:<key> <value>``.
+Variables with no type declared will be loaded as strings.
 
-Template variable data is usually saved to files in ``<project>/config``, but
-command arguments can also be used to pass variable data to templates.
-Variables are specified as argument pairs: ``--<key> <value>``. The key must
-start with two hyphens and the value is the next argument.
-
-Variables can also be typed with the syntax ``--<type>:<key> <value>``.
-Some popular types are "file", "json", and "yaml". Files will be handled with
-``jetstream.data_loaders`` according to their extension. All others will
-evaluated by the appropriate loader function. Variables with no type declared
-will be loaded as strings.
+If the variable type is "file" the value will be ``jetstream.data_loaders``, which
+handles files according to their extension. All other types will evaluated by the 
+appropriate type function. 
 
 """
 import os
 import sys
 import logging
 import argparse
+import subprocess
 import jetstream
 from jetstream.cli import kvargs
 
@@ -39,18 +35,20 @@ def arg_parser():
 
     parser.add_argument('template', help='Template name')
 
-    # parser.add_argument('kvargs', nargs=argparse.REMAINDER,
-    #                     help='Arguments following the workflow name are parsed '
-    #                          'as arbitrary "--key value" pairs (see help)')
-
     parser.add_argument('--kvarg-separator', default=':',
                         help='Specify an alternate separator for kvargs')
 
-    parser.add_argument('-r', '--render-only', action='store_true')
+    parser.add_argument('-r', '--render-only', action='store_true',
+                        help='Just render the template and print to stdout')
 
-    parser.add_argument('--backend', default='LocalBackend',
-                        help=argparse.SUPPRESS)
+    parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
+                        help='Specify the runner backend (default: local)')
 
+    parser.add_argument('--logging-interval', default=300, type=int,
+                        help='Time between workflow status updates')
+
+    parser.add_argument('--max-concurrency', default=None, type=int,
+                        help='Override the concurrency limits of the task backend.')
     return parser
 
 
@@ -81,27 +79,31 @@ def main(args=None):
 
     kvargs_data = kvargs.parse(
         args=unknown,
-        type_separator=args.kvarg_separator
-    )
+        type_separator=args.kvarg_separator)
 
     p = jetstream.Project()
 
     if args.render_only:
         text = p.render(
             template=args.template,
-            additional_data=vars(kvargs_data)
-        )
+            additional_data=vars(kvargs_data))
 
         print(text)
 
     else:
-        backend = getattr(jetstream, args.backend)
+        if args.backend == 'local':
+            backend = jetstream.LocalBackend(max_subprocess=args.max_concurrency)  
+        elif args.backend == 'slurm':
+            backend = jetstream.SlurmBackend(max_jobs=args.max_concurrency)
+
+        backend_class = getattr(jetstream, args.backend)
+        backend = backend_class()
 
         rc = p.run(
             template=args.template,
             additional_data=vars(kvargs_data),
-            backend=backend
-        )
+            backend=backend,
+            logging_interval=args.logging_interval)
 
         sys.exit(rc)
 

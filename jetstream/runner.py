@@ -14,18 +14,10 @@ from concurrent.futures import CancelledError
 log = logging.getLogger(__name__)
 
 
-def guess_concurrency(default=500):
-    try:
-        res = int(0.25 * int(subprocess.check_output(['ulimit', '-u'])))
-        return res
-    except FileNotFoundError:
-        return default
-
-
 class AsyncRunner(object):
     def __init__(self, workflow, backend=None, logging_interval=None):
         self.workflow = workflow
-        self.backend = backend() or LocalBackend()
+        self.backend = backend
         self.logging_interval = logging_interval or 3
 
         self._loop = None
@@ -35,14 +27,18 @@ class AsyncRunner(object):
         self._logger = None
 
     async def logger(self):
+        log.critical('Logger started!')
+
         try:
             while not self._workflow_complete.is_set():
                 await asyncio.sleep(self.logging_interval)
                 log.critical('Workflow status: {}'.format(self.workflow))
         finally:
-            log.critical('Logger shutdown!')
+            log.critical('Logger stopped!')
 
     async def workflow_manager(self):
+        log.critical('Workflow manager started!')
+
         try:
             for task in self.workflow:
                 if task is None:
@@ -78,19 +74,24 @@ class AsyncRunner(object):
             self._loop.stop()
 
     def start(self, loop=None):
-        log.critical('AsyncRunner starting with {}'.format(
+        log.critical('AsyncRunner with {} starting...'.format(
             self.backend.__class__.__name__))
 
         if loop is None:
             self._loop = asyncio.get_event_loop()
 
-        if hasattr(self.backend, 'start_coros'):
-            self._loop.create_task(self.backend.start_coros())
+        manager = self._loop.create_task(self.workflow_manager())
+        logger = self._loop.create_task(self.logger())
 
-        tasks = asyncio.gather(self.workflow_manager(), self.logger())
+        if hasattr(self.backend, 'start_coros'):
+            coros = self._loop.create_task(self.backend.start_coros())
+        else:
+            coros = self._loop.create_task(asyncio.sleep(0))
 
         try:
-            self._loop.run_until_complete(tasks)
+            self._loop.run_until_complete(manager)
+            logger.cancel()
+            coros.cancel()
         except KeyboardInterrupt:
             for t in asyncio.Task.all_tasks():
                 t.cancel()
@@ -166,7 +167,6 @@ class LocalBackend(Backend):
         thread limit is used. If child processes in a workflow spawn several 
         threads, the system may start to reject creation of new processes.
         """
-
         self._sem = BoundedSemaphore(max_subprocess or guess_concurrency())
 
     async def spawn(self, task_id, task_directives):
@@ -208,7 +208,7 @@ class SlurmBackend(Backend):
     job_id_pattern = re.compile(r"(?P<jobid>\d*)\.?(?P<taskid>.*)")
 
     def __init__(self, max_jobs=None, sacct_frequency=None, chunk_size=None):
-        self.sacct_frequency = sacct_frequency or 10
+        self.sacct_frequency = sacct_frequency or 60
         self.chunk_size = chunk_size or 10000
         self._monitor_jobs = Event()
         self._jobs = {}
@@ -225,6 +225,7 @@ class SlurmBackend(Backend):
         return job
 
     async def start_coros(self):
+        log.critical('Slurm job monitor started!')
         self._monitor_jobs.set()
 
         try:
@@ -233,6 +234,8 @@ class SlurmBackend(Backend):
                 await self._update_jobs()
         except CancelledError:
             self._monitor_jobs.clear()
+        finally:
+            log.critical('Slurm job monitor stopped!')
 
     async def _update_jobs(self):
         log.critical('Sacct request for {} jobs...'.format(len(self._jobs)))
@@ -251,7 +254,7 @@ class SlurmBackend(Backend):
                 job_data = sacct_data[jid]
                 job.update(job_data)
 
-                if job.is_done:
+                if job.is_complete:
                     reap.add(jid)
             else:
                 log.warning('Unable to get res for {}'.format(job))
@@ -309,7 +312,7 @@ class SlurmBackend(Backend):
 
                 jobs[jobid]['_steps'].append(row)
 
-        log.critical('Parsed data for {} jobs.'.format(len(jobs)))
+        log.debug('Parsed data for {} jobs'.format(len(jobs)))
         return jobs
 
     async def spawn(self, task_id, task_directives):
@@ -491,3 +494,11 @@ def test_async_runner(ntasks=5, backend=LocalBackend):
 
     ar = AsyncRunner(wf, backend=backend)
     ar.start()
+
+
+def guess_concurrency(default=500):
+    try:
+        res = int(0.25 * int(subprocess.check_output(['ulimit', '-u'])))
+        return res
+    except FileNotFoundError:
+        return default
