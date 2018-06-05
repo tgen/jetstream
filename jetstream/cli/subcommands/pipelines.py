@@ -39,16 +39,16 @@ def arg_parser():
 
     parser.add_argument('template', help='Template name')
 
-    parser.add_argument('kvargs', nargs=argparse.REMAINDER,
-                        help='Arguments following the workflow name are parsed '
-                             'as arbitrary "--key value" pairs (see help)')
+    # parser.add_argument('kvargs', nargs=argparse.REMAINDER,
+    #                     help='Arguments following the workflow name are parsed '
+    #                          'as arbitrary "--key value" pairs (see help)')
 
     parser.add_argument('--kvarg-separator', default=':',
                         help='Specify an alternate separator for kvargs')
 
     parser.add_argument('-r', '--render-only', action='store_true')
 
-    parser.add_argument('--runner', default='WorkflowRunner',
+    parser.add_argument('--backend', default='LocalBackend',
                         help=argparse.SUPPRESS)
 
     return parser
@@ -76,11 +76,11 @@ def get_template(run, template_name):
 
 def main(args=None):
     parser = arg_parser()
-    args = parser.parse_args(args)
+    args, unknown = parser.parse_known_args(args)
     log.debug(args)
 
     kvargs_data = kvargs.parse(
-        args=args.kvargs,
+        args=unknown,
         type_separator=args.kvarg_separator
     )
 
@@ -91,18 +91,19 @@ def main(args=None):
             template=args.template,
             additional_data=vars(kvargs_data)
         )
+
         print(text)
-        sys.exit(0)
 
-    runner = getattr(jetstream.runner, args.runner)
+    else:
+        backend = getattr(jetstream, args.backend)
 
-    rc = p.run(
-        template=args.template,
-        additional_data=vars(kvargs_data),
-        runner_class=runner
-    )
+        rc = p.run(
+            template=args.template,
+            additional_data=vars(kvargs_data),
+            backend=backend
+        )
 
-    sys.exit(rc)
+        sys.exit(rc)
 
 
 if __name__ == '__main__':

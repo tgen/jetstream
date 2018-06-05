@@ -2,7 +2,6 @@ import os
 import traceback
 import logging
 import jetstream
-from jetstream import WorkflowRunner
 
 log = logging.getLogger(__name__)
 
@@ -220,7 +219,29 @@ class Project:
         temp = jetstream.env.get_template_with_source(template)
         return temp.render(project=self, **additional_data)
 
-    def run(self, template, additional_data=None, runner_class=WorkflowRunner):
+    def _finalize_run(self, workflow):
+        log.critical('Finalizing run...')
+
+        try:
+            workflow.save()
+        except ValueError as e:
+            log.exception(e)
+
+        fails = [tid for tid, t in workflow.tasks(data=True)
+                 if t['status'] == 'failed']
+
+        if fails:
+            log.critical('\u2620  Some tasks failed! {}'.format(fails))
+            return 1
+        else:
+            log.critical('\U0001F44D Run complete!')
+            return 0
+
+    def run(self, template, additional_data=None,
+            backend=jetstream.LocalBackend):
+        """ Load a template, generate a workflow, and run it on this project.
+
+        """
         if additional_data is None:
             additional_data = dict()
 
@@ -241,18 +262,23 @@ class Project:
             tasks = temp.render(project=self, **additional_data)
             run.save(tasks, 'tasks')
 
-            workflow = jetstream.workflows.build_workflow(tasks)
-            run.save(str(workflow), 'workflow')
+            new_workflow = jetstream.workflows.build_workflow(tasks)
+            run.save(str(new_workflow), 'workflow')
 
-            existing_workflow = self.load_workflow()
-            existing_workflow.compose(workflow)
-            existing_workflow.project = self
-            existing_workflow.auto_save = True
+            workflow = self.load_workflow()
+            workflow.compose(new_workflow)
+            workflow.project = self
+            workflow.auto_save = True
+            workflow.retry()
 
-            existing_workflow.retry()
+            runner = jetstream.AsyncRunner(
+                workflow=workflow,
+                backend=backend
+            )
 
-            runner = runner_class(existing_workflow)
-            return runner.start()
+            runner.start()
+
+            return self._finalize_run(workflow)
 
         finally:
             os.remove(self.pid_file)

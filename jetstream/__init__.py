@@ -53,9 +53,7 @@ data_loaders = {
 }
 
 
-from jetstream.tasks_local import LocalTask
-from jetstream.tasks_slurm import SlurmTask
-from jetstream.runner import WorkflowRunner
+from jetstream.runner import AsyncRunner, SlurmBackend, LocalBackend
 from jetstream.workflows import Workflow
 from jetstream.projects import Project
 from jetstream import templates, projects, workflows

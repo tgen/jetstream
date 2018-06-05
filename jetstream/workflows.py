@@ -109,6 +109,7 @@ from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
 import jetstream
+from collections import Counter
 from jetstream import utils
 
 log = logging.getLogger(__name__)
@@ -169,21 +170,19 @@ class Workflow:
     Workflows can be loaded from existing graphs with the data argument or
     from_node_link_data() method. """
     def __init__(self, project=None, graph=None, path=None, auto_save=False,
-                 save_interval=60, throttle_requests=10):
+                 save_interval=300):
         self.project = project
         self.graph = graph or nx.DiGraph(_backup=dict())
         self.path = path
         self.auto_save = auto_save
         self._last_save = time.time()
         self.save_interval = save_interval
-        self.throttle_requests = throttle_requests
-        self._throttle = utils.LogisticDelay(max=int(self.throttle_requests))
 
         if not nx.is_directed_acyclic_graph(self.graph):
             raise jetstream.NotDagError
 
-    def __str__(self):
-        return utils.yaml_dumps(to_node_link_data(self))
+    def __repr__(self):
+        return '<jetstream.Workflow {}>'.format(Counter(self.status()))
 
     def __len__(self):
         return len(self.graph)
@@ -207,15 +206,16 @@ class Workflow:
                     datetime_start=str(datetime.now())
                 )
 
-                self._throttle.reset()
                 return task_id, task_data
         else:
             if pending:
-                self._throttle.wait()
                 return None
             else:
-                log.debug('Request for next task but all complete.')
+                log.critical('Workflow is complete!')
                 raise StopIteration
+
+    def __send__(self, *args, **kwargs):
+        return self.send(*args, **kwargs)
 
     def _root_nodes(self):
         """ Returns the set of root nodes in the graph. """
@@ -247,7 +247,7 @@ class Workflow:
 
     def _add_node(self, node_id, data):
         """ Adding a node requires unique node_id. A RuntimeError will be
-        raised if the node_id already exists in the graph"""
+        raised if the node_id already exists in the graph. """
         log.debug('Adding node: {}'.format(node_id))
 
         if self.get_task(node_id):
@@ -275,8 +275,7 @@ class Workflow:
 
         The "add_dependency" method is provided for adding dependencies to a
         workflow, and should be preferred over adding edges directly to the
-        workflow graph.
-        """
+        workflow graph. """
         log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
 
         self.graph.add_edge(from_node, to_node)
@@ -307,7 +306,14 @@ class Workflow:
         """ Change the status of a node. """
         self.last_update = utils.fingerprint()
         self.graph.nodes[task_id].update(**kwargs)
-        self._throttle.reset()
+       # self._throttle.reset()
+
+    def send(self, task_id, return_code):
+        log.critical('Received {}: {}'.format(task_id, return_code))
+        if return_code != 0:
+            self.fail(task_id)
+        else:
+            self.complete(task_id)
 
     def complete(self, task_id, *, return_code=0, **kwargs):
         """ Complete a task.
