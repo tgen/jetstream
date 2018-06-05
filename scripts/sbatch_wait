@@ -5,8 +5,12 @@
 # for managing slurm output files.
 
 LOGS=$(mktemp)
+trap "cat ${LOGS} && rm ${LOGS}" SIGTERM
+
 sbatch -W -o ${LOGS} $@
+
 JOBEXITCODE=$?
 cat ${LOGS}
 rm ${LOGS}
+
 exit $JOBEXITCODE
