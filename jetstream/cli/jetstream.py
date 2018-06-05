@@ -18,12 +18,9 @@ def arg_parser():
         description='Available sub-commands are: {}'.format(get_subcommands()),
         epilog='Use ``jetstream <subcommand> -h/--help`` for help '
                'specific commands.',
-        add_help=True)
+        add_help=False)
 
     main_parser.add_argument('subcommand', nargs='?', help='subcommand name')
-
-    main_parser.add_argument('remainder', nargs=argparse.REMAINDER,
-                             help=argparse.SUPPRESS)
 
     main_parser.add_argument('-v', '--version', action='version',
                       version=__version__)
@@ -78,7 +75,7 @@ def get_subcommands():
 
 def main(args=None):
     parser = arg_parser()
-    args = parser.parse_args(args)
+    args, remainder = parser.parse_known_args(args)
 
     if args.verbose:
         args.log_format = log_debug_format
@@ -103,22 +100,21 @@ def main(args=None):
 
     if args.subcommand is None:
         parser.print_help()
-        sys.exit(1)
+    else:
+        try:
+            # Dynamically import the requested sub-command
+            mod = importlib.import_module(
+                '.subcommands.' + args.subcommand,
+                package=__package__)
 
-    try:
-        # Dynamically import the requested sub-command
-        mod = importlib.import_module(
-            '.subcommands.' + args.subcommand,
-            package=__package__)
+            log.debug('Launch {} args: {}'.format(
+                mod.__name__, ' '.join(remainder)))
 
-        log.debug('Launch {} args: {}'.format(
-            mod.__name__, ' '.join(args.remainder)))
+            mod.main(remainder)
 
-        mod.main(args.remainder)
-
-    except ModuleNotFoundError:
-        log.debug(traceback.format_exc())
-        parser.print_help()
-        if args.subcommand != 'help':
-            print('Error loading subcommand: {}'.format(args.subcommand))
-        sys.exit(1)
+        except ModuleNotFoundError:
+            log.debug(traceback.format_exc())
+            parser.print_help()
+            if args.subcommand != 'help':
+                print('Error loading subcommand: {}'.format(args.subcommand))
+            sys.exit(1)
