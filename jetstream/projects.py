@@ -1,6 +1,7 @@
 import os
 import traceback
 import logging
+from datetime import datetime
 import jetstream
 
 log = logging.getLogger(__name__)
@@ -219,7 +220,7 @@ class Project:
         temp = jetstream.env.get_template_with_source(template)
         return temp.render(project=self, **additional_data)
 
-    def _finalize_run(self, workflow):
+    def _finalize_run(self, start_time, workflow):
         log.critical('Finalizing run...')
 
         try:
@@ -230,6 +231,8 @@ class Project:
         fails = [tid for tid, t in workflow.tasks(data=True)
                  if t['status'] == 'failed']
 
+        log.critical('Elapsed time: {}'.format(datetime.now() - start_time))
+        
         if fails:
             log.critical('\u2620  Some tasks failed! {}'.format(fails))
             return 1
@@ -242,6 +245,8 @@ class Project:
 
         Additional arguments are passed to jetstream.AsyncRunner
         """
+        start_time = datetime.now()
+
         if additional_data is None:
             additional_data = dict()
 
@@ -274,7 +279,7 @@ class Project:
             runner = jetstream.AsyncRunner(workflow=workflow, *args, **kwargs)
             runner.start()
 
-            return self._finalize_run(workflow)
+            return self._finalize_run(start_time, workflow)
 
         finally:
             os.remove(self.pid_file)

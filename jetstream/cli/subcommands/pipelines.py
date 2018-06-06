@@ -44,7 +44,7 @@ def arg_parser():
     parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
                         help='Specify the runner backend (default: local)')
 
-    parser.add_argument('--logging-interval', default=300, type=int,
+    parser.add_argument('--logging-interval', default=60, type=int,
                         help='Time between workflow status updates')
 
     parser.add_argument('--max-concurrency', default=None, type=int,
@@ -92,12 +92,9 @@ def main(args=None):
 
     else:
         if args.backend == 'local':
-            backend = jetstream.LocalBackend(max_subprocess=args.max_concurrency)  
+            backend = jetstream.LocalBackend(max_concurrency=args.max_concurrency)  
         elif args.backend == 'slurm':
-            backend = jetstream.SlurmBackend(max_jobs=args.max_concurrency)
-
-        backend_class = getattr(jetstream, args.backend)
-        backend = backend_class()
+            backend = jetstream.SlurmBackend(max_concurrency=args.max_concurrency)
 
         rc = p.run(
             template=args.template,
