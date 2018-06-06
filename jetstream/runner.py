@@ -26,13 +26,22 @@ class AsyncRunner(object):
         self._workflow_manager = None
         self._logger = None
 
+    def log(self):
+        """ Logs a status report """
+        log.critical('Workflow status: {}'.format(self.workflow))
+        log.critical('Runner status: {} async tasks. {}'.format(
+            len(asyncio.Task.all_tasks()), self.backend._concurrency_sem))
+        
+        if hasattr(self.backend, 'log'):
+            self.backend.log()
+
     async def logger(self):
         log.critical('Logger started!')
 
         try:
             while not self._workflow_complete.is_set():
                 await asyncio.sleep(self.logging_interval)
-                log.critical('Workflow status: {}'.format(self.workflow))
+                self.log()   
         finally:
             log.critical('Logger stopped!')
 
@@ -42,11 +51,10 @@ class AsyncRunner(object):
         try:
             for task in self.workflow:
                 if task is None:
-                    pass
+                    await asyncio.sleep(.1)
                 else:
                     await self.spawn(*task)
-
-                await asyncio.sleep(.1)
+                await asyncio.sleep(0)
         finally:
             self._workflow_complete.set()
 
@@ -67,7 +75,12 @@ class AsyncRunner(object):
 
         try:
             task_id, returncode = task.result()
-            self.workflow.send(task_id, returncode)
+
+            if returncode is None:
+                self.workflow.reset(task_id)
+            else:
+                self.workflow.send(task_id, returncode)
+
         except Exception as e:
             log.exception(e)
             log.critical('Exception during result handling, halting run!')
@@ -96,6 +109,7 @@ class AsyncRunner(object):
             for t in asyncio.Task.all_tasks():
                 t.cancel()
         finally:
+            self.log()
             log.critical('Event loop shutting down...')
             self._loop.run_until_complete(self._loop.shutdown_asyncgens())
             self._loop.close()
@@ -108,6 +122,10 @@ class Backend(object):
     # "spawn" will be called by the asyncrunner when a task is ready
     # for execution. It should be asynchronous and return the task_id
     # and returncode as a tuple: (task_id, returncode)
+    def __init__(self, max_concurrency=None):
+        self._concurrency_sem = BoundedSemaphore(max_concurrency or guess_concurrency())
+        log.critical('Initialized with max concurrency: {}'.format(
+            self._concurrency_sem))
 
     @staticmethod
     def get_out_paths(task_id, task_directives):
@@ -134,32 +152,40 @@ class Backend(object):
     def get_cmd(task_id, task_directives):
         return task_directives.get('cmd')
 
-    @staticmethod
-    async def create_subprocess_shell(*args, **kwargs):
-        while 1:
-            try:
-                return await create_subprocess_shell(*args, **kwargs)
-            except BlockingIOError as e:
-                log.critical('Unable to start subprocess: {}'.format(e))
-                log.critical('Retry in 10 seconds.')
-                await asyncio.sleep(10)
+    async def create_subprocess_shell(self, *args, **kwargs):
+        await self._concurrency_sem.acquire()
 
-    @staticmethod
-    async def create_subprocess_exec(*args, **kwargs):
-        while 1:
-            try:
-                return await create_subprocess_exec(*args, **kwargs)
-            except BlockingIOError as e:
-                log.critical('Unable to start subprocess: {}'.format(e))
-                log.critical('Retry in 10 seconds.')
-                await asyncio.sleep(10)
+        try:
+            while 1:
+                try:
+                    return await create_subprocess_shell(*args, **kwargs)
+                except (BlockingIOError, OSError) as e:
+                    log.critical('Unable to start subprocess: {}'.format(e))
+                    log.critical('Retry in 10 seconds.')
+                    await asyncio.sleep(10)
+        finally:
+            self._concurrency_sem.release()
+
+    async def create_subprocess_exec(self, *args, **kwargs):
+        await self._concurrency_sem.acquire()
+
+        try:
+            while 1:
+                try:
+                    return await create_subprocess_exec(*args, **kwargs)
+                except (BlockingIOError, OSError) as e:
+                    log.critical('Unable to start subprocess: {}'.format(e))
+                    log.critical('Retry in 10 seconds.')
+                    await asyncio.sleep(10)
+        finally:
+            self._concurrency_sem.release()
 
     async def spawn(self, *args, **kwargs):
         raise NotImplementedError
 
 
 class LocalBackend(Backend):
-    def __init__(self, max_subprocess=None):
+    def __init__(self, *args, **kwargs):
         """ LocalBackend executes tasks as processes on the local machine.
         
         :param max_subprocess: Total number of subprocess allowed regardless of
@@ -167,11 +193,10 @@ class LocalBackend(Backend):
         thread limit is used. If child processes in a workflow spawn several 
         threads, the system may start to reject creation of new processes.
         """
-        self._sem = BoundedSemaphore(max_subprocess or guess_concurrency())
+        super(LocalBackend, self).__init__(*args, **kwargs)
 
     async def spawn(self, task_id, task_directives):
-        log.debug('LocalBackend spawn: {} {}'.format(task_id, self._sem))
-        await self._sem.acquire()
+        log.debug('LocalBackend spawn: {} {}'.format(task_id, self._concurrency_sem))
 
         try:
             cmd = self.get_cmd(task_id, task_directives)
@@ -192,14 +217,10 @@ class LocalBackend(Backend):
                         cmd, stdout=out, stderr=err, stdin=PIPE)
 
             await p.communicate(input=stdin)
+            return task_id, p.returncode
 
         except CancelledError:
             return task_id, -15
-
-        finally:
-            self._sem.release()
-
-        return task_id, p.returncode
 
 
 class SlurmBackend(Backend):
@@ -207,12 +228,16 @@ class SlurmBackend(Backend):
     submission_pattern = re.compile(r"Submitted batch job (\d*)")
     job_id_pattern = re.compile(r"(?P<jobid>\d*)\.?(?P<taskid>.*)")
 
-    def __init__(self, max_jobs=None, sacct_frequency=None, chunk_size=None):
+    def __init__(self, max_jobs=None, sacct_frequency=None, chunk_size=None, *args, **kwargs):
+        super(SlurmBackend, self).__init__(*args, **kwargs)
         self.sacct_frequency = sacct_frequency or 60
         self.chunk_size = chunk_size or 10000
         self._monitor_jobs = Event()
         self._jobs = {}
-        self._sem = BoundedSemaphore(max_jobs or 1000000)
+        self._jobs_sem = BoundedSemaphore(max_jobs or 1000000)
+    
+    def log(self):
+        log.critical('Slurm jobs: {} {}'.format(len(self._jobs), self._jobs_sem))
 
     def chunk_jobs(self):
         seq = list(self._jobs.keys())
@@ -316,9 +341,10 @@ class SlurmBackend(Backend):
         return jobs
 
     async def spawn(self, task_id, task_directives):
-        log.debug('SlurmBackend spawn: {} {}'.format(task_id, self._sem))
+        log.debug('SlurmBackend spawn: {} {} {}'.format(task_id, 
+            self._concurrency_sem, self._jobs_sem))
 
-        await self._sem.acquire()
+        await self._jobs_sem.acquire()
         job = None
 
         try:
@@ -330,13 +356,15 @@ class SlurmBackend(Backend):
             cmdline = ' '.join(self.sbatch_cmd(task_id, task_directives))
 
             p = await self.create_subprocess_shell(
-                cmdline, stdout=PIPE, stderr=PIPE)
+                cmdline, stdout=PIPE, stderr=STDOUT)
 
-            stdout, stderr = await p.communicate()
+            stdout, _ = await p.communicate()
             jid = stdout.decode().strip()
 
             if p.returncode != 0:
-                raise ChildProcessError(cmdline)
+                log.critical('Error launching sbatch: {}'.format(jid))
+                await asyncio.sleep(10)
+                return task_id, None
 
             log.critical("Submitted batch job {}".format(jid))
 
@@ -351,7 +379,7 @@ class SlurmBackend(Backend):
             return task_id, -15
 
         finally:
-            self._sem.release()
+            self._jobs_sem.release()
 
     def sbatch_cmd(self, task_id, task_directives):
         """ Returns a formatted sbatch command. """
@@ -498,7 +526,8 @@ def test_async_runner(ntasks=5, backend=LocalBackend):
 
 def guess_concurrency(default=500):
     try:
-        res = int(0.25 * int(subprocess.check_output(['ulimit', '-u'])))
+        res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
         return res
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        log.exception(e)
         return default
