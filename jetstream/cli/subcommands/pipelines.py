@@ -19,7 +19,6 @@ import os
 import sys
 import logging
 import argparse
-import subprocess
 import jetstream
 from jetstream.cli import kvargs
 
@@ -48,7 +47,15 @@ def arg_parser():
                         help='Time between workflow status updates')
 
     parser.add_argument('--max-concurrency', default=None, type=int,
-                        help='Override the concurrency limits of the task backend.')
+                        help='Override the concurrency limits of the task '
+                             'backend.')
+
+    parser.add_argument('--autosave', dest='autosave', action='store_true',
+                        default=True, help=argparse.SUPPRESS)
+
+    parser.add_argument('--no-autosave', dest='autosave', action='store_false',
+                        default=True, help=argparse.SUPPRESS)
+
     return parser
 
 
@@ -91,16 +98,17 @@ def main(args=None):
         print(text)
 
     else:
-        if args.backend == 'local':
-            backend = jetstream.LocalBackend(max_concurrency=args.max_concurrency)  
-        elif args.backend == 'slurm':
+        if args.backend == 'slurm':
             backend = jetstream.SlurmBackend(max_concurrency=args.max_concurrency)
+        else:
+            backend = jetstream.LocalBackend(max_concurrency=args.max_concurrency)
 
         rc = p.run(
             template=args.template,
             additional_data=vars(kvargs_data),
             backend=backend,
-            logging_interval=args.logging_interval)
+            logging_interval=args.logging_interval,
+            autosave=args.autosave)
 
         sys.exit(rc)
 

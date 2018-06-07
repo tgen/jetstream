@@ -116,6 +116,7 @@ log = logging.getLogger(__name__)
 
 
 def save(workflow, path):
+    start = datetime.now()
     lock_path = path + '.lock'
     data = to_node_link_data(workflow)
 
@@ -124,16 +125,18 @@ def save(workflow, path):
         utils.yaml.dump(data, fp)
 
     shutil.move(lock_path, path)
-    log.critical('Workflow saved to {}'.format(path))
+
+    elapsed = datetime.now() - start
+    log.critical('Elapsed: {} Workflow saved to {}'.format(elapsed, path))
 
 
-def auto_save(f):
+def autosave(f):
     """ Decorator for workflow methods that should cause the workflow
     be saved. """
     err = 'Autosave requires Workflow.path or Workflow.project to be set'
 
     def decorator(workflow, *args, **kwargs):
-        if workflow.auto_save:
+        if workflow.autosave:
             if workflow.path is None and workflow.project is None:
                 raise ValueError(err)
 
@@ -169,12 +172,12 @@ class Workflow:
 
     Workflows can be loaded from existing graphs with the data argument or
     from_node_link_data() method. """
-    def __init__(self, project=None, graph=None, path=None, auto_save=False,
+    def __init__(self, project=None, graph=None, path=None, autosave=False,
                  save_interval=300):
         self.project = project
         self.graph = graph or nx.DiGraph(_backup=dict())
         self.path = path
-        self.auto_save = auto_save
+        self.autosave = autosave
         self._last_save = time.time()
         self.save_interval = save_interval
 
@@ -302,7 +305,7 @@ class Workflow:
         else:
             return fallback
 
-    @auto_save
+    @autosave
     def update(self, task_id, **kwargs):
         """ Change the status of a node. """
         self.last_update = utils.fingerprint()
@@ -351,13 +354,13 @@ class Workflow:
         for d in self.graph.predecessors(task_id):
             self.fail(d, logs='Dependency failed: {}'.format(task_id))
 
-    @auto_save
+    @autosave
     def add_task(self, task_id, **kwargs):
         """ Add a task to the workflow. """
         self._add_node(task_id, kwargs)
         return task_id
 
-    @auto_save
+    @autosave
     def add_dependency(self, task_id, before=None, after=None):
         """ Add a dependency to a task. """
         if task_id not in self.graph:
@@ -534,6 +537,9 @@ def build_workflow(tasks):
     if isinstance(tasks, str):
         # If tasks are not loaded yaml yet, do it automatically
         tasks = utils.yaml_loads(tasks)
+
+    if not tasks:
+        raise ValueError('No tasks were ')
 
     wf = Workflow()
 

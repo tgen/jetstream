@@ -240,7 +240,8 @@ class Project:
             log.critical('\U0001F44D Run complete!')
             return 0
 
-    def run(self, template, additional_data=None, *args, **kwargs):
+    def run(self, template, additional_data=None, autosave=True,
+            *args, **kwargs):
         """ Load a template, generate a workflow, and run it on this project.
 
         Additional arguments are passed to jetstream.AsyncRunner
@@ -273,7 +274,7 @@ class Project:
             workflow = self.load_workflow()
             workflow.compose(new_workflow)
             workflow.project = self
-            workflow.auto_save = True
+            workflow.autosave = autosave
             workflow.retry()
 
             runner = jetstream.AsyncRunner(workflow=workflow, *args, **kwargs)
