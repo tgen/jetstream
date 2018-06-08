@@ -178,8 +178,11 @@ class Workflow:
         self.graph = graph or nx.DiGraph(_backup=dict())
         self.path = path
         self.autosave = autosave
-        self._last_save = time.time()
         self.save_interval = save_interval
+        self._new_tasks = None
+        self._pending_tasks = None
+        self._complete_tasks = None
+        self._last_save = time.time()
 
         if not nx.is_directed_acyclic_graph(self.graph):
             raise jetstream.NotDagError
@@ -191,35 +194,7 @@ class Workflow:
         return len(self.graph)
 
     def __iter__(self):
-        return self
-
-    def __next__(self):
-        """ Return the next task available for launch and sets the task
-        status to "pending". """
-        pending = False
-        for task_id, task_data in self.graph.nodes(data=True):
-
-            if task_data['status'] == 'pending':
-                pending = True
-
-            if self.task_ready(task_id):
-                log.critical('Task ready: {}'.format(task_id))
-                self.update(
-                    task_id,
-                    status='pending',
-                    datetime_start=str(datetime.now())
-                )
-
-                return task_id, task_data
-        else:
-            if pending:
-                return None
-            else:
-                log.critical('Workflow is complete!')
-                raise StopIteration
-
-    def __send__(self, *args, **kwargs):
-        return self.send(*args, **kwargs)
+        return WorkflowIterator(self)
 
     def _root_nodes(self):
         """ Returns the set of root nodes in the graph. """
@@ -305,60 +280,57 @@ class Workflow:
         else:
             return fallback
 
-    @autosave
-    def update(self, task_id, **kwargs):
-        """ Change the status of a node. """
-        self.last_update = utils.fingerprint()
-        self.graph.nodes[task_id].update(**kwargs)
-       # self._throttle.reset()
-
     def send(self, task_id, return_code):
-        log.critical('Task done {}: {}'.format(task_id, return_code))
         if return_code != 0:
             self.fail(task_id)
         else:
             self.complete(task_id)
 
-    def complete(self, task_id, *, return_code=0, **kwargs):
+    def complete(self, task_id, return_code=0):
         """ Complete a task.
 
         :param task_id: str task id
         :param return_code: int
-        :param kwargs: any additional information to add to the task data
         :return: None
         """
+        log.critical('Task complete: {}'.format(task_id))
+
         self.update(
             task_id,
+            return_code=return_code,
             datetime_end=str(datetime.now()),
             status='complete',
-            return_code=return_code,
-            **kwargs
         )
 
-    def fail(self, task_id, *, return_code=1, **kwargs):
+    def fail(self, task_id, return_code=1):
         """ Fail a task. This also fails any tasks dependent on task_id.
 
         :param task_id: str task id
         :param return_code: int
-        :param kwargs: any additional information to add to the task data
         :return: None
         """
+        log.critical('Task failed: {}'.format(task_id))
+
         self.update(
             task_id,
+            return_code=return_code,
             datetime_end=str(datetime.now()),
             status='failed',
-            return_code=return_code,
-            **kwargs
         )
 
         for d in self.graph.predecessors(task_id):
-            self.fail(d, logs='Dependency failed: {}'.format(task_id))
+            self.fail(d, -42)
+
+    @autosave
+    def update(self, task_id, **kwargs):
+        """ Change the status of a node. """
+        self.last_update = utils.fingerprint()
+        self.graph.nodes[task_id].update(**kwargs)
 
     @autosave
     def add_task(self, task_id, **kwargs):
         """ Add a task to the workflow. """
         self._add_node(task_id, kwargs)
-        return task_id
 
     @autosave
     def add_dependency(self, task_id, before=None, after=None):
@@ -410,9 +382,9 @@ class Workflow:
 
     def task_ready(self, task_id):
         """ Returns True if the given "node_id" is ready for execution. """
-        node_data = self.graph.nodes()[task_id]
+        task_directives = self.graph.nodes()[task_id]
 
-        if node_data['status'] != 'new':
+        if task_directives['status'] != 'new':
             return False
 
         for dependency in self.graph.successors(task_id):
@@ -420,7 +392,8 @@ class Workflow:
             if dependency_status != 'complete':
                 return False
         else:
-            return True
+            log.critical('Task ready: {}'.format(task_id))
+            return task_id, task_directives
 
     def status(self, task_id=None):
         """ Returns the status of a task. Returns status of all tasks if
@@ -495,6 +468,84 @@ class Workflow:
                 raise ValueError('No path has been set for this workflow!')
 
         return save(self, path)
+
+
+class WorkflowIterator(object):
+    def __init__(self, workflow):
+        self.workflow = workflow
+        self._new_tasks = list()
+        self._pending_tasks = list()
+        self._complete_tasks = list()
+        self._setup_lists()
+
+    def __repr__(self):
+        return '<WorkflowIterator {}>'.format(self.status())
+
+    def _setup_lists(self):
+        self._new_tasks = list()
+        self._pending_tasks = list()
+        self._complete_tasks = list()
+
+        for task_id, task_data in self.workflow.tasks(True):
+            status = task_data['status']
+
+            if status == 'new':
+                self._new_tasks.append(task_id)
+            elif status == 'pending':
+                self._pending_tasks.append(task_id)
+            else:
+                self._complete_tasks.append(task_id)
+
+    def __next__(self):
+        try:
+            task_id = self._new_tasks.pop(0)
+            task = self.workflow.task_ready(task_id)
+
+            if task:
+                self.workflow.update(task_id, status='pending')
+                self._pending_tasks.append(task_id)
+                return task
+            else:
+                self._new_tasks.append(task_id)
+
+        except IndexError:
+            if self._pending_tasks:
+                return None
+            else:
+                raise StopIteration from None
+
+    def __send__(self, task_id, returncode):
+        self._pending_tasks.remove(task_id)
+
+        if returncode is None:
+            self._new_tasks.append(task_id)
+            return
+
+        res = self.workflow.send(task_id, returncode)
+
+        if returncode != 0:
+
+            # When a task fails, the workflow class is smart enough to fail
+            # all dependencies of the task. But this iterator is not. So,
+            # we need to request the new task status from the workflow after
+            # failing a task.
+
+            self._setup_lists()
+
+        else:
+            self._complete_tasks.append(task_id)
+
+        return res
+
+    def send(self, *args, **kwargs):
+        return self.__send__(*args, **kwargs)
+
+    def status(self):
+        return {
+            'new': len(self._new_tasks),
+            'pending': len(self._pending_tasks),
+            'complete': len(self._complete_tasks)
+        }
 
 
 def from_node_link_data(data):

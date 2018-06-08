@@ -46,9 +46,8 @@ def arg_parser():
     parser.add_argument('--logging-interval', default=60, type=int,
                         help='Time between workflow status updates')
 
-    parser.add_argument('--max-concurrency', default=None, type=int,
-                        help='Override the concurrency limits of the task '
-                             'backend.')
+    parser.add_argument('--max-forks', default=None, type=int,
+                        help='Override the fork limits of the task backend.')
 
     parser.add_argument('--autosave', dest='autosave', action='store_true',
                         default=True, help=argparse.SUPPRESS)
@@ -99,9 +98,9 @@ def main(args=None):
 
     else:
         if args.backend == 'slurm':
-            backend = jetstream.SlurmBackend(max_concurrency=args.max_concurrency)
+            backend = jetstream.SlurmBackend(max_forks=args.max_forks)
         else:
-            backend = jetstream.LocalBackend(max_concurrency=args.max_concurrency)
+            backend = jetstream.LocalBackend(max_forks=args.max_forks)
 
         rc = p.run(
             template=args.template,
