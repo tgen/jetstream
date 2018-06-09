@@ -281,7 +281,9 @@ class Workflow:
             return fallback
 
     def send(self, task_id, return_code):
-        if return_code != 0:
+        if return_code is None:
+            self.reset(task_id)
+        elif return_code != 0:
             self.fail(task_id)
         else:
             self.complete(task_id)
@@ -516,22 +518,14 @@ class WorkflowIterator(object):
 
     def __send__(self, task_id, returncode):
         self._pending_tasks.remove(task_id)
-
-        if returncode is None:
-            self._new_tasks.append(task_id)
-            return
-
         res = self.workflow.send(task_id, returncode)
 
         if returncode != 0:
-
             # When a task fails, the workflow class is smart enough to fail
             # all dependencies of the task. But this iterator is not. So,
             # we need to request the new task status from the workflow after
             # failing a task.
-
             self._setup_lists()
-
         else:
             self._complete_tasks.append(task_id)
 
