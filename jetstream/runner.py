@@ -3,7 +3,9 @@ import sys
 import re
 import logging
 import shlex
+import time
 import subprocess
+from multiprocessing import cpu_count
 import asyncio
 import jetstream
 from asyncio import (BoundedSemaphore, Event, create_subprocess_shell,
@@ -32,6 +34,7 @@ class AsyncRunner(object):
         log.critical('AsyncRunner Event Loop Tasks: {}'.format(
             len(asyncio.Task.all_tasks())))
         log.critical('Workflow status: {}'.format(self.workflow))
+        log.critical('Iterator status: {}'.format(self.workflow))
 
 
         if hasattr(self.backend, 'status'):
@@ -182,20 +185,22 @@ class Backend(object):
     async def subprocess_run(
             self, args, *, stdin=None, input=None, stdout=None, stderr=None,
             shell=False, cwd=None, check=False, encoding=None,
-            errors=None, env=None, limit=None, loop=None):
+            errors=None, env=None, loop=None):
         """ Asynchronous version of subprocess.run """
+        log.debug('Subprocess run: {}'.format(self._sem))
+
         await self._sem.acquire()
 
         try:
             if shell:
                 p = await self.create_subprocess_shell(
                     args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
-                    encoding=encoding, errors=errors, env=env, limit=limit,
+                    encoding=encoding, errors=errors, env=env, 
                     loop=loop)
             else:
                 p = await self.create_subprocess_exec(
                     *args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
-                    encoding=encoding, errors=errors, env=env, limit=limit,
+                    encoding=encoding, errors=errors, env=env, 
                     loop=loop)
 
             stdout, stderr = await p.communicate(input=input)
@@ -214,7 +219,7 @@ class Backend(object):
 
 
 class LocalBackend(Backend):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, cpus=None, *args, **kwargs):
         """ LocalBackend executes tasks as processes on the local machine.
         
         :param max_subprocess: Total number of subprocess allowed regardless of
@@ -223,16 +228,32 @@ class LocalBackend(Backend):
         threads, the system may start to reject creation of new processes.
         """
         super(LocalBackend, self).__init__(*args, **kwargs)
+        self._cpu_sem = BoundedSemaphore(cpus or guess_local_cpus())
+        log.critical('LocalBackend initialized with: {}'.format(self._cpu_sem))
+    
+    def status(self):
+        return 'Forks: {} CPUs: {}'.format(self._sem, self._cpu_sem)
+
 
     async def spawn(self, task_id, task_directives):
         log.debug('LocalBackend spawn: {} {}'.format(
             task_id, self._sem))
 
-        try:
-            cmd = self.get_cmd(task_id, task_directives)
+        cpus_reserved = 0
+        cmd = self.get_cmd(task_id, task_directives)
 
-            if cmd is None:
-                return task_id, 0
+        if cmd is None:
+            return task_id, 0
+
+        if 'cpus' in task_directives and task_directives['cpus']:
+            cpus = int(task_directives['cpus'])
+        else:
+            cpus = 0
+
+        try:
+            for i in range(cpus):
+                await self._cpu_sem.acquire()
+                cpus_reserved += 1
 
             input = self.get_stdin_data(task_id, task_directives)
             stdout, stderr = self.get_out_paths(task_id, task_directives)
@@ -253,6 +274,10 @@ class LocalBackend(Backend):
         except CancelledError:
             return task_id, -15
 
+        finally:
+            for i in range(cpus_reserved):
+                self._cpu_sem.release()
+
 
 class SlurmBackend(Backend):
     sacct_delimiter = '\037'
@@ -268,8 +293,10 @@ class SlurmBackend(Backend):
         self._jobs = {}
         self._jobs_sem = BoundedSemaphore(max_jobs or 1000000)
 
+        log.critical('SlurmBackend initialized with: {}'.format(self._jobs_sem))
+
     def status(self):
-        return 'Forks:{} Slurm jobs: {}'.format(self._sem, self._jobs_sem)
+        return 'Forks: {} Slurm jobs: {}'.format(self._sem, self._jobs_sem)
 
     def chunk_jobs(self):
         seq = list(self._jobs.keys())
@@ -314,7 +341,7 @@ class SlurmBackend(Backend):
                 if job.is_complete:
                     reap.add(jid)
             else:
-                log.warning('Unable to get res for {}'.format(job))
+                log.warning('No sacct data found for {}'.format(jid))
 
         for jid in reap:
             self._jobs.pop(jid)
@@ -372,46 +399,6 @@ class SlurmBackend(Backend):
         log.debug('Parsed data for {} jobs'.format(len(jobs)))
         return jobs
 
-    async def spawn(self, task_id, task_directives):
-        log.debug('SlurmBackend spawn: {} {} {}'.format(task_id,
-                                                        self._sem, self._jobs_sem))
-
-        await self._jobs_sem.acquire()
-        job = None
-
-        try:
-            cmd = self.get_cmd(task_id, task_directives)
-
-            if cmd is None:
-                return task_id, 0
-
-            cmdline = ' '.join(self.sbatch_cmd(task_id, task_directives))
-
-            p = await self.subprocess_run(cmdline, stdout=PIPE, stderr=STDOUT,
-                                          shell=True)
-
-            jid = p.stdout.decode().strip()
-
-            if p.returncode != 0:
-                log.critical('Error launching sbatch: {}'.format(jid))
-                await asyncio.sleep(10)
-                return task_id, None
-
-            log.critical("Submitted batch job {}".format(jid))
-
-            job = self.add_jid(jid)
-            rc = await job.wait()
-
-            return task_id, rc
-
-        except CancelledError:
-            if job is not None:
-                job.cancel()
-            return task_id, -15
-
-        finally:
-            self._jobs_sem.release()
-
     def sbatch_cmd(self, task_id, task_directives):
         """ Returns a formatted sbatch command. """
         args = ['sbatch', '--parsable', '-J', task_id]
@@ -424,13 +411,13 @@ class SlurmBackend(Backend):
             args.extend(['-o', stdout_path])
 
         if 'cpus' in task_directives and task_directives['cpus']:
-            args.extend(['-c', task_directives['cpus']])
+            args.extend(['-c', str(task_directives['cpus'])])
 
         if 'mem' in task_directives and task_directives['mem']:
-            args.extend(['--mem', task_directives['mem']])
+            args.extend(['--mem', str(task_directives['mem'])])
 
         if 'time' in task_directives and task_directives['time']:
-            args.extend(['-t', task_directives['time']])
+            args.extend(['-t', str(task_directives['time'])])
 
         cmd = self.get_cmd(task_id, task_directives)
 
@@ -444,6 +431,47 @@ class SlurmBackend(Backend):
         args.extend(['--wrap', final_cmd])
 
         return args
+
+    async def spawn(self, task_id, task_directives):
+        log.debug('SlurmBackend spawn: {} {} {}'.format(task_id, self._sem, self._jobs_sem))
+        try:
+            await self._jobs_sem.acquire()
+            job = None
+
+            # Sbatch becomes unstable when called too frequently so here is a bandaid
+            time.sleep(.1)
+
+            cmd = self.get_cmd(task_id, task_directives)
+
+            if cmd is None:
+                return task_id, 0
+
+            cmdline = ' '.join(self.sbatch_cmd(task_id, task_directives))
+
+            p = await self.subprocess_run(cmdline, stdout=PIPE, stderr=STDOUT,
+                                          shell=True)
+
+            jid = p.stdout.decode().strip()
+
+            if p.returncode != 0:
+                log.critical('Error submitting job: {}'.format(jid))
+                return task_id, None
+
+            log.critical("Submitted batch job {}".format(jid))
+
+            job = self.add_jid(jid)
+            rc = await job.wait()
+
+            return task_id, rc
+
+        except CancelledError:
+            if job is not None:
+                await self.subprocess_run('scancel {}'.format(job.jid))
+
+            return task_id, -15
+
+        finally:
+            self._jobs_sem.release()
 
 
 class SlurmBatchJob(object):
@@ -562,3 +590,6 @@ def guess_max_forks(default=500):
     except FileNotFoundError as e:
         log.exception(e)
         return default
+
+def guess_local_cpus(default=4):
+    return cpu_count() or default
