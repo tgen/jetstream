@@ -9,20 +9,18 @@
 
 - id: bwa_mem_start
   after: {{ after }}
-  cmd: echo
 
 {# Run a job for each fastq set (item in sample.data) #}
 {% for sample in project.list_samples() if sample.assay in ["Exome", "Genome"] %}
 - id: bwa_mem_start_{{ sample.sample_name }}
   after: bwa_mem_start
-  cmd: echo
   help: |
     Launch bwa mem on all fastqs for a sample. 
 
     The bams for each fastq set will be merged and saved to:
     <sample_name>/<sample_name>.bam
   methods: |
-    Fastqs for {{ sample.sample_name}} were aligned with bwa mem v0.7.12
+    Fastqs for {{ sample.sample_name}} were aligned with bwa mem v{{ bwa_version }}.
 
 {% for data in sample.data if data.type == 'FQ' -%}
 
@@ -34,7 +32,8 @@
 # BWA Mem
 - id: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
   after: bwa_mem_start_{{ sample.sample_name }}
-  cmd: sbatch_wait -c8 -J bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
+  cpus: 8
+  cmd: bash
   stdin: |
     #!/bin/bash
     set -eu
@@ -59,7 +58,8 @@
 # Base Recalibration
 - id: base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
   after: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
-  cmd: sbatch_wait -c8 -J base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
+  cpus: 8
+  cmd: bash  
   stdin: |
     #!/bin/bash
     set -euv
@@ -82,7 +82,8 @@
 # Merge Bams
 - id: merge_bams_{{ sample.sample_name }}
   after: base_recalibration_{{ sample.sample_name }}_.*
-  cmd: sbatch_wait -c2 -J merge_bams_{{ sample.sample_name }}
+  cpus: 2
+  cmd: bash
   stdin: |
     #!/bin/bash
     set -eu
@@ -99,7 +100,25 @@
       {% for data in sample.data if data.type == 'FQ' %}
       --INPUT "temp/{{ sample.sample_name }}_{{ loop.index }}.recal.bam" \
       {% endfor %}
-      --OUTPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.bam"
+      --OUTPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.merge.bam"
+
+
+# Mark Duplicate Reads
+- id: mark_duplicates_{{ sample.sample_name }}
+  after: merge_bams_{{ sample.sample_name }}
+  methods: Duplicate reads were marked with GATK MarkDuplicates v{{ gatk_version }}, then
+    resulting bam was indexed with Samtools v{{ samtools_version }}
+  cpus: 2
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load gatk/{{ gatk_version }} samtools/{{ samtools_version }}
+
+    gatk MarkDuplicates \
+      --INPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.merge.bam" \
+      --OUTPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.bam" \
+      --METRICS_FILE "{{ sample.sample_name }}/{{ sample.sample_name }}.MarkDuplicates"
 
     samtools index "{{ sample.sample_name }}/{{ sample.sample_name }}.bam"
 

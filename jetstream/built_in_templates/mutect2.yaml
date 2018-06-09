@@ -1,32 +1,36 @@
 {# Ensure the tumor/normal values are provided and no funny business #}
 {% set gatk_version = "4.0.1.2" %}
-{% set normal = normal %}
-{% set tumor = tumor %}
-{% set dna_pair = "%s-%s"|format(normal.sample_name, tumor.sample_name) -%}
+
+{% set normal_name = dnapair.split(',')[0] %}
+{% set normal = project.samples()[normal_name] %}
+{% set tumor_name = dnapair.split(',')[1] %}
+{% set tumor = project.samples()[tumor_name] %}
+{% set pair_name = "%s-%s" | format(normal.sample_name, tumor.sample_name) %}
 
 
 {# This should not be necessary in the future when samples have a genome attribute #}
 {% set normal_genome = 'hs37d5_tgen' %}
 {% set tumor_genome = 'hs37d5_tgen' %}
 {# if not normal.genome == tumor.genome %}{{ raise('Normal/Tumor genome mismatch') }}{% endif #}
-{% set ref_genome = ref.genomes[normal_genome] -%}
+{% set ref_genome = ref.genomes[normal_genome] %}
 
-
-- id: Mutect2_{{ dna_pair }}_start
+- id: Mutect2_start_{{ pair_name }}
   help: |
     Launch Mutect2 on a dna-pair for a single interval.
 
     This path to the bam files are assumed to be located in
     <sample_name>/<sample_name>.bam
+  after: {{ after }}
   methods: |
-    Somatic variants in {{ normal.sample_name }} were called with Mutect2 in GATK v{{ gatk_version }}
-  cmd: echo
+    Somatic variants in {{ normal.sample_name }} were called with Mutect2 in GATK v{{ gatk_version }} by comparing
+    {{ normal.sample_name }} to {{ tumor.sample_name }}. 
 
 
 {% for interval in ref_genome.batch_intervals %}
-- id: Mutect2_{{ dna_pair }}_{{ loop.index }}
-  after: Mutect2_{{ dna_pair }}_start
-  cmd: sbatch_wait -c4 -J Mutect2_{{ dna_pair }}_{{ loop.index }}
+- id: Mutect2_{{ pair_name }}_{{ loop.index }}
+  after: Mutect2_start_{{ pair_name }}
+  cpus: 4
+  cmd: bash
   stdin: |
     #!/bin/bash
     set -eu
@@ -37,7 +41,7 @@
     # --af-of-alleles-not-in-resource 0.00003125 \
     # --panel-of-normals pon.vcf.gz \
 
-    mkdir -p temp/{{ dna_pair }}/mutect/
+    mkdir -p temp/{{ pair_name }}/mutect/
 
     gatk Mutect2 \
       -R {{ ref_genome.fasta_path }} \
@@ -52,24 +56,29 @@
       {% endif %}
       -normal "{{ normal.sample_name }}" \
       -tumor "{{ tumor.sample_name }}" \
-      -O "temp/{{ dna_pair }}/mutect/{{ dna_pair }}_{{ loop.index }}.vcf"
+      -O "temp/{{ pair_name }}/mutect/{{ pair_name }}_{{ loop.index }}.vcf"
 
 {% endfor %}
 
-- id: Mutect_merge_steps_{{ dna_pair }}
+- id: Mutect2_merge_steps_{{ pair_name }}
   description:
     Merges together the mutect stepwise vcfs into a final vcf
-  after: Mutect2_{{ dna_pair }}_.*
-  cmd: sbatch_wait -c2 -J Mutect_merge_steps_{{ dna_pair }}
+  after: Mutect2_{{ pair_name }}_.*
+  cpus: 2
+  cmd: bash
   stdin: |
     #!/bin/bash
     set -eu
     module load gatk/{{ gatk_version }}
 
-    mkdir -p {{ dna_pair }}/mutect
-    
+    mkdir -p {{ pair_name }}/mutect
+
     gatk MergeVcfs \
       {% for interval in ref_genome.batch_intervals %}
-      --INPUT "temp/{{ dna_pair }}/mutect/{{ dna_pair }}_{{ loop.index }}.vcf" \
+      --INPUT "temp/{{ pair_name }}/mutect/{{ pair_name }}_{{ loop.index }}.vcf" \
       {% endfor %}
-      --OUTPUT "{{ dna_pair }}/mutect/{{ dna_pair }}.vcf"
+      --OUTPUT "{{ pair_name }}/mutect/{{ pair_name }}.vcf"
+
+- id: Mutect2_complete_{{ pair_name }}
+  after: Mutect2_merge_steps_{{ pair_name }}
+
