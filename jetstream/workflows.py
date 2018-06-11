@@ -109,7 +109,7 @@ from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
 import jetstream
-from collections import Counter
+from collections import Counter, deque
 from jetstream import utils
 
 log = logging.getLogger(__name__)
@@ -475,18 +475,18 @@ class Workflow:
 class WorkflowIterator(object):
     def __init__(self, workflow):
         self.workflow = workflow
-        self._new_tasks = list()
-        self._pending_tasks = list()
-        self._complete_tasks = list()
+        self._new_tasks = deque()
+        self._pending_tasks = deque()
+        self._complete_tasks = deque()
         self._setup_lists()
 
     def __repr__(self):
         return '<WorkflowIterator {}>'.format(self.status())
 
     def _setup_lists(self):
-        self._new_tasks = list()
-        self._pending_tasks = list()
-        self._complete_tasks = list()
+        self._new_tasks = deque()
+        self._pending_tasks = deque()
+        self._complete_tasks = deque()
 
         for task_id, task_data in self.workflow.tasks(True):
             status = task_data['status']
@@ -500,7 +500,7 @@ class WorkflowIterator(object):
 
     def __next__(self):
         try:
-            task_id = self._new_tasks.pop(0)
+            task_id = self._new_tasks.popleft()
             task = self.workflow.task_ready(task_id)
 
             if task:
