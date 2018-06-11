@@ -7,5 +7,5 @@ PROJ=$(mktemp -d)
 cd ${PROJ}
 
 jetstream project init
-jetstream pipelines test/stress_true.yaml --backend ${BACKEND} --int:tasks ${TASKS}
+jetstream pipelines test/stress_true.yaml --backend ${BACKEND} --no-autosave --int:tasks ${TASKS}
 
