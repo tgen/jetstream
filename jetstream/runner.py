@@ -1,5 +1,4 @@
 import os
-import sys
 import re
 import logging
 import shlex
@@ -54,6 +53,7 @@ class AsyncRunner(object):
         log.critical('Workflow manager started!')
 
         self._iterator = iter(self.workflow)
+
         try:
             while 1:
                 try:
@@ -64,35 +64,35 @@ class AsyncRunner(object):
                 if task is None:
                     await asyncio.sleep(.1)
                 else:
-                    await self.spawn(*task)
+                    await self.spawn(task)
 
                 await asyncio.sleep(0)
         finally:
             self._workflow_complete.set()
 
-    async def spawn(self, task_id, task_directives):
-        log.debug('Spawn: {}'.format((task_id, task_directives)))
+    async def spawn(self, task):
+        log.debug('Spawn: {}'.format(task))
 
         try:
-            coro = self.backend.spawn(task_id, task_directives)
-            task = asyncio.ensure_future(coro)
-            task.add_done_callback(self.handle)
+            coro = self.backend.spawn(task)
+            future = asyncio.ensure_future(coro)
+            future.add_done_callback(self.handle)
         except Exception as e:
             log.exception(e)
             log.critical('Exception during task spawn, halting run!')
             self._loop.stop()
 
-    def handle(self, task):
-        log.debug('Callback: {}'.format(task))
-
-        try:
-            task_id, returncode = task.result()
-            self._iterator.send(task_id, returncode)
-
-        except Exception as e:
-            log.exception(e)
-            log.critical('Exception during result handling, halting run!')
-            self._loop.stop()
+    def handle(self, future):
+        log.debug('Callback: {}'.format(future))
+        #
+        # try:
+        #     task, returncode = future.result()
+        #     self._iterator.send(task, returncode)
+        #
+        # except Exception as e:
+        #     log.exception(e)
+        #     log.critical('Exception during result handling, halting run!')
+        #     self._loop.stop()
 
     def start(self, loop=None):
         log.critical('AsyncRunner with {} starting...'.format(
@@ -136,31 +136,6 @@ class Backend(object):
 
     def status(self):
         return 'Backend status: {}'.format(str(self._sem))
-
-    @staticmethod
-    def get_out_paths(task_id, task_directives):
-        """ Gets stdout and stderr paths from directives, if they are not
-        defined, it returns defaults based on the task_id. """
-        stdout_path = task_directives.get('stdout')
-
-        if stdout_path is None:
-            base_path = os.path.join('logs', re.sub(r'\s', '', task_id))
-            stdout_path = base_path + '.out'
-
-        stderr_path = task_directives.get('stderr', stdout_path)
-
-        return stdout_path, stderr_path
-
-    @staticmethod
-    def get_stdin_data(task_id, task_directives):
-        if 'stdin' in task_directives:
-            return task_directives['stdin'].encode()
-        else:
-            return None
-
-    @staticmethod
-    def get_cmd(task_id, task_directives):
-        return task_directives.get('cmd')
 
     @staticmethod
     async def create_subprocess_shell(cmd, **kwargs):
@@ -235,28 +210,23 @@ class LocalBackend(Backend):
         return 'Forks: {} CPUs: {}'.format(self._sem, self._cpu_sem)
 
 
-    async def spawn(self, task_id, task_directives):
-        log.debug('LocalBackend spawn: {} {}'.format(
-            task_id, self._sem))
+    async def spawn(self, task):
+        log.debug('LocalBackend spawn: {} {}'.format(task, self._sem))
 
         cpus_reserved = 0
-        cmd = self.get_cmd(task_id, task_directives)
 
-        if cmd is None:
-            return task_id, 0
-
-        if 'cpus' in task_directives and task_directives['cpus']:
-            cpus = int(task_directives['cpus'])
-        else:
-            cpus = 0
+        if task.cmd is None:
+            return task.complete(0)
 
         try:
-            for i in range(cpus):
+            for i in range(task.cpus):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            input = self.get_stdin_data(task_id, task_directives)
-            stdout, stderr = self.get_out_paths(task_id, task_directives)
+            cmd = task.cmd
+            input = task.stdin
+            stdout = task.stdout
+            stderr = task.stderr
 
             if stdout == stderr:
                 with open(stdout, 'w') as fp:
@@ -269,10 +239,13 @@ class LocalBackend(Backend):
                                                   stdout=out, stderr=err,
                                                   shell=True)
 
-            return task_id, p.returncode
+            if p.returncode != 0:
+                return task.fail(p.returncode)
+            else:
+                return task.complete(p.returncode)
 
         except CancelledError:
-            return task_id, -15
+            return task.fail(-15)
 
         finally:
             for i in range(cpus_reserved):
@@ -399,54 +372,52 @@ class SlurmBackend(Backend):
         log.debug('Parsed data for {} jobs'.format(len(jobs)))
         return jobs
 
-    def sbatch_cmd(self, task_id, task_directives):
+    def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
-        args = ['sbatch', '--parsable', '-J', task_id]
+        args = ['sbatch', '--parsable', '-J', task.id]
 
-        stdout_path, stderr_path = self.get_out_paths(task_id, task_directives)
-
-        if stdout_path != stderr_path:
-            args.extend(['-o', stdout_path, '-e', stderr_path])
+        if task.stdout == task.stderr:
+            args.extend(['-o', task.stdout])
         else:
-            args.extend(['-o', stdout_path])
+            args.extend(['-o', task.stdout, '-e', task.stderr])
 
-        if 'cpus' in task_directives and task_directives['cpus']:
-            args.extend(['-c', str(task_directives['cpus'])])
+        # Slurm requires that we request at least 1 cpu
+        if task.cpus != 0:
+            args.extend(['-c', str(task.cpus)])
 
-        if 'mem' in task_directives and task_directives['mem']:
-            args.extend(['--mem', str(task_directives['mem'])])
+        if task.mem != 0:
+            args.extend(['--mem', str(task.mem)])
 
-        if 'time' in task_directives and task_directives['time']:
-            args.extend(['-t', str(task_directives['time'])])
+        if task.walltime != 0:
+            args.extend(['-t', str(task.time)])
 
-        cmd = self.get_cmd(task_id, task_directives)
-
-        if 'stdin' in task_directives and task_directives['stdin']:
-            stdin_data = str(task_directives['stdin'])
-            formatted_cmd = 'echo \'{}\' | {}'.format(stdin_data, cmd)
+        if task.stdin:
+            stdin_data = task.stdin.decode()
+            formatted_cmd = 'echo \'{}\' | {}'.format(stdin_data, task.cmd)
             final_cmd = shlex.quote(formatted_cmd)
         else:
-            final_cmd = shlex.quote(cmd)
+            final_cmd = shlex.quote(task.cmd)
 
         args.extend(['--wrap', final_cmd])
 
         return args
 
-    async def spawn(self, task_id, task_directives):
-        log.debug('SlurmBackend spawn: {} {} {}'.format(task_id, self._sem, self._jobs_sem))
+    async def spawn(self, task):
+        log.debug('SlurmBackend spawn: {} {} {}'.format(
+            task.id, self._sem, self._jobs_sem))
+
+        job = None
+
         try:
             await self._jobs_sem.acquire()
-            job = None
 
-            # Sbatch becomes unstable when called too frequently so here is a bandaid
+            # Sbatch fails when called too frequently so here is a bandaid
             time.sleep(.1)
 
-            cmd = self.get_cmd(task_id, task_directives)
+            if task.cmd is None:
+                return task.complete(0)
 
-            if cmd is None:
-                return task_id, 0
-
-            cmdline = ' '.join(self.sbatch_cmd(task_id, task_directives))
+            cmdline = ' '.join(self.sbatch_cmd(task))
 
             p = await self.subprocess_run(cmdline, stdout=PIPE, stderr=STDOUT,
                                           shell=True)
@@ -455,20 +426,23 @@ class SlurmBackend(Backend):
 
             if p.returncode != 0:
                 log.critical('Error submitting job: {}'.format(jid))
-                return task_id, None
+                return task.fail(1)
 
             log.critical("Submitted batch job {}".format(jid))
 
             job = self.add_jid(jid)
             rc = await job.wait()
 
-            return task_id, rc
+            if rc != 0:
+                return task.fail(rc)
+            else:
+                return task.complete(rc)
 
         except CancelledError:
             if job is not None:
                 await self.subprocess_run('scancel {}'.format(job.jid))
 
-            return task_id, -15
+            return task.complete(-15)
 
         finally:
             self._jobs_sem.release()
