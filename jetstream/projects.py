@@ -224,12 +224,11 @@ class Project:
         log.critical('Finalizing run...')
 
         try:
-            workflow.save()
+            jetstream.workflows.save(workflow, self.workflow_path)
         except ValueError as e:
             log.exception(e)
 
-        fails = [tid for tid, t in workflow.tasks(data=True)
-                 if t['status'] == 'failed']
+        fails = [t.id for t in workflow.tasks(objs=True) if t.status == 'failed']
 
         log.critical('Elapsed time: {}'.format(datetime.now() - start_time))
         
