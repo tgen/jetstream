@@ -316,17 +316,21 @@ class WorkflowIteration(TimedTestCase):
 
         self.assertEqual(type(i), jetstream.workflows.WorkflowIterator)
 
-    def test_workflow_ter_next(self):
+    def test_workflow_iter_next1(self):
         wf = jetstream.Workflow()
 
         wf.add_task('task')
-        t1 = wf.get_task('task')
+        task = wf.get_task('task')
 
         i = iter(wf)
-        t2 = next(i)
 
-        self.assertIs(t1, t2)
+        self.assertIs(next(i), task)
+        self.assertIs(next(i), None)
+        self.assertIs(next(i), None)
 
+        task.complete()
+
+        self.assertRaises(StopIteration, next, i)
 
 
 def summarize_results():
