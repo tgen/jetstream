@@ -17,10 +17,16 @@ from socket import gethostname
 from uuid import getnode
 from urllib.parse import quote as urlquote
 from pkg_resources import get_distribution
-from ruamel.yaml import YAML
+import yaml
 
-yaml = YAML(typ='safe')
-yaml.default_flow_style = False
+
+def represent_none(self, _):
+    return self.represent_scalar('tag:yaml.org,2002:null', '')
+
+
+yaml.add_representer(type(None), represent_none)
+
+
 log = logging.getLogger(__name__)
 
 
@@ -47,6 +53,7 @@ TEST_RECORDS = [
         'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
     }
 ]
+
 
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
@@ -243,8 +250,12 @@ def yaml_loads(data):
 def yaml_dumps(obj):
     """Attempt to convert `obj` to a YAML string"""
     stream = io.StringIO()
-    yaml.dump(obj, stream=stream)
+    yaml.dump(obj, stream=stream, default_flow_style=False)
     return stream.getvalue()
+
+
+def yaml_dump(obj, stream):
+    return yaml.dump(obj, stream=stream, default_flow_style=False)
 
 
 def hash_dict(obj):
