@@ -1,4 +1,3 @@
-import os
 import re
 import logging
 import shlex
@@ -30,14 +29,9 @@ class AsyncRunner(object):
 
     def log_status(self):
         """ Logs a status report """
-        log.critical('AsyncRunner Event Loop Tasks: {}'.format(
+        log.critical('AsyncRunner event-loop load: {}'.format(
             len(asyncio.Task.all_tasks())))
         log.critical('Workflow status: {}'.format(self.workflow))
-        log.critical('Iterator status: {}'.format(self.workflow))
-
-
-        if hasattr(self.backend, 'status'):
-            log.critical(self.backend.status())
 
     async def logger(self):
         log.critical('Logger started!')
@@ -74,25 +68,12 @@ class AsyncRunner(object):
         log.debug('Spawn: {}'.format(task))
 
         try:
-            coro = self.backend.spawn(task)
-            future = asyncio.ensure_future(coro)
-            future.add_done_callback(self.handle)
+            asyncio.ensure_future(self.backend.spawn(task))
         except Exception as e:
             log.exception(e)
             log.critical('Exception during task spawn, halting run!')
             self._loop.stop()
 
-    def handle(self, future):
-        log.debug('Callback: {}'.format(future))
-        #
-        # try:
-        #     task, returncode = future.result()
-        #     self._iterator.send(task, returncode)
-        #
-        # except Exception as e:
-        #     log.exception(e)
-        #     log.critical('Exception during result handling, halting run!')
-        #     self._loop.stop()
 
     def start(self, loop=None):
         log.critical('AsyncRunner with {} starting...'.format(
@@ -207,11 +188,11 @@ class LocalBackend(Backend):
         log.critical('LocalBackend initialized with: {}'.format(self._cpu_sem))
     
     def status(self):
-        return 'Forks: {} CPUs: {}'.format(self._sem, self._cpu_sem)
-
+        return 'CPUs: {} Forks: {} '.format(self._cpu_sem, self._sem)
 
     async def spawn(self, task):
-        log.debug('LocalBackend spawn: {} {}'.format(task, self._sem))
+        log.critical('Spawn: {}'.format(task))
+        log.debug(self.status())
 
         cpus_reserved = 0
 
@@ -223,8 +204,12 @@ class LocalBackend(Backend):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
+            if task.stdin:
+                input = task.stdin.encode()
+            else:
+                input = None
+
             cmd = task.cmd
-            input = task.stdin
             stdout = task.stdout
             stderr = task.stderr
 
@@ -248,6 +233,8 @@ class LocalBackend(Backend):
             return task.fail(-15)
 
         finally:
+            log.critical('Done: {}'.format(task))
+
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
 
@@ -392,8 +379,7 @@ class SlurmBackend(Backend):
             args.extend(['-t', str(task.time)])
 
         if task.stdin:
-            stdin_data = task.stdin.decode()
-            formatted_cmd = 'echo \'{}\' | {}'.format(stdin_data, task.cmd)
+            formatted_cmd = 'echo \'{}\' | {}'.format(task.stdin, task.cmd)
             final_cmd = shlex.quote(formatted_cmd)
         else:
             final_cmd = shlex.quote(task.cmd)
