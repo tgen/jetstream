@@ -8,6 +8,7 @@ import jetstream
 log = logging.getLogger(__name__)
 RESULTS = {}
 
+
 class TimedTestCase(unittest.TestCase):
     def setUp(self):
         test_id = self.id()
@@ -43,7 +44,51 @@ class TaskMethods(TimedTestCase):
         self.assertEqual(t.state, 0)
         self.assertEqual(t.status, 'new')
 
-    #TODO test task methods
+    def test_complete_task(self):
+        wf = jetstream.Workflow()
+
+        t = wf.add_task('task')
+        t.complete()
+
+        self.assertEqual(wf.get_task('task').status, 'complete')
+
+    def test_fail_task(self):
+        wf = jetstream.Workflow()
+
+        t = wf.add_task('task')
+        t.fail()
+
+        self.assertEqual(wf.get_task('task').status, 'failed')
+
+    def test_pending_task(self):
+        wf = jetstream.Workflow()
+
+        t = wf.add_task('task')
+        t.pending()
+
+        self.assertEqual(wf.get_task('task').status, 'pending')
+
+    def test_task_dependency_failure(self):
+        wf = jetstream.Workflow()
+
+        t1 = wf.add_task('task1')
+        wf.add_task('task2', after='task1')
+        t1.fail()
+
+        self.assertEqual(wf.get_task('task2').status, 'failed')
+
+    def test_task_dependency_failure_recursive(self):
+        wf = jetstream.Workflow()
+
+        t1 = wf.add_task('task1')
+        wf.add_task('task2', after='task1')
+        wf.add_task('task3', after='task2')
+        wf.add_task('task4', after='task3')
+        t1.fail()
+
+        self.assertEqual(wf.get_task('task4').status, 'failed')
+
+        # TODO test task methods
 
 
 class WorkflowBasics(TimedTestCase):
@@ -103,7 +148,7 @@ class WorkflowBasics(TimedTestCase):
         wf.add_task('task', stdin=stdin)
         t = wf.get_task('task')
 
-        self.assertEqual(t.stdin, stdin.encode('utf8'))
+        self.assertEqual(t.stdin, stdin)
 
     def test_add_task_w_stdout(self):
         wf = jetstream.Workflow()
@@ -206,6 +251,10 @@ class WorkflowBasics(TimedTestCase):
         self.assertEqual(len(wf), 500)
 
 
+class WorkflowTaskStatus(TimedTestCase):
+    pass
+
+
 class WorkflowDependencies(TimedTestCase):
     def test_neg_add_task_w_input(self):
         wf = jetstream.Workflow()
@@ -303,6 +352,14 @@ class WorkflowDependencies(TimedTestCase):
 
     # TODO Pos composition, compose_all
 
+    def test_dependent_failure(self):
+        wf = jetstream.Workflow()
+        wf.add_task('hello')
+        wf.add_task('goodbye', after='hello')
+        wf.get_task('hello').fail()
+
+        self.assertEqual(wf.get_task('goodbye').status, 'failed')
+
 
 class WorkflowIteration(TimedTestCase):
     def test_workflow_iter(self):
@@ -363,6 +420,7 @@ if __name__ == '__main__':
         summarize_results()
 
     else:
+        log.critical('Running unittests')
         unittest.main(verbosity=0, exit=True)
 
 else:
