@@ -257,25 +257,28 @@ class Task(object):
         return self._workflow.is_ready(self.id)
 
     def reset(self):
+        log.critical('{} reset!'.format(self.id))
+
         self._state = 0
         self.returncode = None
         self.start = None
         self.end = None
 
     def pending(self):
-        log.critical('{} is pending!'.format(self))
+        log.critical('{} is pending!'.format(self.id))
+
         self._state = 1
         self.start = str(datetime.now())
 
     def complete(self, returncode=0):
-        log.critical('{} is complete!'.format(self))
+        log.critical('{} is complete!'.format(self.id))
 
         self._state = 2
         self.returncode = returncode
         self.end = str(datetime.now())
 
     def fail(self, returncode=1):
-        log.critical('{} is failed!'.format(self))
+        log.critical('{} failed!'.format(self.id))
 
         self._state = 3
         self.returncode = returncode
@@ -623,6 +626,8 @@ class WorkflowIterator(object):
         self.complete = list()
         self.queue, self.stack = self._queues
 
+        self.workflow.retry()
+
         for task in self.workflow.tasks(objs=True):
             if task.is_complete():
                 self.complete.append(task)
@@ -676,6 +681,7 @@ class WorkflowIterator(object):
                         return None
                     else:
                         # Queue is empty, stack is empty, and no pending.
+                        log.critical('All tasks complete!')
                         raise StopIteration from None
 
                 elif self.stack and not checked_stack:
