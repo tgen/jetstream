@@ -147,14 +147,13 @@ def tasks(args=None):
 
     p = jetstream.Project(args.path)
     wf = p.load_workflow()
-    tasks = dict(wf.tasks(data=True))
+    tasks = {t.id: t for t in wf.tasks(objs=True)}
 
     if args.task_id:
         for task_id in args.task_id:
-            task = tasks[task_id]
-            print(jetstream.utils.task_summary(task_id, task))
+            print(tasks[task_id].pretty())
     else:
-        for t in tasks.keys():
+        for t in tasks.values():
             print(t)
 
 
