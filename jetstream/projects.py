@@ -270,11 +270,13 @@ class Project:
             new_workflow = jetstream.workflows.build_workflow(tasks)
             run.save(str(new_workflow), 'workflow')
 
+            log.critical('New workflow: {}'.format(new_workflow))
+
             workflow = self.load_workflow()
             workflow.compose(new_workflow)
             workflow.project = self
             workflow.autosave = autosave
-            workflow.retry()
+            log.critical('Workflow merged with project: {}'.format(workflow))
 
             runner = jetstream.AsyncRunner(workflow=workflow, *args, **kwargs)
             runner.start()

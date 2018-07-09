@@ -65,7 +65,7 @@ class AsyncRunner(object):
             self._workflow_complete.set()
 
     async def spawn(self, task):
-        log.debug('Spawn: {}'.format(task))
+        log.debug('Spawn: {}'.format(task.id))
 
         try:
             asyncio.ensure_future(self.backend.spawn(task))
@@ -191,7 +191,7 @@ class LocalBackend(Backend):
         return 'CPUs: {} Forks: {} '.format(self._cpu_sem, self._sem)
 
     async def spawn(self, task):
-        log.critical('Spawn: {}'.format(task))
+        log.critical('Spawn: {}'.format(task.id))
         log.debug(self.status())
 
         cpus_reserved = 0
@@ -389,8 +389,7 @@ class SlurmBackend(Backend):
         return args
 
     async def spawn(self, task):
-        log.debug('SlurmBackend spawn: {} {} {}'.format(
-            task.id, self._sem, self._jobs_sem))
+        log.debug('Spawn: {}'.format(task.id))
 
         job = None
 

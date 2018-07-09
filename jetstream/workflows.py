@@ -748,5 +748,4 @@ def build_workflow(tasks):
         for task in tasks:
             wf.add_task(task_id=task.pop('id'), **task)
 
-    log.critical('Workflow ready: {}'.format(wf))
     return wf
