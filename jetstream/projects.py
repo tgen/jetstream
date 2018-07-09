@@ -230,7 +230,7 @@ class Project:
 
         fails = [t.id for t in workflow.tasks(objs=True) if t.status == 'failed']
 
-        log.critical('Elapsed time: {}'.format(datetime.now() - start_time))
+        log.critical('Total run time: {}'.format(datetime.now() - start_time))
         
         if fails:
             log.critical('\u2620  Some tasks failed! {}'.format(fails))

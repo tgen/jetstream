@@ -640,7 +640,7 @@ class WorkflowIterator(object):
         }
 
     def swap(self):
-        log.critical('Swap queue and stack')
+        log.debug('Swap queue and stack')
         self.queue, self.stack = self.stack, self.queue
 
     def __next__(self):
@@ -650,14 +650,14 @@ class WorkflowIterator(object):
         while 1:
             try:
                 task = self.queue.popleft()
-                log.critical('Checking {}'.format(task.id))
+                log.debug('Checking {}'.format(task.id))
 
                 if task.is_complete():
                     self.complete.append(task)
 
                 elif task.is_pending():
-                    there_are_pending_tasks = True
                     self.stack.append(task)
+                    there_are_pending_tasks = True
 
                 elif task.is_ready():
                     self.stack.append(task)
@@ -669,15 +669,19 @@ class WorkflowIterator(object):
                     self.stack.append(task)
 
             except IndexError:
+                log.debug('Queue empty, checking stack...')
+
                 if not self.stack:
                     if there_are_pending_tasks:
                         return None
                     else:
                         # Queue is empty, stack is empty, and no pending.
                         raise StopIteration from None
+
                 elif self.stack and not checked_stack:
                     checked_stack = True
                     self.swap()
+
                 else:
                     return None
 
