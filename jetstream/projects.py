@@ -268,7 +268,7 @@ class Project:
             run.save(tasks, 'tasks')
 
             new_workflow = jetstream.workflows.build_workflow(tasks)
-            run.save(str(new_workflow), 'workflow')
+            run.save(new_workflow.pretty(), 'workflow')
 
             log.critical('New workflow: {}'.format(new_workflow))
 
