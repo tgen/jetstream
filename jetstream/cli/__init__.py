@@ -1,17 +1,7 @@
-# Boilerplate for subcommands:
-#
-# import argparse
-# import logging
-#
-# log = logging.getLogger(__name__)
-#
-#
-# def build_parser():
-#     parser = argparse.ArgumentParser()
-#     return parser
-#
-#
-# def main(args):
-#     parser = build_parser()
-#     args = parser.parse_args(args)
-#     log.debug('{}: {}'.format(__name__, args))
+"""Command line interface module
+
+The jetstream command line tool is actually several sub-commands united
+under a single entry point in `jetstream.cli.jetstream.main`. This allows for
+unified config features, available and consistent in every sub-command. For
+details on a sub-command check out the module file in subocommands.
+"""

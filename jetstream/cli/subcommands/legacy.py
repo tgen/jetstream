@@ -7,22 +7,22 @@ import jetstream
 log = logging.getLogger(__name__)
 
 
-def build_parser():
+def arg_parser():
     parser = argparse.ArgumentParser(
         prog='jetstream legacy',
         description="Convert legacy config files to YAML/JSON"
     )
 
-    parser.add_argument('path')
+    parser.add_argument('path', help='Path to a legacy .config file.')
 
     parser.add_argument('--json', dest='format', action='store_const',
-                        const='json')
+                        const='json', help='Output JSON')
 
     parser.add_argument('--yaml', dest='format', action='store_const',
-                        const='yaml')
+                        const='yaml', help='Output YAML')
 
     parser.add_argument('--explode', dest='format', action='store_const',
-                        const='explode')
+                        const='explode', help='Explode into multiple files')
 
     parser.add_argument('--format',
                         default='yaml',
@@ -33,7 +33,7 @@ def build_parser():
 
 
 def main(args):
-    parser = build_parser()
+    parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 

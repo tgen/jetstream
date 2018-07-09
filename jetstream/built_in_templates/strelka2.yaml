@@ -1,0 +1,49 @@
+{% set strelka_version = '2.9.2' %}
+
+{% set normal_name = dnapair.split(',')[0] %}
+{% set normal = project.samples()[normal_name] %}
+{% set tumor_name = dnapair.split(',')[1] %}
+{% set tumor = project.samples()[tumor_name] %}
+{% set pair_name = "%s-%s" | format(normal.sample_name, tumor.sample_name) %}
+
+
+{# This should not be necessary in the future when samples have a genome attribute #}
+{% set normal_genome = 'hs37d5_tgen' %}
+{% set tumor_genome = 'hs37d5_tgen' %}
+{# if not normal.genome == tumor.genome %}{{ raise('Normal/Tumor genome mismatch') }}{% endif #}
+{% set ref_genome = ref.genomes[normal_genome] %}
+
+- id: strelka2_{{ pair_name }}
+  after: {{ after }}
+  help: |
+    Launch Strelka on a dna-pair for a single interval.
+
+    Bam file paths are assumed to be in <sample_name>/<sample_name>.bam
+
+    Important! Strelk2 currently has problems processing genomes with a large 
+    number of contigs. The workaround involves limiting the calling to major 
+    contigs (1-22,X,Y,MT for example) to avoid slowdown issues.
+    
+    See user guide here:
+    https://github.com/Illumina/strelka/blob/master/docs/userGuide/README.md
+
+  methods: Somatic variants were called for {{ pair_name }} with Strelka2 v{{ strelka_version }}
+  input: 
+    - {{ normal_name }}/{{ normal_name }}.bam
+    - {{ tumor_name }}/{{ tumor_name}}.bam
+  cpus: 12
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load strelka/{{ strelka_version }}
+
+    configureStrelkaSomaticWorkflow.py \
+      --normalBam "{{ normal_name }}/{{ normal_name }}.bam" \
+      --tumorBam "{{ tumor_name }}/{{ tumor_name}}.bam" \
+      --ref "{{ ref_genome.fasta_path }}" \
+      --runDir "{{ pair_name }}/strelka_somatic/"
+
+    # execution on a single local machine with 12 parallel jobs
+    {{ pair_name }}/strelka_somatic/runWorkflow.py -m local -j 12
+

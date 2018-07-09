@@ -1,0 +1,8 @@
+{% include "test/hello_world.yaml" %}
+
+{% extends "test/debug.yaml" %}
+{% block main %}
+- id: get_hostname
+  cmd: hostname
+
+{% endblock %}

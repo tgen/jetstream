@@ -1,43 +1,4 @@
-"""
-# Comments from original validation script:
-
-### check if we can process this config or just hold it
-### validate email address
-### validate number of fastq lines > 0
-### validate fastq files exist (R2 also)
-### validate fastq read group exists
-### validate project name
-### validate results directory is present
-### validate pipeline name is present
-# Pipeline name is valid
-### validate recipe name
-# Recipe name is valid
-### validate save recipe
-# save recipe is valid
-### validate debit account name
-#validate sample is only defined once
-#validate sample name does not contain a period
-#validate kit code is 5 characters
-#validate kit code for exomes for this sample is valid
-### validate kit name, sample name
-# validate RNA strandedness is known
-# validate RNA has star index defined for this read length
-#validate triplet line contains sample names that are valid
-
-### check if genome samples exist
-    ### if allele count is requested make sure first two is set up as a dna pair
-    ### and make sure third variable is RNA
-    # check  that CIRCOS variable is set
-    # if circos is yes we have to make sure circos exome pair exists and theyre
-    both exome
-### validate if RNA sample exists TOPHATGTF, USEMASK vars are defined
-
-### validate FQ= in Pegasus pipe formatted correctly
-
-### Validate dnaPair samples exist
-### Validate dnaFami samples exist
-### Validate rnaPair samples exist
-"""
+"""Tools for parsing legacy config files and converting to new formats."""
 import os
 import logging
 

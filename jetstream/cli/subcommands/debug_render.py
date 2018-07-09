@@ -8,20 +8,26 @@ Note: This command is primarily intended for debugging template issues. To
 render, build, and run a workflow in one step use "jetstream_pipelines".
 """
 import logging
-
 import jetstream
-from jetstream.cli.subcommands.pipelines import arg_parser, reparse_aribitrary
+from jetstream.cli.subcommands.pipelines import arg_parser as base_parser
+from jetstream.cli import kvargs
 
 log = logging.getLogger(__name__)
 
 
-def main(args=None):
-    parser = arg_parser()
+def arg_parser():
+    parser = base_parser()
     parser.epilog = __doc__
+
     parser.add_argument('-s', '--string', action='store_true', default=False,
                         help='Render a templete from a string instead of '
                              'reading a file.')
 
+    return parser
+
+
+def main(args=None):
+    parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
@@ -31,24 +37,16 @@ def main(args=None):
         log.exception(e)
         project = dict()
 
-    env = jetstream.template_env(
-        strict=args.strict,
-        include_project_templates=args.project_templates
-    )
-
     if args.string:
         template_text = args.template
     else:
         with open(args.template, 'r') as fp:
             template_text = fp.read()
+
         log.critical("Loaded template: {}".format(args.template))
 
-    template = env.from_string(template_text)
+    template = jetstream.env.from_string(template_text)
 
-    # Any arguments following the workflow template name are parsed with
-    # json_allowed and available as variables when rendering the template.
-    # "project" is reserved as the namespace for the project data.
-    kwargs = reparse_aribitrary(args.kvargs)
-    rendered_template = template.render(project=project, **kwargs)
+    additional_data = kvargs.parse(args.kvargs)
 
-    print(rendered_template)
+    print(template.render(project=project, **vars(additional_data)))

@@ -1,0 +1,5 @@
+
+- id: hello_world
+  type: slurm
+  cmd: null
+

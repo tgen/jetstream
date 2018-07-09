@@ -1,18 +1,26 @@
 """Run a Jetstream pipeline
 
-All arguments following the name of the pipeline are considered template data
-values and will be ignored by the argument parser initially. Any options listed
-below must be given BEFORE the workflow name (first positional argument) The
-key must start with two hyphens and the value is the next argument. Values can
-be JSON strings.
+Template variable data is usually saved as files in ``<project>/config``, but 
+command arguments can also be used to pass variable data to templates. All 
+arguments remaining after parsing the command line (arguments that are not 
+listed in the help section) will be treated as template variable data (kvargs):
 
-    jetstream pipelines <options> <template> [ --<key> <value> ]
+Template variable arguments should follow the syntax: ``--<key> <value>``. 
+The key must start with two hyphens and the value is the following argument. The 
+variable type can be explicitly set with the syntax ``--<type>:<key> <value>``.
+Variables with no type declared will be loaded as strings.
+
+If the variable type is "file" the value will be ``jetstream.data_loaders``, which
+handles files according to their extension. All other types will evaluated by the 
+appropriate type function. 
 
 """
+import os
 import sys
 import logging
 import argparse
 import jetstream
+from jetstream.cli import kvargs
 
 log = logging.getLogger(__name__)
 
@@ -20,120 +28,89 @@ log = logging.getLogger(__name__)
 def arg_parser():
     parser = argparse.ArgumentParser(
         prog='jetstream pipelines',
-        description=__doc__,
+        description=__doc__.replace('``', '"'),
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument('template', help='Template name')
 
-    parser.add_argument('-b', '--build-only', action='store_true',
-                        help='Just build the workflow and print to stdout.')
+    parser.add_argument('--kvarg-separator', default=':',
+                        help='Specify an alternate separator for kvargs')
 
     parser.add_argument('-r', '--render-only', action='store_true',
-                        help='Just render the template and print to stdout.')
+                        help='Just render the template and print to stdout')
 
-    parser.add_argument('--ignore-undefined', dest='strict',
-                        action='store_false',
-                        help='Suppress errors normally raised when a workflow '
-                             'variable is undefined')
+    parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
+                        help='Specify the runner backend (default: local)')
 
-    parser.add_argument('--no-project-templates', dest='project_templates',
-                        action='store_false',
-                        help='Ignore templates in the current project')
+    parser.add_argument('--logging-interval', default=60, type=int,
+                        help='Time between workflow status updates')
 
-    parser.add_argument('kvargs', nargs=argparse.REMAINDER,
-                        help='Arguments following the workflow name are parsed '
-                             'as arbitrary "--key value" pairs (see help)')
+    parser.add_argument('--max-forks', default=None, type=int,
+                        help='Override the fork limits of the task backend.')
 
-    parser.add_argument('--kvarg-separator', default=':', help=argparse.SUPPRESS)
+    parser.add_argument('--autosave', dest='autosave', action='store_true',
+                        default=True, help=argparse.SUPPRESS)
+
+    parser.add_argument('--no-autosave', dest='autosave', action='store_false',
+                        default=True, help=argparse.SUPPRESS)
 
     return parser
 
 
-# Loader functions for typed arbitrary arguments
-argtype_fns = {
-    "default": str,
-    "file": jetstream.project.load_data_file,
-    "json": jetstream.utils.json_loads,
-    "yaml": jetstream.utils.yaml_loads,
-}
+def build_workflow(run, tasks):
+    workflow = jetstream.workflows.build_workflow(tasks)
+    workflow.save(os.path.join(run.path, 'workflow'))
+    return workflow
 
 
-def reparse_aribitrary(args, type_separator=':'):
-    """Reparses sequence of arbitrary arguments "--<type>:<key> <value>"
+def render_tasks(run, template, project, additional_data):
+    tasks = template.render(project=project, **vars(additional_data))
+    with open(os.path.join(run.path, 'tasks'), 'w') as fp:
+        fp.write(tasks)
+    return tasks
 
-    This works by first building an argument parser specifically for the
-    arguments present in the list. First we look for any items that
-    start with '--', then adding an argument to the parser with the given
-    key and type (type is optional, str is the default).
 
-    After building the parser, the args are parsed and namespace is returned
-    as a dictionary. """
-    parser = argparse.ArgumentParser(add_help=False)
-
-    for arg in args:
-        if arg.startswith('--'):
-
-            if type_separator in arg:
-                argtype, _, key = arg.lstrip('-').partition(type_separator)
-            else:
-                argtype = 'default'
-                key = arg.lstrip('-')
-
-            log.debug('Adding parser entry for key: "{}" type: "{}"'.format(
-                key, argtype))
-            fn = argtype_fns[argtype]
-            parser.add_argument(arg, type=fn, dest=key)
-
-    namespace = parser.parse_args(args)
-    return vars(namespace)
+def get_template(run, template_name):
+    template = jetstream.env.get_template_with_source(template_name)
+    with open(os.path.join(run.path, 'template'), 'w') as fp:
+        jetstream.utils.yaml.dump(template.source, stream=fp)
+    return template
 
 
 def main(args=None):
     parser = arg_parser()
-    args = parser.parse_args(args)
+    args, unknown = parser.parse_known_args(args)
     log.debug(args)
 
-    env = jetstream.template_env(
-        strict=args.strict,
-        include_project_templates=args.project_templates,
-    )
+    kvargs_data = kvargs.parse(
+        args=unknown,
+        type_separator=args.kvarg_separator)
 
-    project = jetstream.Project()
-    t = env.get_template(args.template)
-    log.critical("Loaded template: {}".format(t.filename))
-
-    # Any arguments following the workflow template name are parsed with
-    # json_allowed and available as variables when rendering the template.
-    # "project" is reserved as the namespace for the project data.
-    kwargs = reparse_aribitrary(
-        args=args.kvargs,
-        type_separator=args.kvarg_separator
-    )
-    log.debug('Project config data:\n{}'.format(project.config))
-    log.debug('Other template data:\n{}'.format(kwargs))
-    rendered_template = t.render(project=project, **kwargs)
+    p = jetstream.Project()
 
     if args.render_only:
-        print(rendered_template)
-        sys.exit(0)
+        text = p.render(
+            template=args.template,
+            additional_data=vars(kvargs_data))
 
-    # Node properties are described in jetstream.workflows.spec
-    nodes = jetstream.utils.yaml_loads(rendered_template)
-    wf = jetstream.workflows.build_workflow(nodes)
+        print(text)
 
-    if args.build_only:
-        print(wf)
-        sys.exit(0)
-
-    jetstream.workflows.run_workflow(wf)
-
-    fails = [nid for nid, n in wf.nodes(data=True) if n['status'] == 'failed']
-    if fails:
-        log.critical('\u2620  Some tasks failed! {}'.format(fails))
-        sys.exit(1)
     else:
-        log.critical('\U0001F44D Success!')
+        if args.backend == 'slurm':
+            backend = jetstream.SlurmBackend(max_forks=args.max_forks)
+        else:
+            backend = jetstream.LocalBackend(max_forks=args.max_forks)
+
+        rc = p.run(
+            template=args.template,
+            additional_data=vars(kvargs_data),
+            backend=backend,
+            logging_interval=args.logging_interval,
+            autosave=args.autosave)
+
+        sys.exit(rc)
+
 
 if __name__ == '__main__':
     main()

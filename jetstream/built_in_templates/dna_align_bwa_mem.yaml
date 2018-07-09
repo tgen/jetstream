@@ -1,0 +1,126 @@
+{# DNA Alignment with BWA mem 
+
+  Launches alignment jobs for every DNA sample in the project
+
+#}
+{% set bwa_version = "0.7.12" %}
+{% set samtools_version = "1.4.1" %}
+{% set gatk_version = "4.0.1.2" %}
+
+- id: bwa_mem_start
+  after: {{ after }}
+
+{# Run a job for each fastq set (item in sample.data) #}
+{% for sample in project.list_samples() if sample.assay in ["Exome", "Genome"] %}
+- id: bwa_mem_start_{{ sample.sample_name }}
+  after: bwa_mem_start
+  help: |
+    Launch bwa mem on all fastqs for a sample. 
+
+    The bams for each fastq set will be merged and saved to:
+    <sample_name>/<sample_name>.bam
+  methods: |
+    Fastqs for {{ sample.sample_name}} were aligned with bwa mem v{{ bwa_version }}.
+
+{% for data in sample.data if data.type == 'FQ' -%}
+
+{# This should not be necessary in the future when samples have a genome attribute #}
+{% set sample_genome = 'hs37d5_tgen' %}
+{% set ref_genome = ref.genomes[sample_genome] -%}
+{% set read_group = data.read_group | fromjson %}
+
+# BWA Mem
+- id: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
+  after: bwa_mem_start_{{ sample.sample_name }}
+  cpus: 8
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load bwa/{{ bwa_version }} samtools/{{ samtools_version }}
+
+    REF="{{ ref_genome.bwa_index_path }}"
+    READ_GROUP="@RG\tID:{{ read_group.ID}}\tSM:{{ read_group.SM }}\tPL:{{ read_group.PL }}"
+    READ_GROUP+="\tCN:{{ read_group.CN }}\tPU:{{ read_group.PU }}\tLB:{{ read_group.LB }}"
+    OUTPATH="temp/{{ sample.sample_name }}_{{ loop.index }}.bwa.bam"
+    R1FASTQ="{{ data.path }}"
+    R2FASTQ="${R1FASTQ/R1_001/R2_001}"
+
+    bwa mem \
+      -M \
+      -t8 \
+      -R "${READ_GROUP}" \
+      ${REF} \
+      ${R1FASTQ} \
+      ${R2FASTQ} |\
+    samtools sort -O BAM -o ${OUTPATH} -
+
+# Base Recalibration
+- id: base_recalibration_{{ sample.sample_name }}_{{ loop.index }}
+  after: bwa_mem_{{ sample.sample_name }}_{{ loop.index }}
+  cpus: 8
+  cmd: bash  
+  stdin: |
+    #!/bin/bash
+    set -euv
+    module load gatk/{{ gatk_version }}
+
+    gatk BaseRecalibrator \
+        --reference "{{ ref_genome.fasta_path }}" \
+        --input "temp/{{ sample.sample_name }}_{{ loop.index }}.bwa.bam" \
+        --known-sites "{{ ref.tgen06.SNPS }}" \
+        --output "temp/{{ sample.sample_name }}_{{ loop.index }}.recal_data.table"
+
+    gatk ApplyBQSR \
+       --reference "{{ ref_genome.fasta_path }}" \
+       --input "temp/{{ sample.sample_name }}_{{ loop.index }}.bwa.bam" \
+       --bqsr-recal-file "temp/{{ sample.sample_name }}_{{ loop.index }}.recal_data.table" \
+       -O "temp/{{ sample.sample_name }}_{{ loop.index }}.recal.bam"
+
+{% endfor %}
+
+# Merge Bams
+- id: merge_bams_{{ sample.sample_name }}
+  after: base_recalibration_{{ sample.sample_name }}_.*
+  cpus: 2
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load gatk/{{ gatk_version }} samtools/{{ samtools_version }}
+    
+    # TODO Move this setup to another module?
+    mkdir -p {{ sample.sample_name }}
+
+    gatk MergeSamFiles \
+      --ASSUME_SORTED true \
+      --USE_THREADING true \
+      --VALIDATION_STRINGENCY SILENT \
+      --TMP_DIR ${TMPDIR} \
+      {% for data in sample.data if data.type == 'FQ' %}
+      --INPUT "temp/{{ sample.sample_name }}_{{ loop.index }}.recal.bam" \
+      {% endfor %}
+      --OUTPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.merge.bam"
+
+
+# Mark Duplicate Reads
+- id: mark_duplicates_{{ sample.sample_name }}
+  after: merge_bams_{{ sample.sample_name }}
+  output: {{ sample.sample_name }}/{{ sample.sample_name }}.bam
+  methods: Duplicate reads were marked with GATK MarkDuplicates v{{ gatk_version }}, then
+    resulting bam was indexed with Samtools v{{ samtools_version }}
+  cpus: 2
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+    set -eu
+    module load gatk/{{ gatk_version }} samtools/{{ samtools_version }}
+
+    gatk MarkDuplicates \
+      --INPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.merge.bam" \
+      --OUTPUT "{{ sample.sample_name }}/{{ sample.sample_name }}.bam" \
+      --METRICS_FILE "{{ sample.sample_name }}/{{ sample.sample_name }}.MarkDuplicates"
+
+    samtools index "{{ sample.sample_name }}/{{ sample.sample_name }}.bam"
+
+{% endfor %}

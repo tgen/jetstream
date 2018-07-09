@@ -43,9 +43,11 @@ class Project(object):
         status of a project """
         if path.exists(path.join(self.path, 'project.finished')):
             return 'complete'
+
         elif find_failed_signals(self.path):
             # This operation can take quite a while
             return 'failed'
+
         else:
             return 'incomplete'
 

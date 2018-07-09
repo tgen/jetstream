@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 package = 'jetstream'
 version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
 with open(version_file, 'r') as fp:
-    __version__ = fp.read()
+    __version__ = fp.readline().strip()
 
 
 def read(fname):
@@ -40,16 +40,19 @@ setup(
     ],
     extras_require={
         'dev': [
-            'mkdocs',
+            'sphinx-argparse',
+            'sphinx-autobuild',
+            'sphinx-rtd-theme',
+            'bumpversion'
         ]
     },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
     package_data={
-        'jetstream': ['templates/*', 'etc/*']
+        'jetstream': ['built_in_templates/*', 'etc/*']
     },
     entry_points={
         'console_scripts': [
-            'jetstream=jetstream.cli.main:main',
+            'jetstream=jetstream.cli.jetstream:main',
         ],
     }
 )

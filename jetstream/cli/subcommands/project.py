@@ -1,5 +1,4 @@
-""" This module contains the cli interface code for the project data utility."""
-import os
+"""Interact with jetstream projects."""
 import sys
 import argparse
 import logging
@@ -8,72 +7,95 @@ import jetstream
 log = logging.getLogger(__name__)
 
 
-def arg_parser(actions):
+def arg_parser(actions=None):
     parser = argparse.ArgumentParser(
         prog='jetstream project',
         description=__doc__
     )
 
-    parser.add_argument('action', choices=actions)
+    parser.add_argument('action', choices=actions,
+                        help='action name')
 
-    parser.add_argument('args', nargs=argparse.REMAINDER)
+    parser.add_argument('args', nargs=argparse.REMAINDER,
+                        help='remaining args are passed to the chosen action')
 
     return parser
 
 
 def init_arg_parser():
-    """arg parser for the init action"""
+    """Argument parser for the init action"""
     parser = argparse.ArgumentParser(
         prog='jetstream project init',
+        description='Initialize a Jetstream project'
+
     )
 
-    parser.add_argument('path', nargs='?', default='.')
+    parser.add_argument('path', nargs='?', default='.',
+                        help='Path to a Jetstream project')
 
     return parser
 
 
 def config_arg_parser():
-    """arg parser for the config action"""
+    """Argument parser for the config action"""
     parser = argparse.ArgumentParser(
         prog='jetstream project config',
+        description='Summarize project configuration data'
     )
 
-    parser.add_argument('path', nargs='?', default='.')
+    parser.add_argument('path', nargs='?', default='.',
+                        help='Path to a Jetstream project')
 
     parser.add_argument('--format', choices=['yaml', 'json'], default='json')
 
     parser.add_argument('--json', dest='format',
-                        action='store_const', const='json')
+                        action='store_const', const='json',
+                        help='Output JSON')
 
     parser.add_argument('--yaml', dest='format',
-                        action='store_const', const='yaml')
+                        action='store_const', const='yaml',
+                        help='Output YAML')
 
-    parser.add_argument('--pretty', action='store_true', default=False)
+    parser.add_argument('--pretty', action='store_true', default=False,
+                        help='Human-friendlier output')
 
     return parser
 
 
-def task_summary_arg_parser():
-    """arg parser for the data action"""
+def samples_arg_parser():
+    parser = config_arg_parser()
+    parser.prog = 'jetstream project samples'
+    parser.description = 'List samples in a project'
+
+    return parser
+
+
+def tasks_arg_parser():
+    """Argument parser for the data action"""
     parser = argparse.ArgumentParser(
-        prog='jetstream project task_summary',
+        prog='jetstream project tasks',
+        description='Summarize project tasks. If `task_id` is not given, all '
+                    'task ids will be listed.'
     )
 
-    parser.add_argument('task_id', nargs='*')
+    parser.add_argument('task_id', nargs='*',
+                        help='Task ID to summarize')
 
-    parser.add_argument('--path', default='.')
-
-    parser.add_argument('-r', '--run', default='latest')
+    parser.add_argument('--path', default='.',
+                        help='Jetstream project path')
 
     return parser
 
 
 def runs_arg_parser():
     parser = argparse.ArgumentParser(
-        prog='jetstream project runs'
+        prog='jetstream project runs',
+        description='Records are saved for every workflow that has been run on'
+                    'a project. This command lists the run ids in a project.'
     )
 
-    parser.add_argument('path', nargs='?', default='.')
+    parser.add_argument('path', nargs='?', default='.',
+                        help='Path to a Jetstream project')
 
     return parser
 
@@ -83,7 +105,7 @@ def init(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    jetstream.project.init(args.path)
+    jetstream.projects.init(args.path)
 
 
 def config(args=None):
@@ -118,32 +140,21 @@ def samples(args=None):
         jetstream.utils.yaml.dump(p.samples(), stream=sys.stdout)
 
 
-def task_summary(args=None):
-    parser = task_summary_arg_parser()
+def tasks(args=None):
+    parser = tasks_arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project(args.path)
-
-    if args.run == 'latest':
-        run_id = p.latest_run()
-    else:
-        if not args.run in p.runs():
-            raise ValueError("Run ID {} not found in project.".format(args.run))
-        else:
-            run_id = args.run
-
-    run_path = os.path.join(p.path, '.jetstream', run_id)
-    workflow_path = os.path.join(run_path, 'workflow.yaml')
-    wf = jetstream.workflows.load(workflow_path)
-    tasks = dict(wf.nodes(data=True))
+    wf = p.load_workflow()
+    tasks = {t.id: t for t in wf.tasks(objs=True)}
 
     if args.task_id:
         for task_id in args.task_id:
-            task = tasks[task_id]
-            print(jetstream.utils.task_summary(task_id, task))
+            print(tasks[task_id].pretty())
     else:
-        print(list(tasks.keys()))
+        for t in tasks.values():
+            print(t)
 
 
 def runs(args=None):
@@ -154,13 +165,7 @@ def runs(args=None):
     p = jetstream.Project(args.path)
 
     for r in p.runs():
-        try:
-            created = os.path.join(p.path, '.jetstream', r, 'created.yaml')
-            with open(created, 'r') as fp:
-                print(fp.read())
-        except Exception as e:
-            log.exception(e)
-
+       print(r.id, r.info.get('datetime'))
 
 
 def main(args=None):
@@ -168,7 +173,7 @@ def main(args=None):
         'init': init,
         'config': config,
         'samples': samples,
-        'task_summary': task_summary,
+        'tasks': tasks,
         'runs': runs,
 
     }

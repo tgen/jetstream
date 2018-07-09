@@ -6,17 +6,27 @@ import fnmatch
 import gzip
 import json
 import logging
+import ulid
+import time
 import textwrap
+import jetstream
 from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
 from socket import gethostname
 from uuid import getnode
+from urllib.parse import quote as urlquote
 from pkg_resources import get_distribution
-from ruamel.yaml import YAML
+import yaml
 
-yaml = YAML(typ='safe')
-yaml.default_flow_style = False
+
+def represent_none(self, _):
+    return self.represent_scalar('tag:yaml.org,2002:null', '')
+
+
+yaml.add_representer(type(None), represent_none)
+
+
 log = logging.getLogger(__name__)
 
 
@@ -45,6 +55,7 @@ TEST_RECORDS = [
 ]
 
 
+
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
                LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
                SM=None, strict=True, **unknown):
@@ -53,10 +64,11 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
         https://samtools.github.io/hts-specs/
 
-    Unknown tags will raise a TypeError unless 'strict' is False
+    Unknown tags will raise a `TypeError` unless 'strict' is False
 
     :param strict: Raise error for unknown read group tags
-    :return: Read group string
+    :type strict: bool
+    :return: str
     """
     if unknown and strict:
         raise TypeError('Unknown read group tags: {}'.format(unknown))
@@ -73,54 +85,71 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
     return '\t'.join(final)
 
-# TODO:
-# def cna_index_template(refdict):
-#     with open(refdict, 'r') as fp:
-#         lines = fp.readlines()
-#
-#     seqs_to_print = {i: None for i in range(1, 25)}
-#
-#     for l in lines:
-#         groups = parse_refdict_line(l)
-#
-#         if groups is None:
-#             continue
-#
-#     lines = [parse_refdict_line(l) for l in lines]
+
+class LogisticDelay:
+    def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
+        self.max = max
+        self.inflection = inflection
+        self.sharpness = sharpness
+        self.ignore = ignore
+        self.i = 0
+
+    def wait(self):
+        self.i += 1
+        delay = self.delay(self.i)
+        time.sleep(delay)
+
+    def reset(self):
+        self.i = 0
+
+    def delay(self, i):
+        if i > self.ignore:
+            c = self.max
+            a = self.inflection
+            e = 2.718281828459045
+            k = self.sharpness
+
+            return c / (1 + a * e ** (-k * (i - a)))
+
+        else:
+            return 0
 
 
 class Source(str):
-    """String subclass that includes a "line_numbers" property for tracking
+    """String subclass that includes a `line_numbers` property for tracking
     the source code line numbers after lines are split up.
 
     I considered making this an object composed of a string and line number:
 
-    ```python
-    class Source(object):
-        def __init__(self, line_number, data):
-          self.line_number = line_number
-          self.data = data
+    .. code-block:: python
 
-    line = Source(0, 'Hello World')
-    ```
+        class Source(object):
+            def __init__(self, line_number, data):
+              self.line_number = line_number
+              self.data = data
+
+        line = Source(0, 'Hello World')
+
 
     But, I think it actually complicates most use cases. For example, if the
     source lines were stored in a list, we might want to count a pattern. This
     is easy with a list of strings:
 
-    ```python
+    .. code-block:: python
+
         res = mylist.count('pattern')
-    ```
+
 
     With a custom class you would be forced to do something like:
 
-    ```python
+    .. code-block:: python
+
          res = Sum([line for line in lines if line.data == 'pattern'])
-    ```
+
 
     I think this string subclass inheritance pattern is more difficult to
     explain upfront, but it's much is easier to work with downstream. This class
-    behaves exactly like a string except in one case: str.splitlines() which
+    behaves exactly like a string except in one case: `str.splitlines()` which
     generates a list of Source objects instead of strings. """
     def __new__(cls, data='', line_number=None):
         line = super(Source, cls).__new__(cls, data)
@@ -128,11 +157,13 @@ class Source(str):
         return line
 
     def splitlines(self, *args, **kwargs):
+        """Break source code into a list of source lines."""
         lines = super(Source, self).splitlines(*args, **kwargs)
         lines = [Source(data, line_number=i) for i, data in enumerate(lines)]
         return lines
 
     def print_ln(self):
+        """Format this string along with its line number"""
         return '{}: {}'.format(self.line_number, self)
 
 
@@ -151,7 +182,7 @@ def read_lines_allow_gzip(path):
 
 
 def is_gzip(path, magic_number=b'\x1f\x8b'):
-    """ Returns True if the path is gzipped """
+    """Returns True if the path is gzipped."""
     if os.path.exists(path) and not os.path.isfile(path):
         raise OSError("This should only be used with regular files because"
                       "otherwise it will lose some data.")
@@ -163,11 +194,13 @@ def is_gzip(path, magic_number=b'\x1f\x8b'):
             return False
 
 
-def is_scalar(value):
-    if isinstance(value, (str,)):
+def is_scalar(obj):
+    """Returns `True` if the `obj` should be considered
+    a scalar for YAML serialization. """
+    if isinstance(obj, (str,)):
         return True
 
-    if isinstance(value, (Sequence, Mapping)):
+    if isinstance(obj, (Sequence, Mapping)):
         return False
     else:
         return True
@@ -181,34 +214,57 @@ def remove_prefix(string, prefix):
 
 
 def json_load(path):
+    """Load a json file from path"""
     with open(path, 'r') as fp:
         return json.load(fp)
 
 
 def json_loads(data):
+    """Load json data"""
     return json.loads(data)
+
+
+def json_dumps(obj, *args, **kwargs):
+    """Attempt to convert `obj` to a JSON string"""
+    stream = io.StringIO()
+    json.dump(obj, fp=stream, sort_keys=True, *args, **kwargs)
+    return stream.getvalue()
+
+
+def json_dump(obj, *args, **kwargs):
+    return json.dump(obj, sort_keys=True, *args, **kwargs)
 
 
 # TODO Handle multi-document yaml files gracefully
 def yaml_load(path):
+    """Load a yaml file from `path`"""
     with open(path, 'r') as fp:
         return yaml.load(fp)
 
 
 def yaml_loads(data):
+    """Load yaml data"""
     return yaml.load(data)
 
 
-def yaml_dumps(data):
+def yaml_dumps(obj):
+    """Attempt to convert `obj` to a YAML string"""
     stream = io.StringIO()
-    yaml.dump(data, stream=stream)
+    yaml.dump(obj, stream=stream, default_flow_style=False)
     return stream.getvalue()
 
 
+def yaml_dump(obj, stream):
+    return yaml.dump(obj, stream=stream, default_flow_style=False)
+
+
+def hash_dict(obj):
+    return hash(json_dumps(obj))
+
+
 def filter_records(records, criteria):
-    """Given a list of mapping objects (records) and a criteria mapping,
-    this function returns a list of objects that match filter
-    criteria."""
+    """Given a list of mapping objects (`records`) and a criteria mapping,
+    this function returns a list of objects that match filter criteria."""
     matches = list()
     for i in records:
         for k, v in criteria.items():
@@ -224,7 +280,10 @@ def filter_records(records, criteria):
 
 
 def table_to_records(path):
-    """Attempts to load a table, in any format, as a list of records"""
+    """Attempts to load a table, in any format, as a list of dictionaries
+
+    :param path: Path to a table file
+    :return: :list """
     r = list()
     with open(path, 'r') as fp:
         dialect = csv.Sniffer().sniff(fp.readline())
@@ -238,7 +297,7 @@ def table_to_records(path):
 
 
 def records_to_csv(records, outpath):
-    """Writes records out to a csv"""
+    """Writes records (list of dictionaries) out to a csv file"""
     if os.path.exists(outpath):
         raise FileExistsError(outpath)
 
@@ -270,8 +329,9 @@ def write_test_data(path, dialect='unix'):
 
 
 def fingerprint(to_json=False):
-    """Gather system info for recording changes made to projects."""
+    """Gather system info as a dictionary or JSON string."""
     fp = {
+        'id': jetstream.task_id_template.format(ulid.new().str),
         'datetime': str(datetime.now()),
         'user': getuser(),
         'version': str(get_distribution("jetstream")),
@@ -281,7 +341,8 @@ def fingerprint(to_json=False):
         'pid': os.getpid(),
         'args': sys.argv,
         'hostname': gethostname(),
-        'pwd': os.getcwd()
+        'pwd': os.getcwd(),
+        'parent': os.environ.get('JETSTREAM_RUNID')
     }
 
     if to_json:
@@ -291,7 +352,7 @@ def fingerprint(to_json=False):
 
 
 def find(path, name=None):
-    """Sorta behaves like bash find"""
+    """Similar to BSD find, finds files matching name pattern."""
     for dirname, subdirs, files in os.walk(path):
         for f in files:
             if name is None:
@@ -300,19 +361,5 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
 
 
-def task_summary(node_id, node_data):
-    lines = list()
-    for k, v in node_data.items():
-        if k == 'cmd':
-            v = ' '.join(v)
-
-        text = "{}: ".format(k)
-        value = str(v)
-        if '\n' in value or len(value) > 80:
-            text += '|\n'
-            text += textwrap.indent(value, ' '*4)
-        else:
-            text += value
-        lines.append(text)
-
-    return '\n'.join(lines)
+def cleanse_filename(s):
+    return urlquote(s)

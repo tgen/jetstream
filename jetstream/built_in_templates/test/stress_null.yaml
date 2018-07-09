@@ -1,0 +1,8 @@
+
+{% for i in range(tasks) %}
+
+- id: stress_null_{{ i }}
+  cmd: null
+  stdout: /dev/null
+
+{% endfor %}
