@@ -361,24 +361,5 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
 
 
-def task_summary(node_id, node_data):
-    """Generate a string summary for a task."""
-    lines = list()
-    for k, v in node_data.items():
-        if k == 'cmd' and v is not None:
-            v = ' '.join(v)
-
-        text = "{}: ".format(k)
-        value = str(v)
-        if '\n' in value or len(value) > 80:
-            text += '|\n'
-            text += textwrap.indent(value, ' '*4)
-        else:
-            text += value
-        lines.append(text)
-
-    return '\n'.join(lines)
-
-
 def cleanse_filename(s):
     return urlquote(s)
