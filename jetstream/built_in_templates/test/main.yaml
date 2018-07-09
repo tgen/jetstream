@@ -47,7 +47,7 @@
   after: test_log_capture
   stdin: |
     #!/bin/bash
-    echo 'This task should fail'
+    echo "This task should fail"
     exit 1
 
 - id: test_dependency_failures
