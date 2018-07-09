@@ -140,7 +140,7 @@ def save(workflow, path):
 
 def coerce_str_to_list(value):
     if isinstance(value, str):
-        return [value,]
+        return [value, ]
     else:
         return value
 
@@ -161,15 +161,13 @@ class Task(object):
     }
 
     valid_states = list(states_lookup.keys())
-
     status_lookup = {v: k for k, v in states_lookup.items()}
-
     valid_status = list(status_lookup.keys())
 
     def __init__(self, id, *, cmd=None, before=None, after=None, input=None,
                  output=None, stdin=None, stdout=None, stderr=None, cpus=0,
                  mem=0, walltime=0, status='new', returncode=None, start=None,
-                 end=None, **kwargs):
+                 end=None, methods=None, description=None, help=None):
 
         self.id = str(id)
         self.cmd = cmd
@@ -177,7 +175,7 @@ class Task(object):
         self.after = coerce_str_to_list(after)
         self.input = coerce_str_to_list(input)
         self.output = coerce_str_to_list(output)
-        self.stdin = coerce_str_to_bytes(stdin)
+        self.stdin = stdin
         self.stdout = stdout
 
         if self.stdout is None:
@@ -194,16 +192,24 @@ class Task(object):
         self.start = start
         self.end = end
         self.walltime = walltime
+        self.methods = methods
+        self.description = description
+        self.help = help
         self._workflow = None
 
     def __repr__(self):
-        return '<Task: {}>'.format(self.id)
+        return '<Task({}): {} >'.format(self.status, self.id)
 
     def __hash__(self):
         return hash(self.id)
 
+    def pretty(self):
+        return utils.yaml_dumps(self.serialize())
+
     def serialize(self):
-        return {k: v for k, v in vars(self).items() if not k.startswith('_')}
+        data = {k: v for k, v in vars(self).items() if not k.startswith('_')}
+        data.update(status=self.status)
+        return data
 
     @property
     def state(self):
@@ -229,6 +235,27 @@ class Task(object):
             err = 'Status must be one of {}'.format(Task.valid_status)
             raise KeyError(err) from None
 
+    def is_new(self):
+        if self.status == 'new':
+            return True
+        else:
+            return False
+
+    def is_pending(self):
+        if self.status == 'pending':
+            return True
+        else:
+            return False
+
+    def is_complete(self):
+        if self.status in ('complete', 'failed'):
+            return True
+        else:
+            return False
+
+    def is_ready(self):
+        return self._workflow.is_ready(self.id)
+
     def reset(self):
         self._state = 0
         self.returncode = None
@@ -236,18 +263,26 @@ class Task(object):
         self.end = None
 
     def pending(self):
+        log.critical('{} is pending!'.format(self))
         self._state = 1
         self.start = str(datetime.now())
 
     def complete(self, returncode=0):
+        log.critical('{} is complete!'.format(self))
+
         self._state = 2
         self.returncode = returncode
         self.end = str(datetime.now())
 
     def fail(self, returncode=1):
+        log.critical('{} is failed!'.format(self))
+
         self._state = 3
         self.returncode = returncode
         self.end = str(datetime.now())
+
+        for task in self._workflow.dependents(self.id):
+            task.fail(returncode)
 
     def add_to_workflow(self, wf):
         self._workflow = wf
@@ -291,6 +326,7 @@ class Workflow(object):
     def add_task(self, task_id, **directives):
         if task_id in self.graph:
              raise ValueError('Duplicate task id: {}'.format(task_id))
+
         t = Task(task_id, **directives)
         t.add_to_workflow(self)
 
@@ -304,6 +340,8 @@ class Workflow(object):
             except Exception as e:
                 self.graph.remove_node(task_id)
                 raise e
+
+        return t
 
     def update(self):
         current = list(self.graph.edges())
@@ -345,6 +383,9 @@ class Workflow(object):
 
     def dependencies(self, task_id):
         return (self.get_task(dep) for dep in self.graph.successors(task_id))
+
+    def dependents(self, task_id):
+        return (self.get_task(dep) for dep in self.graph.predecessors(task_id))
 
     def is_ready(self, task_id):
         """ Returns True if "task_id" is ready for execution. """
@@ -578,94 +619,76 @@ class Workflow(object):
 class WorkflowIterator(object):
     def __init__(self, workflow):
         self.workflow = workflow
-        self._tasks = deque()
-        self._pending = deque()
-        self._done = list()
-        self._stack = self._tasks
-        self._setup_queues()
+        self._queues = [deque(), deque()]
+        self.complete = list()
+        self.queue, self.stack = self._queues
+
+        for task in self.workflow.tasks(objs=True):
+            if task.is_complete():
+                self.complete.append(task)
+            else:
+                self.queue.append(task)
 
     def __repr__(self):
-        return '<WorkflowIterator {}>'.format(self.status())
+        return '<jetstream.Workflow {}>'.format(self.status())
 
     def status(self):
         return {
-            'new': len(self._tasks),
-            'pending': len(self._pending),
-            'done': len(self._done)
+            'queue': len(self.queue),
+            'stack': len(self.stack),
+            'complete': len(self.complete)
         }
 
-    def _setup_queues(self):
-        self._new_tasks = deque()
-        self._pending_tasks = deque()
-        self._complete_tasks = deque()
+    def swap(self):
+        log.critical('Swap queue and stack')
+        self.queue, self.stack = self.stack, self.queue
 
-        for task in self.workflow.tasks(True):
-            if task.status == 'new':
-                self._tasks.append(task)
-            elif task.status == 'pending':
-                self._pending.append(task)
-            else:
-                self._done.append(task)
-
-    def _sort_task(self, task):
-        log.debug('_sort_task')
-
-        if task.status == 'new':
-            self._tasks.append(task)
-        elif task.status == 'pending':
-            self._pending.append(task)
-        else:
-            self._done.append(task)
-
-    def _check_pending(self):
-        log.debug('_check_pending')
-        if self._pending:
-            sentinel = object()
-            self._pending.append(sentinel)
-
-            task = self._pending.popleft()
-
-            while task is not sentinel:
-                self._sort_task(task)
-                task = self._pending.popleft()
-
-    def _get_next_task(self):
-        log.debug('_get_next_task')
-
-        stack = deque()
+    def __next__(self):
+        there_are_pending_tasks = False
+        checked_stack = False
 
         while 1:
             try:
-                task = self._tasks.popleft()
-                if self.workflow.is_ready(task.id):
+                task = self.queue.popleft()
+                log.critical('Checking {}'.format(task.id))
+
+                if task.is_complete():
+                    self.complete.append(task)
+
+                elif task.is_pending():
+                    there_are_pending_tasks = True
+                    self.stack.append(task)
+
+                elif task.is_ready():
+                    self.stack.append(task)
                     task.pending()
-                    self._pending.append(task)
                     return task
+
                 else:
-                    stack.append(task)
+                    # task is not ready
+                    self.stack.append(task)
 
             except IndexError:
-                if stack:
-                    self._tasks = stack
-
-                if self._pending:
-                    return None
+                if not self.stack:
+                    if there_are_pending_tasks:
+                        return None
+                    else:
+                        # Queue is empty, stack is empty, and no pending.
+                        raise StopIteration from None
+                elif self.stack and not checked_stack:
+                    checked_stack = True
+                    self.swap()
                 else:
-                    raise StopIteration
-
-    def __next__(self):
-        log.debug('__next__')
-
-        self._check_pending()
-        return self._get_next_task()
+                    return None
 
 
 def from_node_link_data(data):
     graph = json_graph.node_link_graph(data)
-
     wf = Workflow()
+
     for node_id, node_data in graph.nodes(data=True):
-        wf.add_task(node_id, **node_data)
+        task_id = node_data['obj'].pop('id')
+        wf.add_task(task_id, **node_data['obj'])
 
     return wf
 
