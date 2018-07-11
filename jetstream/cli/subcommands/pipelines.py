@@ -90,11 +90,11 @@ def main(args=None):
     p = jetstream.Project()
 
     if args.render_only:
-        text = p.render(
+        tasks = p.render(
             template=args.template,
             additional_data=vars(kvargs_data))
 
-        print(text)
+        print(tasks)
 
     else:
         if args.backend == 'slurm':

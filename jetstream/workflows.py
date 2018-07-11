@@ -167,7 +167,8 @@ class Task(object):
     def __init__(self, id, *, cmd=None, before=None, after=None, input=None,
                  output=None, stdin=None, stdout=None, stderr=None, cpus=0,
                  mem=0, walltime=0, status='new', returncode=None, start=None,
-                 end=None, methods=None, description=None, help=None):
+                 end=None, methods=None, description=None, help=None,
+                 workflow=None):
 
         self.id = str(id)
         self.cmd = cmd
@@ -195,7 +196,7 @@ class Task(object):
         self.methods = methods
         self.description = description
         self.help = help
-        self._workflow = None
+        self._workflow = workflow
 
     def __repr__(self):
         return '<Task({}): {} >'.format(self.status, self.id)
@@ -234,6 +235,16 @@ class Task(object):
         except KeyError:
             err = 'Status must be one of {}'.format(Task.valid_status)
             raise KeyError(err) from None
+
+    @property
+    def workflow(self):
+        # By making workflow a property, it can be get/set as task.workflow
+        # but will not be included when serializing.
+        return self._workflow
+
+    @workflow.setter
+    def workflow(self, value):
+        self._workflow = value
 
     def is_new(self):
         if self.status == 'new':
@@ -326,25 +337,30 @@ class Workflow(object):
     def __iter__(self):
         return WorkflowIterator(self)
 
-    def add_task(self, task_id, **directives):
-        if task_id in self.graph:
-             raise ValueError('Duplicate task id: {}'.format(task_id))
+    def add_task(self, task):
+        if not isinstance(task, Task):
+            raise ValueError('task must be instance of {}'.format(Task))
 
-        t = Task(task_id, **directives)
-        t.add_to_workflow(self)
+        if task.id in self.graph:
+            raise ValueError('Duplicate task ID: {}'.format(task.id))
 
-        self.graph.add_node(task_id, obj=t)
+        task.workflow = self
+        self.graph.add_node(task.id, obj=task)
 
         if self.is_locked():
-            self._stack.append(task_id)
+            self._stack.append(task.id)
         else:
             try:
                 self.update()
             except Exception as e:
-                self.graph.remove_node(task_id)
+                self.graph.remove_node(task.id)
                 raise e
 
-        return t
+        return task
+
+    def new_task(self, task_id, **directives):
+        task = Task(task_id, **directives)
+        return self.add_task(task)
 
     def update(self):
         current = list(self.graph.edges())
@@ -698,7 +714,7 @@ def from_node_link_data(data):
 
     for node_id, node_data in graph.nodes(data=True):
         task_id = node_data['obj'].pop('id')
-        wf.add_task(task_id, **node_data['obj'])
+        wf.new_task(task_id, **node_data['obj'])
 
     return wf
 
@@ -746,6 +762,6 @@ def build_workflow(tasks):
 
     with wf:
         for task in tasks:
-            wf.add_task(task_id=task.pop('id'), **task)
+            wf.new_task(task_id=task.pop('id'), **task)
 
     return wf
