@@ -528,20 +528,6 @@ class SlurmBatchJob(object):
         return subprocess.call(cmd_args)
 
 
-def test_async_runner(ntasks=5, backend=LocalBackend):
-    wf = jetstream.Workflow()
-
-    wf.add_task('stdin_test',
-                cmd='bash -v',
-                stdin='#!/bin/bash\necho hello world\nhostname')
-
-    for i in range(ntasks):
-        wf.add_task(str(i), cmd='sleep 30 && hostname')
-
-    ar = AsyncRunner(wf, backend=backend)
-    ar.start()
-
-
 def guess_max_forks(default=500):
     try:
         res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
@@ -549,6 +535,7 @@ def guess_max_forks(default=500):
     except FileNotFoundError as e:
         log.exception(e)
         return default
+
 
 def guess_local_cpus(default=4):
     return cpu_count() or default
