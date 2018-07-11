@@ -52,21 +52,6 @@ def arg_parser():
 
     return main_parser
 
-# TODO Argument parsing behavior
-# I've configured this parser to capture all args after the subcommand name
-# and pass them directly to the subcommand. This allows subcommands to declare
-# arguments with the same values, more importantly it means that no arguments
-# will be cherry-picked from the command string. For example:
-#
-# jetstream pipelines main.yaml --log-level DEBUG
-#
-# Will result in a template variable "log-level" with the value "DEBUG".
-#
-# Another way this could behave is that, all of the arguments described here
-# are granted a "special" status where they are cherry-picked by the parser and
-# evaluated prior to any subcommand evaluation. This would mean that a template
-# variable could never be declared with any key that occurs in these arguments.
-# Not sure which is the best pattern right now, revisit this later.
 
 def get_subcommands():
     from jetstream.cli.subcommands import __all__ as subcommands
@@ -115,6 +100,8 @@ def main(args=None):
         except ModuleNotFoundError:
             log.debug(traceback.format_exc())
             parser.print_help()
+
             if args.subcommand != 'help':
                 print('Error loading subcommand: {}'.format(args.subcommand))
+
             sys.exit(1)
