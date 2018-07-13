@@ -217,6 +217,10 @@ class WorkflowBasics(TimedTestCase):
 
         self.assertEqual(len(wf), 500)
 
+    # TODO Test duplicate task add during context manager
+
+
+
 
 class WorkflowTaskStatus(TimedTestCase):
     pass

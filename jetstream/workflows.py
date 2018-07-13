@@ -397,7 +397,7 @@ class Workflow(object):
 
         if exc_value is not None:
             for task_id in self._stack:
-                del self.graph.nodes()[task_id]
+                self.graph.remove_node(task_id)
 
         self.update()
         self._stack = list()
