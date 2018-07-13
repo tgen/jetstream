@@ -4,7 +4,6 @@ import logging
 import sys
 import traceback
 import pkg_resources
-import jetstream
 
 log = logging.getLogger()
 
@@ -35,21 +34,6 @@ def arg_parser():
 
     main_parser.add_argument('--log-level', default='INFO')
 
-    main_parser.add_argument('--ignore-undefined', dest='strict',
-                             action='store_false',
-                             help='Suppress errors normally raised when a '
-                                  'workflow variable is undefined')
-
-    main_parser.add_argument('--template-dir', action='append',
-                             help='Specify template search path. If this '
-                                  'argument is not set, only built-in templates '
-                                  'will be searched. This argument can be used '
-                                  'multiple times.')
-
-    main_parser.add_argument('--no-site-templates', dest='site_templates',
-                        action='store_false',
-                        help='Don\'t include built-in templates in search path')
-
     return main_parser
 
 
@@ -73,15 +57,10 @@ def main(args=None):
         level=getattr(logging, args.log_level)
     )
 
-    log.critical('Version {}'.format(__version__))
+    log.info('Version {}'.format(__version__))
     log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
-    jetstream.config_environment(
-        template_dirs=args.template_dir,
-        strict=args.strict,
-        include_site_templates=args.site_templates
-    )
 
     if args.subcommand is None:
         parser.print_help()

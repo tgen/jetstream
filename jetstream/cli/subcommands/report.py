@@ -40,11 +40,11 @@ def main(args=None):
         try:
             p = Project(proj)
             if p.is_complete and not args.all:
-                log.critical('Project complete {}'.format(proj))
+                log.info('Project complete {}'.format(proj))
                 continue
             projects.append(p)
         except FileNotFoundError as err:
-            log.critical('Error loading project: {}'.format(err))
+            log.info('Error loading project: {}'.format(err))
 
     log.debug('Reporting on: {}'.format(str(projects)))
     for p in projects:

@@ -146,7 +146,7 @@ def tasks(args=None):
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project(args.path)
-    wf = p.load_workflow()
+    wf = p.pipeline()
     tasks = {t.id: t for t in wf.tasks(objs=True)}
 
     if args.task_id:
