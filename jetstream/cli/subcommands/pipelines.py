@@ -71,8 +71,14 @@ def main(args=None):
         type_separator=args.kvarg_separator)
 
     p = jetstream.Project()
-    template = shared.load_template(args)
-    tasks = template.render(project=p, **vars(kvargs_data))
+
+    tasks = list()
+
+    for path in args.template:
+        template = shared.load_template(path, args.template_search_path)
+        rendered = template.render(**vars(kvargs_data))
+        loaded = jetstream.utils.yaml_loads(rendered)
+        tasks.extend(loaded)
 
     if args.render_only:
         print(tasks)

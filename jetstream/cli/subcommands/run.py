@@ -10,7 +10,6 @@ If the variable type is "file" the value will be passed to
 evaluated by the appropriate type function.
 
 """
-import os
 import sys
 import logging
 import argparse
@@ -27,7 +26,7 @@ def arg_parser():
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('template', help='Template path')
+    parser.add_argument('template', help='Template path', nargs='+')
 
     parser.add_argument('-t', '--template-search-path', action='append',
                         help='Manually configure the template search. This '
@@ -67,8 +66,13 @@ def main(args=None):
         args=unknown,
         type_separator=args.kvarg_separator)
 
-    template = shared.load_template(args)
-    tasks = template.render(**vars(kvargs_data))
+    tasks = list()
+
+    for path in args.template:
+        template = shared.load_template(path, args.template_search_path)
+        rendered = template.render(**vars(kvargs_data))
+        loaded = jetstream.utils.yaml_loads(rendered)
+        tasks.extend(loaded)
 
     if args.render_only:
         print(tasks)
@@ -76,12 +80,12 @@ def main(args=None):
         wf = jetstream.workflows.build_workflow(tasks)
         print(wf.pretty())
     else:
+        workflow = jetstream.workflows.build_workflow(tasks)
+
         if args.backend == 'slurm':
             backend = jetstream.SlurmBackend(max_forks=args.max_forks)
         else:
             backend = jetstream.LocalBackend(max_forks=args.max_forks)
-
-        workflow = jetstream.workflows.build_workflow(tasks)
 
         runner = jetstream.runner.AsyncRunner(
             workflow,
@@ -89,8 +93,8 @@ def main(args=None):
             log_path=args.logs,
             logging_interval=args.logging_interval
         )
-        rc = runner.start()
 
+        rc = runner.start()
         sys.exit(rc)
 
 

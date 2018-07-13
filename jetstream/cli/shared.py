@@ -50,14 +50,18 @@ def parse_kvargs(args, type_separator=':', types=kvarg_types):
     return parser.parse_args(args)
 
 
-def load_template(args):
-    # Configure the template environment and load
-    template_name = os.path.basename(args.template)
-    template_dir = os.path.dirname(args.template)
+def load_template(path, template_search_path=None):
+    """Load a template from an automatically configured environment
+    :param path: path to a template file
+    :param template_search_path: a list of additional paths to add to searchpath
+    :return:
+    """
+    template_name = os.path.basename(path)
+    template_dir = os.path.dirname(path)
     search_path = [template_dir, ]
 
-    if args.template_search_path:
-        search_path.extend(args.template_search_path)
+    if template_search_path:
+        search_path.extend(template_search_path)
 
     env = jetstream.templates.environment(search_path=search_path)
     template = env.get_template_with_source(template_name)
