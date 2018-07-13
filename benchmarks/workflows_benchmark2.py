@@ -9,7 +9,7 @@ start = datetime.now()
 wf = jetstream.Workflow()
 
 for i in range(int(sys.argv[1])):
-    wf.add_task(str(i))
+    wf.new_task(str(i))
 
 print('Workflow built: {}'.format(wf))
 
