@@ -1,11 +1,13 @@
+import os
 import re
 import logging
 import shlex
 import time
 import subprocess
+import jetstream
+from datetime import datetime
 from multiprocessing import cpu_count
 import asyncio
-import jetstream
 from asyncio import (BoundedSemaphore, Event, create_subprocess_shell,
                      create_subprocess_exec)
 from asyncio.subprocess import PIPE, STDOUT
@@ -15,36 +17,44 @@ log = logging.getLogger(__name__)
 
 
 class AsyncRunner(object):
-    def __init__(self, workflow, backend=None, logging_interval=None):
+    def __init__(self, workflow, backend=None, logging_interval=None,
+                 log_path=None):
         self.workflow = workflow
         self.backend = backend
+        self.backend.runner = self
         self.logging_interval = logging_interval or 3
+        self.log_path = log_path or 'logs'
+        self._fp = jetstream.utils.Fingerprint()
 
+        self._started = False
         self._loop = None
         self._iterator = None
-        self._pending_tasks = list()
-        self._workflow_complete = Event()
         self._workflow_manager = None
         self._logger = None
+        self._workflow_complete = Event()
+
+    @property
+    def fp(self):
+        return self._fp
 
     def log_status(self):
         """ Logs a status report """
-        log.critical('AsyncRunner event-loop load: {}'.format(
+        log.info('AsyncRunner event-loop load: {}'.format(
             len(asyncio.Task.all_tasks())))
-        log.critical('Workflow status: {}'.format(self.workflow))
+        log.info('Workflow status: {}'.format(self.workflow))
 
     async def logger(self):
-        log.critical('Logger started!')
+        log.info('Logger started!')
 
         try:
             while not self._workflow_complete.is_set():
                 await asyncio.sleep(self.logging_interval)
                 self.log_status()
         finally:
-            log.critical('Logger stopped!')
+            log.info('Logger stopped!')
 
     async def workflow_manager(self):
-        log.critical('Workflow manager started!')
+        log.info('Workflow manager started!')
 
         self._iterator = iter(self.workflow)
 
@@ -62,6 +72,7 @@ class AsyncRunner(object):
 
                 await asyncio.sleep(0)
         finally:
+            log.info('Workflow manager stopped!')
             self._workflow_complete.set()
 
     async def spawn(self, task):
@@ -71,26 +82,61 @@ class AsyncRunner(object):
             asyncio.ensure_future(self.backend.spawn(task))
         except Exception as e:
             log.exception(e)
-            log.critical('Exception during task spawn, halting run!')
+            log.info('Exception during task spawn, halting run!')
             self._loop.stop()
 
-
-    def start(self, loop=None):
-        log.critical('AsyncRunner with {} starting...'.format(
-            self.backend.__class__.__name__))
-
-        if loop is None:
-            self._loop = asyncio.get_event_loop()
-
-        manager = self._loop.create_task(self.workflow_manager())
-        logger = self._loop.create_task(self.logger())
-
+    def start_backend_coros(self):
         if hasattr(self.backend, 'start_coros'):
             coros = self._loop.create_task(self.backend.start_coros())
         else:
             coros = self._loop.create_task(asyncio.sleep(0))
 
+        return coros
+
+    def init_run(self):
+        self._start_time = datetime.now()
+        log.info('Run ID: {}'.format(self.fp.id))
+
+    def finalize_run(self):
+        self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+        self._loop.close()
+
+        log.info('Finalizing run: {}'.format(self.fp.id))
+
+        elapsed = datetime.now() - self._start_time
+        log.info('Total run time: {}'.format(elapsed))
+
+
+        fails = [t.id for t in self.workflow.tasks(objs=True) if
+                 t.status == 'failed']
+
+        if fails:
+            log.info('\u2620  Some tasks failed! {}'.format(fails))
+            rc = 1
+        else:
+            rc = 0
+
+        self._start_time = None
+        return rc
+
+    def start(self, loop=None):
+        if self._started:
+            raise RuntimeError('Runners can only be started once')
+        else:
+            self._started = True
+
         try:
+            self.init_run()
+
+            if loop is None:
+                self._loop = asyncio.get_event_loop()
+            else:
+                self._loop = loop
+
+            manager = self._loop.create_task(self.workflow_manager())
+            logger = self._loop.create_task(self.logger())
+            coros = self.start_backend_coros()
+
             self._loop.run_until_complete(manager)
             logger.cancel()
             coros.cancel()
@@ -98,11 +144,7 @@ class AsyncRunner(object):
             for t in asyncio.Task.all_tasks():
                 t.cancel()
         finally:
-            log.critical('Event loop shutting down...')
-            self.log_status()
-            self._loop.run_until_complete(self._loop.shutdown_asyncgens())
-            self._loop.close()
-            log.critical('AsyncRunner stopped!')
+            return self.finalize_run()
 
 
 class Backend(object):
@@ -112,8 +154,9 @@ class Backend(object):
     # for execution. It should be asynchronous and return the task_id
     # and returncode as a tuple: (task_id, returncode)
     def __init__(self, max_forks=None):
+        self.runner = None
         self._sem = BoundedSemaphore(max_forks or guess_max_forks())
-        log.critical('Initialized with: {}'.format(self._sem))
+        log.info('Initialized with: {}'.format(self._sem))
 
     def status(self):
         return 'Backend status: {}'.format(str(self._sem))
@@ -124,8 +167,8 @@ class Backend(object):
             try:
                 return await create_subprocess_shell(cmd, **kwargs)
             except BlockingIOError as e:
-                log.critical('Unable to start subprocess: {}'.format(e))
-                log.critical('Retry in 10 seconds.')
+                log.info('Unable to start subprocess: {}'.format(e))
+                log.info('Retry in 10 seconds.')
                 await asyncio.sleep(10)
 
     @staticmethod
@@ -134,8 +177,8 @@ class Backend(object):
             try:
                 return await create_subprocess_exec(*args, **kwargs)
             except BlockingIOError as e:
-                log.critical('Unable to start subprocess: {}'.format(e))
-                log.critical('Retry in 10 seconds.')
+                log.info('Unable to start subprocess: {}'.format(e))
+                log.info('Retry in 10 seconds.')
                 await asyncio.sleep(10)
 
     async def subprocess_run(
@@ -185,13 +228,13 @@ class LocalBackend(Backend):
         """
         super(LocalBackend, self).__init__(*args, **kwargs)
         self._cpu_sem = BoundedSemaphore(cpus or guess_local_cpus())
-        log.critical('LocalBackend initialized with: {}'.format(self._cpu_sem))
+        log.info('LocalBackend initialized with: {}'.format(self._cpu_sem))
     
     def status(self):
         return 'CPUs: {} Forks: {} '.format(self._cpu_sem, self._sem)
 
     async def spawn(self, task):
-        log.critical('Spawn: {}'.format(task.id))
+        log.info('Spawn: {}'.format(task))
         log.debug(self.status())
 
         cpus_reserved = 0
@@ -210,8 +253,8 @@ class LocalBackend(Backend):
                 input = None
 
             cmd = task.cmd
-            stdout = task.stdout
-            stderr = task.stderr
+            stdout = os.path.join(self.runner.log_path, task.stdout)
+            stderr = os.path.join(self.runner.log_path, task.stderr)
 
             if stdout == stderr:
                 with open(stdout, 'w') as fp:
@@ -233,7 +276,7 @@ class LocalBackend(Backend):
             return task.fail(-15)
 
         finally:
-            log.critical('Done: {}'.format(task))
+            log.info('Done: {}'.format(task))
 
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
@@ -253,7 +296,7 @@ class SlurmBackend(Backend):
         self._jobs = {}
         self._jobs_sem = BoundedSemaphore(max_jobs or 1000000)
 
-        log.critical('SlurmBackend initialized with: {}'.format(self._jobs_sem))
+        log.info('SlurmBackend initialized with: {}'.format(self._jobs_sem))
 
     def status(self):
         return 'Forks: {} Slurm jobs: {}'.format(self._sem, self._jobs_sem)
@@ -269,7 +312,7 @@ class SlurmBackend(Backend):
         return job
 
     async def start_coros(self):
-        log.critical('Slurm job monitor started!')
+        log.info('Slurm job monitor started!')
         self._monitor_jobs.set()
 
         try:
@@ -279,17 +322,17 @@ class SlurmBackend(Backend):
         except CancelledError:
             self._monitor_jobs.clear()
         finally:
-            log.critical('Slurm job monitor stopped!')
+            log.info('Slurm job monitor stopped!')
 
     async def _update_jobs(self):
-        log.critical('Sacct request for {} jobs...'.format(len(self._jobs)))
+        log.info('Sacct request for {} jobs...'.format(len(self._jobs)))
         sacct_data = {}
 
         for chunk in self.chunk_jobs():
             data = await self._sacct_request(*chunk)
             sacct_data.update(data)
 
-        log.critical('Status updates for {} jobs'.format(len(sacct_data)))
+        log.info('Status updates for {} jobs'.format(len(sacct_data)))
 
         reap = set()
         for jid, job in self._jobs.items():
@@ -337,7 +380,7 @@ class SlurmBackend(Backend):
             match = self.job_id_pattern.match(row['JobID'])
 
             if match is None:
-                log.critical('Unable to parse sacct line: {}'.format(line))
+                log.info('Unable to parse sacct line: {}'.format(line))
                 pass
 
             groups = match.groupdict()
@@ -346,7 +389,7 @@ class SlurmBackend(Backend):
 
             if taskid is '':
                 if jobid in jobs:
-                    log.critical('Duplicate record for job: {}'.format(jobid))
+                    log.info('Duplicate record for job: {}'.format(jobid))
                 else:
                     row['_steps'] = list()
                     jobs[jobid] = row
@@ -361,12 +404,16 @@ class SlurmBackend(Backend):
 
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
-        args = ['sbatch', '--parsable', '-J', task.id]
+        args = ['sbatch', '--parsable', '-J', task.id, '--comment',
+                self.runner.fp.to_json()]
 
-        if task.stdout == task.stderr:
-            args.extend(['-o', task.stdout])
+        stdout = os.path.join(self.runner.log_path, task.stdout)
+        stderr = os.path.join(self.runner.log_path, task.stderr)
+
+        if stdout == stderr:
+            args.extend(['-o', stdout])
         else:
-            args.extend(['-o', task.stdout, '-e', task.stderr])
+            args.extend(['-o', stdout, '-e', stderr])
 
         # Slurm requires that we request at least 1 cpu
         if task.cpus != 0:
@@ -389,7 +436,7 @@ class SlurmBackend(Backend):
         return args
 
     async def spawn(self, task):
-        log.debug('Spawn: {}'.format(task.id))
+        log.debug('Spawn: {}'.format(task))
 
         job = None
 
@@ -410,10 +457,10 @@ class SlurmBackend(Backend):
             jid = p.stdout.decode().strip()
 
             if p.returncode != 0:
-                log.critical('Error submitting job: {}'.format(jid))
+                log.info('Error submitting job: {}'.format(jid))
                 return task.fail(1)
 
-            log.critical("Submitted batch job {}".format(jid))
+            log.info("Submitted batch job {}".format(jid))
 
             job = self.add_jid(jid)
             rc = await job.wait()
@@ -523,7 +570,7 @@ class SlurmBatchJob(object):
         return self.returncode
 
     def cancel(self):
-        log.critical('Scancel: {}'.format(self.jid))
+        log.info('Scancel: {}'.format(self.jid))
         cmd_args = ('scancel', self.jid)
         return subprocess.call(cmd_args)
 

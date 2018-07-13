@@ -242,7 +242,7 @@ def srun(*args):
 def sbatch(*args, stdin_data=None):
     cmd_args = ('sbatch', '--parsable') + args
 
-    log.critical('launching: {}'.format(cmd_args))
+    log.info('launching: {}'.format(cmd_args))
     p = subprocess.Popen(
         cmd_args,
         stdin=subprocess.PIPE,
@@ -255,7 +255,7 @@ def sbatch(*args, stdin_data=None):
         raise ChildProcessError(str(vars(p)))
 
     jid, _, cluster = stdout.decode().strip().partition(';')
-    log.critical("Submitted batch job {}".format(jid))
+    log.info("Submitted batch job {}".format(jid))
     return SlurmJob(jid, cluster=cluster)
 
 
@@ -264,11 +264,11 @@ def easy(cmd, *args, module_load=None):
     subprocess.check_call(['sbatch', '--version'])
 
     if not os.path.exists('logs') or not os.path.isdir('logs'):
-        log.critical('Creating log dir')
+        log.info('Creating log dir')
         os.makedirs('logs', exist_ok=True)
 
     job_name = ulid.new().str
-    log.critical('Slurm Easy Unique job name: {}'.format(job_name))
+    log.info('Slurm Easy Unique job name: {}'.format(job_name))
     sbatch_args = args + ('-J', job_name, '-o', 'logs/%x_slurm-%A.out')
 
     if module_load:
@@ -291,7 +291,7 @@ def easy(cmd, *args, module_load=None):
         script=cmd
     )
 
-    log.critical('Final script to be submitted:\n{}'.format(script))
+    log.info('Final script to be submitted:\n{}'.format(script))
 
     with open('logs/{}.sh'.format(job_name), 'w') as fp:
         fp.write(script)

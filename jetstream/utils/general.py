@@ -328,10 +328,32 @@ def write_test_data(path, dialect='unix'):
     return path
 
 
+class Fingerprint(object):
+    def __init__(self):
+        self.id = str(jetstream.run_id_template.format(ulid.new().str))
+        self.datetime = str(datetime.now())
+        self.user = str(getuser())
+        self.version = str(get_distribution("jetstream"))
+        self.sys_version = str(sys.version)
+        self.sys_platform = str(sys.platform)
+        self.sys_mac = hex(getnode()).upper()
+        self.pid = int(os.getpid())
+        self.args = ' '.join(sys.argv)
+        self.hostname = str(gethostname())
+        self.pwd = str(os.getcwd())
+        self.parent = str(os.environ.get('JETSTREAM_RUNID'))
+
+    def to_yaml(self):
+        return yaml_dumps(vars(self))
+
+    def to_json(self):
+        return json.dumps(vars(self))
+
+
 def fingerprint(to_json=False):
     """Gather system info as a dictionary or JSON string."""
     fp = {
-        'id': jetstream.task_id_template.format(ulid.new().str),
+        'id': jetstream.run_id_template.format(ulid.new().str),
         'datetime': str(datetime.now()),
         'user': getuser(),
         'version': str(get_distribution("jetstream")),
