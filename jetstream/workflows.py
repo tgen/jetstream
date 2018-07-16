@@ -135,7 +135,7 @@ def save(workflow, path):
     shutil.move(lock_path, path)
 
     elapsed = datetime.now() - start
-    log.info('Elapsed: {} Workflow saved to {}'.format(elapsed, path))
+    log.info('Workflow saved (after {}) to {}'.format(elapsed, path))
 
 
 def coerce_str_to_list(value):
@@ -759,7 +759,7 @@ class WorkflowIterator(object):
         }
 
     def swap(self):
-        log.debug('Swap queue and stack')
+        #log.debug('Swap queue and stack')
         self.queue, self.stack = self.stack, self.queue
 
     def __next__(self):
@@ -769,7 +769,7 @@ class WorkflowIterator(object):
         while 1:
             try:
                 task = self.queue.popleft()
-                log.debug('Checking {}'.format(task.id))
+                #log.debug('Checking {}'.format(task.id))
 
                 if task.is_done():
                     self.done.append(task)
@@ -788,7 +788,7 @@ class WorkflowIterator(object):
                     self.stack.append(task)
 
             except IndexError:
-                log.debug('Queue empty, checking stack...')
+                #log.debug('Queue empty, checking stack...')
 
                 if not self.stack:
                     if there_are_pending_tasks:

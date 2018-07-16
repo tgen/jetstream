@@ -76,7 +76,7 @@ class AsyncRunner(object):
             self._workflow_complete.set()
 
     async def spawn(self, task):
-        log.debug('Spawn: {}'.format(task.id))
+        log.debug('Registering backend.spawn: {}'.format(task))
 
         try:
             asyncio.ensure_future(self.backend.spawn(task))
@@ -405,7 +405,7 @@ class SlurmBackend(Backend):
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
         args = ['sbatch', '--parsable', '-J', task.id, '--comment',
-                self.runner.fp.to_json()]
+                shlex.quote(self.runner.fp.to_json())]
 
         stdout = os.path.join(self.runner.log_path, task.stdout)
         stderr = os.path.join(self.runner.log_path, task.stderr)
@@ -449,9 +449,12 @@ class SlurmBackend(Backend):
             if task.cmd is None:
                 return task.complete(0)
 
-            cmdline = ' '.join(self.sbatch_cmd(task))
+            sbatch_cmd = self.sbatch_cmd(task)
+            cmd = ' '.join(sbatch_cmd)
 
-            p = await self.subprocess_run(cmdline, stdout=PIPE, stderr=STDOUT,
+            log.debug('Final command: {}'.format(cmd))
+
+            p = await self.subprocess_run(cmd, stdout=PIPE, stderr=STDOUT,
                                           shell=True)
 
             jid = p.stdout.decode().strip()
