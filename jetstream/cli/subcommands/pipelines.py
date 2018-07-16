@@ -32,7 +32,7 @@ def arg_parser():
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('template', help='Template path')
+    parser.add_argument('template', help='Template path', nargs='+')
 
     parser.add_argument('-t', '--template-search-path', action='append',
                         help='Manually configure the template search. This '
@@ -76,7 +76,7 @@ def main(args=None):
 
     for path in args.template:
         template = shared.load_template(path, args.template_search_path)
-        rendered = template.render(**vars(kvargs_data))
+        rendered = template.render(project=p, **vars(kvargs_data))
         loaded = jetstream.utils.yaml_loads(rendered)
         tasks.extend(loaded)
 

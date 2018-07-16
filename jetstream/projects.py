@@ -168,18 +168,23 @@ class Project:
         # Sort all data objects from project.config['data'] into samples
         if 'data' in self.config:
             for record in self.config['data']:
-                record_sample_name = record['sample_name']
+                try:
+                    data_sample_name = record['sample_name']
+                except KeyError:
+                    msg = 'Unable to link this data record to a sample record: {}'
+                    log.warning(msg.format(record))
+                    continue
 
-                if record_sample_name not in samples:
-                    samples[record_sample_name] = {
-                        'sample_name': record_sample_name,
+                if data_sample_name not in samples:
+                    samples[data_sample_name] = {
+                        'sample_name': data_sample_name,
                         'data': []
                     }
 
-                if 'data' not in samples[record_sample_name]:
-                    samples[record_sample_name]['data'] = []
+                if 'data' not in samples[data_sample_name]:
+                    samples[data_sample_name]['data'] = []
 
-                samples[record_sample_name]['data'].append(record)
+                samples[data_sample_name]['data'].append(record)
 
         return samples
 

@@ -1,4 +1,5 @@
 """Interact with jetstream projects."""
+import os
 import sys
 import argparse
 import logging
@@ -105,7 +106,8 @@ def init(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-    jetstream.projects.init(args.path)
+    os.chdir(args.path)
+    jetstream.project_init()
 
 
 def config(args=None):

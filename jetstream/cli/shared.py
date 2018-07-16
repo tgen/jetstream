@@ -54,7 +54,7 @@ def load_template(path, template_search_path=None):
     """Load a template from an automatically configured environment
     :param path: path to a template file
     :param template_search_path: a list of additional paths to add to searchpath
-    :return:
+    :return: template
     """
     template_name = os.path.basename(path)
     template_dir = os.path.dirname(path)
@@ -62,6 +62,8 @@ def load_template(path, template_search_path=None):
 
     if template_search_path:
         search_path.extend(template_search_path)
+
+    log.debug(search_path)
 
     env = jetstream.templates.environment(search_path=search_path)
     template = env.get_template_with_source(template_name)
