@@ -29,4 +29,5 @@ __all__ = [
     "project",
     "report",
     "pipelines",
+    "run",
 ]

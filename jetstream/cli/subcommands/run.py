@@ -1,21 +1,15 @@
-"""Run a Jetstream pipeline
+"""Run a Jetstream workflow
 
-Template variable data is usually saved as files in ``<project>/config``, but 
-command arguments can also be used to pass variable data to templates. All 
-arguments remaining after parsing the command line (arguments that are not 
-listed in the help section) will be treated as template variable data (kvargs):
-
-Template variable arguments should follow the syntax: ``--<key> <value>``. 
-The key must start with two hyphens and the value is the following argument. The 
+Template variable arguments should follow the syntax: ``--<key> <value>``.
+The key must start with two hyphens and the value is the following argument. The
 variable type can be explicitly set with the syntax ``--<type>:<key> <value>``.
 Variables with no type declared will be loaded as strings.
 
-If the variable type is "file" the value will be ``jetstream.data_loaders``, which
-handles files according to their extension. All other types will evaluated by the 
-appropriate type function. 
+If the variable type is "file" the value will be passed to
+``jetstream.data_loaders``, handled to the extension. All other types will
+evaluated by the appropriate type function.
 
 """
-import os
 import sys
 import logging
 import argparse
@@ -32,7 +26,7 @@ def arg_parser():
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('template', help='Template path')
+    parser.add_argument('template', help='Template path', nargs='+')
 
     parser.add_argument('-t', '--template-search-path', action='append',
                         help='Manually configure the template search. This '
@@ -50,15 +44,17 @@ def arg_parser():
     parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
                         help='Specify the runner backend (default: local)')
 
+    parser.add_argument('--logs', default='./',
+                        help='Default path for task output')
+
     parser.add_argument('--logging-interval', default=60, type=int,
                         help='Time between workflow status updates')
 
     parser.add_argument('--max-forks', default=None, type=int,
-                        help='Override the fork limits of the task backend.')
+                        help='Override the default fork limits of the task '
+                             'backend.')
 
     return parser
-
-
 
 
 def main(args=None):
@@ -69,8 +65,6 @@ def main(args=None):
     kvargs_data = shared.parse_kvargs(
         args=unknown,
         type_separator=args.kvarg_separator)
-
-    p = jetstream.Project()
 
     tasks = list()
 
@@ -86,14 +80,21 @@ def main(args=None):
         wf = jetstream.workflows.build_workflow(tasks)
         print(wf.pretty())
     else:
-        wf = jetstream.workflows.build_workflow(tasks)
+        workflow = jetstream.workflows.build_workflow(tasks)
 
         if args.backend == 'slurm':
             backend = jetstream.SlurmBackend(max_forks=args.max_forks)
         else:
             backend = jetstream.LocalBackend(max_forks=args.max_forks)
 
-        rc = p.run(wf, backend=backend, logging_interval=args.logging_interval)
+        runner = jetstream.runner.AsyncRunner(
+            workflow,
+            backend=backend,
+            log_path=args.logs,
+            logging_interval=args.logging_interval
+        )
+
+        rc = runner.start()
         sys.exit(rc)
 
 

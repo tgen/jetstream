@@ -101,7 +101,6 @@ determined prior to runtime, or if the command can handle the chunking
 internally.
 
 """
-import os
 import re
 import logging
 import shutil
@@ -117,6 +116,7 @@ log = logging.getLogger(__name__)
 
 
 class NoFallback:
+    """Sentinel value that allows task searches to fallback to None"""
     pass
 
 
@@ -129,27 +129,26 @@ def save(workflow, path):
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
-        log.critical('Saving workflow...'.format(lock_path))
+        log.info('Saving workflow...'.format(lock_path))
         fp.write(workflow.to_yaml())
 
     shutil.move(lock_path, path)
 
     elapsed = datetime.now() - start
-    log.critical('Elapsed: {} Workflow saved to {}'.format(elapsed, path))
+    log.info('Elapsed: {} Workflow saved to {}'.format(elapsed, path))
 
 
 def coerce_str_to_list(value):
-    if isinstance(value, str):
+    if value is None or isinstance(value, list):
+        return value
+    elif isinstance(value, str):
         return [value, ]
     else:
-        return value
+        raise ValueError(value)
 
 
-def coerce_str_to_bytes(value):
-    if isinstance(value, str):
-        return value.encode('utf8')
-    else:
-        return value
+class InvalidTaskDirective(Exception):
+    pass
 
 
 class Task(object):
@@ -163,11 +162,75 @@ class Task(object):
     valid_states = list(states_lookup.keys())
     status_lookup = {v: k for k, v in states_lookup.items()}
     valid_status = list(status_lookup.keys())
+    id_pattern = re.compile(r'^\w+\.?\d+$')
+
+    @staticmethod
+    def validate_id(id):
+        if not isinstance(id, str):
+            raise InvalidTaskDirective('Task id must be a string: {}'.format(id))
+        if not Task.id_pattern.match(id):
+            raise InvalidTaskDirective('Invalid task ID: {}'.format(id))
+        return id
+
+    @staticmethod
+    def validate_description(**kwargs):
+        # Description is meant to be an open ended field
+        return kwargs
+
+    @staticmethod
+    def validate_flow(before=None, after=None, input=None, output=None):
+        try:
+            before = coerce_str_to_list(before)
+        except ValueError:
+            msg = '"before" must be str or list'
+            raise InvalidTaskDirective(msg) from None
+
+        try:
+            after = coerce_str_to_list(after)
+        except ValueError:
+            msg = '"after" must be str or list'
+            raise InvalidTaskDirective(msg) from None
+
+        try:
+            input = coerce_str_to_list(input)
+        except ValueError:
+            msg = '"input" must be str or list'
+            raise InvalidTaskDirective(msg) from None
+
+        try:
+            output = coerce_str_to_list(output)
+        except ValueError:
+            msg = '"output" must be str or list'
+            raise InvalidTaskDirective(msg) from None
+
+        return {
+            'before': before,
+            'after': after,
+            'input': input,
+            'output': output
+        }
+
+    @staticmethod
+    def validate_action(execute=None, split=None, apply=None, combine=None,
+                        name=None):
+
+        if execute and any((split, apply, combine, name)):
+            raise InvalidTaskDirective(
+                '"execute" is can not be included with "split", "apply", '
+                'combine", or "name"')
+
+    #
+    # def __init__(self, id, *, description=None, flow=None, action=None):
+    #     self.id = self.validate_id(id)
+    #     self.description = self.validate_description(**description)
+    #     self.flow = self.validate_flow(**flow)
+    #     self.action = self.validate_action(**action)
 
     def __init__(self, id, *, cmd=None, before=None, after=None, input=None,
                  output=None, stdin=None, stdout=None, stderr=None, cpus=0,
                  mem=0, walltime=0, status='new', returncode=None, start=None,
-                 end=None, methods=None, description=None, help=None):
+                 end=None, methods=None, description=None, help=None,
+                 workflow=None):
 
         self.id = str(id)
         self.cmd = cmd
@@ -180,8 +243,7 @@ class Task(object):
 
         if self.stdout is None:
             # Remove whitespace from id to form default out path
-            base_path = os.path.join('logs', re.sub(r'\s', '_', self.id))
-            self.stdout = base_path + '.out'
+            self.stdout = re.sub(r'\s', '_', self.id) + '.out'
 
         self.stderr = stderr or self.stdout
         self.cpus = int(cpus)
@@ -195,7 +257,7 @@ class Task(object):
         self.methods = methods
         self.description = description
         self.help = help
-        self._workflow = None
+        self._workflow = workflow
 
     def __repr__(self):
         return '<Task({}): {} >'.format(self.status, self.id)
@@ -235,6 +297,19 @@ class Task(object):
             err = 'Status must be one of {}'.format(Task.valid_status)
             raise KeyError(err) from None
 
+    @property
+    def workflow(self):
+        # By making workflow a property, it can be get/set as task.workflow
+        # but will not be included when serializing.
+        return self._workflow
+
+    @workflow.setter
+    def workflow(self, value):
+        self._workflow = value
+
+    def add_to_workflow(self, wf):
+        return wf.add_task(self)
+
     def is_new(self):
         if self.status == 'new':
             return True
@@ -247,8 +322,20 @@ class Task(object):
         else:
             return False
 
-    def is_complete(self):
+    def is_done(self):
         if self.status in ('complete', 'failed'):
+            return True
+        else:
+            return False
+
+    def is_complete(self):
+        if self.status == 'complete':
+            return True
+        else:
+            return False
+
+    def is_failed(self):
+        if self.status == 'failed':
             return True
         else:
             return False
@@ -257,7 +344,7 @@ class Task(object):
         return self._workflow.is_ready(self.id)
 
     def reset(self):
-        log.critical('{} reset!'.format(self.id))
+        log.info('{} reset!'.format(self.id))
 
         self._state = 0
         self.returncode = None
@@ -265,20 +352,23 @@ class Task(object):
         self.end = None
 
     def pending(self):
-        log.critical('{} is pending!'.format(self.id))
+        """ Set this task to "pending" status. """
+        log.info('{} is pending!'.format(self.id))
 
         self._state = 1
         self.start = str(datetime.now())
 
     def complete(self, returncode=0):
-        log.critical('{} is complete!'.format(self.id))
+        """ Set this task to "complete" status. """
+        log.info('{} is complete!'.format(self.id))
 
         self._state = 2
         self.returncode = returncode
         self.end = str(datetime.now())
 
     def fail(self, returncode=1):
-        log.critical('{} failed!'.format(self.id))
+        """ Set this task to "failed" status. """
+        log.info('{} failed!'.format(self.id))
 
         self._state = 3
         self.returncode = returncode
@@ -286,9 +376,6 @@ class Task(object):
 
         for task in self._workflow.dependents(self.id):
             task.fail(returncode)
-
-    def add_to_workflow(self, wf):
-        self._workflow = wf
 
 
 class Workflow(object):
@@ -310,7 +397,7 @@ class Workflow(object):
 
         if exc_value is not None:
             for task_id in self._stack:
-                del self.graph.nodes()[task_id]
+                self.graph.remove_node(task_id)
 
         self.update()
         self._stack = list()
@@ -326,25 +413,30 @@ class Workflow(object):
     def __iter__(self):
         return WorkflowIterator(self)
 
-    def add_task(self, task_id, **directives):
-        if task_id in self.graph:
-             raise ValueError('Duplicate task id: {}'.format(task_id))
+    def add_task(self, task):
+        if not isinstance(task, Task):
+            raise ValueError('task must be instance of {}'.format(Task))
 
-        t = Task(task_id, **directives)
-        t.add_to_workflow(self)
+        if task.id in self.graph:
+            raise ValueError('Duplicate task ID: {}'.format(task.id))
 
-        self.graph.add_node(task_id, obj=t)
+        task.workflow = self
+        self.graph.add_node(task.id, obj=task)
 
         if self.is_locked():
-            self._stack.append(task_id)
+            self._stack.append(task.id)
         else:
             try:
                 self.update()
             except Exception as e:
-                self.graph.remove_node(task_id)
+                self.graph.remove_node(task.id)
                 raise e
 
-        return t
+        return task
+
+    def new_task(self, task_id, **directives):
+        task = Task(task_id, **directives)
+        return self.add_task(task)
 
     def update(self):
         current = list(self.graph.edges())
@@ -375,11 +467,17 @@ class Workflow(object):
             if task.status in ('pending', 'failed'):
                 task.reset()
 
+    def remove_task(self, task_id):
+        return self.graph.remove_node(task_id)
+
     def tasks(self, objs=False):
         if objs:
             return (t['obj'] for i, t in self.graph.nodes(data=True))
         else:
             return self.graph.nodes()
+
+    def list_tasks(self):
+        return list(self.tasks(objs=True))
 
     def get_task(self, task_id):
         return self.graph.nodes[task_id]['obj']
@@ -565,55 +663,71 @@ class Workflow(object):
                     self._add_edge(task_id, tar_id)
 
     def compose(self, wf):
-        """ Compose this workflow with another.
+        for task in wf.tasks(objs=True):
 
-        This add nodes and edges from another workflow to this workflow
-        graph. See networkx.compose(). G -> H where G is "new_wf" and H
-        is this workflow. The result is that node status from the current
-        workflow is preserved. If a workflow contains overlapping node ids
-        this will essentially extend the workflow.
+            if task.id not in self.graph:
+                self.add_task(task)
 
-        ::
+            else:
+                existing_task = self.get_task(task.id)
 
-                 G (new_wf) -->    H (self)     =   self.graph
-            ---------------------------------------------------
-                (A)new                              (A)complete
-                 |         --->   (A)complete   =    |
-                (B)new                              (B)new
+                if existing_task.is_failed():
+                    self.remove_task(existing_task.id)
+                    self.add_task(task)
+                else:
+                    # Preserve tasks that are not problematic
+                    pass
 
-
-        :param new_wf: Another workflow to add to this workflow
-        :return: None
-        """
-        old_graph = self.graph
-        graph = nx.compose(wf.graph, self.graph)
-
-        try:
-            self.graph = graph
-            self.update()
-        except Exception as e:
-            log.critical('Composition would result in a workflow with '
-                         'errors in task dependency graph. See traceback '
-                         'for more details.')
-            self.graph = old_graph
-            raise e from None
-
-    def compose_all(self, *wfs):
-        """ Compose this workflow with multiple other workflows.
-        See Workflow.compose for more details. """
-        old_graph = self.graph
-        wfs = [wf.graph for wf in wfs] + [self.graph]
-        graph = nx.compose_all(wfs)
-
-        try:
-            self.graph = graph
-            self.update()
-        except Exception as e:
-            log.critical('Composition would result in a workflow with '
-                         'errors in task dependency graph. See traceback '
-                         'for more details.')
-            self.graph = old_graph
-            raise e from None
+    # def compose(self, wf):
+    #     """ Compose this workflow with another.
+    #
+    #     This add nodes and edges from another workflow to this workflow
+    #     graph. See networkx.compose(). G -> H where G is "new_wf" and H
+    #     is this workflow. The result is that node status from the current
+    #     workflow is preserved. If a workflow contains overlapping node ids
+    #     this will essentially extend the workflow.
+    #
+    #     ::
+    #
+    #              G (new_wf) -->    H (self)     =   self.graph
+    #         ---------------------------------------------------
+    #             (A)new                              (A)complete
+    #              |         --->   (A)complete   =    |
+    #             (B)new                              (B)new
+    #
+    #
+    #     :param new_wf: Another workflow to add to this workflow
+    #     :return: None
+    #     """
+    #     old_graph = self.graph
+    #     graph = nx.compose(wf.graph, self.graph)
+    #
+    #     try:
+    #         self.graph = graph
+    #         self.update()
+    #     except Exception as e:
+    #         log.info('Composition would result in a workflow with '
+    #                      'errors in task dependency graph. See traceback '
+    #                      'for more details.')
+    #         self.graph = old_graph
+    #         raise e from None
+    #
+    # def compose_all(self, *wfs):
+    #     """ Compose this workflow with multiple other workflows.
+    #     See Workflow.compose for more details. """
+    #     old_graph = self.graph
+    #     wfs = [wf.graph for wf in wfs] + [self.graph]
+    #     graph = nx.compose_all(wfs)
+    #
+    #     try:
+    #         self.graph = graph
+    #         self.update()
+    #     except Exception as e:
+    #         log.info('Composition would result in a workflow with '
+    #                      'errors in task dependency graph. See traceback '
+    #                      'for more details.')
+    #         self.graph = old_graph
+    #         raise e from None
 
     def pretty(self):
         return utils.yaml_dumps(self.serialize())
@@ -623,14 +737,14 @@ class WorkflowIterator(object):
     def __init__(self, workflow):
         self.workflow = workflow
         self._queues = [deque(), deque()]
-        self.complete = list()
+        self.done = list()
         self.queue, self.stack = self._queues
 
         self.workflow.retry()
 
         for task in self.workflow.tasks(objs=True):
             if task.is_complete():
-                self.complete.append(task)
+                self.done.append(task)
             else:
                 self.queue.append(task)
 
@@ -641,7 +755,7 @@ class WorkflowIterator(object):
         return {
             'queue': len(self.queue),
             'stack': len(self.stack),
-            'complete': len(self.complete)
+            'done': len(self.done)
         }
 
     def swap(self):
@@ -657,8 +771,8 @@ class WorkflowIterator(object):
                 task = self.queue.popleft()
                 log.debug('Checking {}'.format(task.id))
 
-                if task.is_complete():
-                    self.complete.append(task)
+                if task.is_done():
+                    self.done.append(task)
 
                 elif task.is_pending():
                     self.stack.append(task)
@@ -681,7 +795,7 @@ class WorkflowIterator(object):
                         return None
                     else:
                         # Queue is empty, stack is empty, and no pending.
-                        log.critical('All tasks complete!')
+                        log.info('All tasks complete!')
                         raise StopIteration from None
 
                 elif self.stack and not checked_stack:
@@ -698,7 +812,7 @@ def from_node_link_data(data):
 
     for node_id, node_data in graph.nodes(data=True):
         task_id = node_data['obj'].pop('id')
-        wf.add_task(task_id, **node_data['obj'])
+        wf.new_task(task_id, **node_data['obj'])
 
     return wf
 
@@ -733,7 +847,7 @@ def build_workflow(tasks):
     """ Given a sequence of tasks (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
     already added """
-    log.critical('Building workflow...')
+    log.info('Building workflow...')
 
     if isinstance(tasks, str):
         # If tasks are not parsed yet, do it automatically
@@ -746,6 +860,6 @@ def build_workflow(tasks):
 
     with wf:
         for task in tasks:
-            wf.add_task(task_id=task.pop('id'), **task)
+            wf.new_task(task_id=task.pop('id'), **task)
 
     return wf

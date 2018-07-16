@@ -19,10 +19,8 @@ __version__ = get_distribution('jetstream').version
 #     'project_history': os.path.join('jetstream', 'history'),
 # }
 
-auto_save_interval = 60
-max_concurrent_tasks = 1000
-site_template_path = resource_filename('jetstream', 'built_in_templates')
-task_id_template = 'js{}'
+built_in_templates = resource_filename('jetstream', 'built_in_templates')
+run_id_template = 'js{}'
 project_index = 'jetstream'
 project_config = 'config'
 project_temp = 'temp'
@@ -32,8 +30,8 @@ project_manifest = os.path.join(project_index, 'manifest')
 project_workflow = os.path.join(project_index, 'workflow')
 project_history = os.path.join(project_index, 'history')
 
-# This prevents numpy from starting a million threads when imported. The
-# graph library, networkx, uses scipy/numpy. TODO switch to another graph lib
+# This prevents numpy from starting a bunch of threads when imported. The
+# graph library, networkx, uses scipy/numpy. TODO switch to another graph lib?
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
 
@@ -54,15 +52,33 @@ data_loaders = {
 
 
 from jetstream.runner import AsyncRunner, SlurmBackend, LocalBackend
-from jetstream.workflows import Workflow
+from jetstream.workflows import Workflow, Task
 from jetstream.projects import Project
 from jetstream import templates, projects, workflows
 
+project_init = Project.init
+load_template = templates.load_template
+build_workflow = workflows.build_workflow
+template_environment = templates.environment
 
 
-env = templates.load_environment()
+def load_data_file(path):
+    """Attempts to load a data file from path, raises :ValueError
+    if an suitable loader function is not found in data_loaders"""
+    for ext, fn in data_loaders.items():
+        if path.endswith(ext):
+            loader = fn
+            break
+    else:
+        raise ValueError('No loader fn found for {}'.format(path))
+
+    return loader(path)
 
 
-def config_environment(*args, **kwargs):
-    global env
-    env = templates.load_environment(*args, **kwargs)
+def loadable_files(directory):
+    """Generator yields all files we can load (see data_loaders) """
+    for file in os.listdir(directory):
+        path = os.path.join(directory, file)
+        if os.path.isfile(path) \
+                and path.endswith(tuple(data_loaders.keys())):
+            yield path

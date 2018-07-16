@@ -1,21 +1,23 @@
+import os
 import argparse
 import logging
 import jetstream
 
 log = logging.getLogger(__name__)
 
+
 kvarg_types = {
     "default": str,
     "str": str,
     "int": int,
     "float": float,
-    "file": jetstream.projects.load_data_file,
     "json": jetstream.utils.json_loads,
     "yaml": jetstream.utils.yaml_loads,
+    "file": jetstream.load_data_file,
 }
 
 
-def parse(args, type_separator=':', types=kvarg_types):
+def parse_kvargs(args, type_separator=':', types=kvarg_types):
     """Reparses list of arbitrary arguments ``--<type>:<key> <value>``
 
     This works by building an argument parser configured specifically for the
@@ -28,7 +30,7 @@ def parse(args, type_separator=':', types=kvarg_types):
 
     After building the parser, it's used to reparse the args and the namespace
     is returned. """
-    log.critical('Reparsing kvargs: {}'.format(args))
+    log.debug('Reparsing kvargs: {}'.format(args))
     parser = argparse.ArgumentParser(add_help=False)
 
     for arg in args:
@@ -46,3 +48,22 @@ def parse(args, type_separator=':', types=kvarg_types):
             parser.add_argument(arg, type=fn, dest=key)
 
     return parser.parse_args(args)
+
+
+def load_template(path, template_search_path=None):
+    """Load a template from an automatically configured environment
+    :param path: path to a template file
+    :param template_search_path: a list of additional paths to add to searchpath
+    :return:
+    """
+    template_name = os.path.basename(path)
+    template_dir = os.path.dirname(path)
+    search_path = [template_dir, ]
+
+    if template_search_path:
+        search_path.extend(template_search_path)
+
+    env = jetstream.templates.environment(search_path=search_path)
+    template = env.get_template_with_source(template_name)
+
+    return template
