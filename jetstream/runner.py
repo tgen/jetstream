@@ -405,7 +405,7 @@ class SlurmBackend(Backend):
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
         args = ['sbatch', '--parsable', '-J', task.id, '--comment',
-                self.runner.fp.to_json()]
+                shlex.quote(self.runner.fp.to_json())]
 
         stdout = os.path.join(self.runner.log_path, task.stdout)
         stderr = os.path.join(self.runner.log_path, task.stderr)
