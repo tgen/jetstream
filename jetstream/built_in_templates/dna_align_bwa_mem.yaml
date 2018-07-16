@@ -106,8 +106,7 @@
 # Mark Duplicate Reads
 - id: mark_duplicates_{{ sample.sample_name }}
   after: merge_bams_{{ sample.sample_name }}
-  outputs:
-    - {{ sample.sample_name }}/{{ sample.sample_name }}.bam
+  output: {{ sample.sample_name }}/{{ sample.sample_name }}.bam
   methods: Duplicate reads were marked with GATK MarkDuplicates v{{ gatk_version }}, then
     resulting bam was indexed with Samtools v{{ samtools_version }}
   cpus: 2
