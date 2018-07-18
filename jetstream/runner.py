@@ -548,7 +548,17 @@ class SlurmBatchJob(object):
 
         if state not in self.active_states:
             try:
-                self.returncode = self.job_data['ExitCode'].partition(':')[0]
+                if state in self.failed_states:
+                    self.returncode = 1
+                else:
+                    self.returncode = 0
+
+                # TODO
+                # Slurm sets the return code to 0 when it cancels jobs for
+                # memory issues etc.. I consider this a failure, but this
+                # may need to be revisited later.
+                # self.returncode = self.job_data['ExitCode'].partition(':')[0]
+
             except KeyError:
                 self.returncode = -123
 
