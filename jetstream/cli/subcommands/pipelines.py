@@ -1,4 +1,5 @@
-"""Run a Jetstream pipeline
+"""Run a Jetstream workflow inside a project
+
 
 Template variable data is usually saved as files in ``<project>/config``, but 
 command arguments can also be used to pass variable data to templates. All 
@@ -10,12 +11,11 @@ The key must start with two hyphens and the value is the following argument. The
 variable type can be explicitly set with the syntax ``--<type>:<key> <value>``.
 Variables with no type declared will be loaded as strings.
 
-If the variable type is "file" the value will be ``jetstream.data_loaders``, which
-handles files according to their extension. All other types will evaluated by the 
-appropriate type function. 
+If the variable type is "file" the value will be ``jetstream.data_loaders``,
+which handles files according to their extension. All other types will
+evaluated by the appropriate type function.
 
 """
-import os
 import sys
 import logging
 import argparse
@@ -59,8 +59,6 @@ def arg_parser():
     return parser
 
 
-
-
 def main(args=None):
     parser = arg_parser()
     args, unknown = parser.parse_known_args(args)
@@ -77,11 +75,16 @@ def main(args=None):
     for path in args.template:
         template = shared.load_template(path, args.template_search_path)
         rendered = template.render(project=p, **vars(kvargs_data))
+
+        if args.render_only:
+            print(rendered)
+            continue
+
         loaded = jetstream.utils.yaml_loads(rendered)
         tasks.extend(loaded)
 
     if args.render_only:
-        print(tasks)
+        pass
     elif args.build_only:
         wf = jetstream.workflows.build_workflow(tasks)
         print(wf.pretty())

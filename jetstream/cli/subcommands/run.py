@@ -79,7 +79,9 @@ def main(args=None):
         loaded = jetstream.utils.yaml_loads(rendered)
         tasks.extend(loaded)
 
-    if args.build_only:
+    if args.render_only:
+        pass
+    elif args.build_only:
         wf = jetstream.workflows.build_workflow(tasks)
         print(wf.pretty())
     else:
