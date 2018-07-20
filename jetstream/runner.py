@@ -548,7 +548,7 @@ class SlurmBatchJob(object):
 
         if state not in self.active_states:
             try:
-                if state in self.failed_states:
+                if state not in self.passed_states:
                     self.returncode = 1
                 else:
                     self.returncode = 0
