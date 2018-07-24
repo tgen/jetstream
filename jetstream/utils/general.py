@@ -86,6 +86,14 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
     return '\t'.join(final)
 
 
+class JsonDict(dict):
+    """ Dict subclass that enforces key/values must be JSON serializable """
+    def __setitem__(self, key, val):
+        json.dumps(key)
+        json.dumps(val)
+        return super(JsonDict, self).__setitem__(key, val)
+
+
 class LogisticDelay:
     def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
         self.max = max
