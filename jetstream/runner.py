@@ -454,8 +454,7 @@ class SlurmBackend(Backend):
 
             log.debug('Final command: {}'.format(cmd))
 
-            p = await self.subprocess_run(cmd, stdout=PIPE, stderr=STDOUT,
-                                          shell=True)
+            p = await self.subprocess_run(cmd, stdout=PIPE, shell=True)
 
             jid = p.stdout.decode().strip()
 
