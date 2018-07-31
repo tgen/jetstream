@@ -421,7 +421,7 @@ class SlurmBackend(Backend):
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
         args = ['sbatch', '--parsable', '-J', task.id, '--comment',
-                self.runner.fp.to_json()]
+                shlex.quote(self.runner.fp.to_json())]
 
         stdout = os.path.join(self.runner.log_path, task.stdout)
         stderr = os.path.join(self.runner.log_path, task.stderr)
@@ -563,7 +563,17 @@ class SlurmBatchJob(object):
 
         if state not in self.active_states:
             try:
-                self.returncode = self.job_data['ExitCode'].partition(':')[0]
+                if state not in self.passed_states:
+                    self.returncode = 1
+                else:
+                    self.returncode = 0
+
+                # TODO
+                # Slurm sets the return code to 0 when it cancels jobs for
+                # memory issues etc.. I consider this a failure, but this
+                # may need to be revisited later.
+                # self.returncode = self.job_data['ExitCode'].partition(':')[0]
+
             except KeyError:
                 self.returncode = -123
 

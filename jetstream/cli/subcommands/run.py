@@ -71,11 +71,16 @@ def main(args=None):
     for path in args.template:
         template = shared.load_template(path, args.template_search_path)
         rendered = template.render(**vars(kvargs_data))
+
+        if args.render_only:
+            print(rendered)
+            continue
+
         loaded = jetstream.utils.yaml_loads(rendered)
         tasks.extend(loaded)
 
     if args.render_only:
-        print(tasks)
+        pass
     elif args.build_only:
         wf = jetstream.workflows.build_workflow(tasks)
         print(wf.pretty())
