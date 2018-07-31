@@ -329,7 +329,7 @@ class SlurmBackend(Backend):
         sacct_data = {}
 
         for chunk in self.chunk_jobs():
-            data = await self._sacct_request(*chunk)
+            data = await self.async_sacct_request(*chunk)
             sacct_data.update(data)
 
         log.info('Status updates for {} jobs'.format(len(sacct_data)))
@@ -349,7 +349,7 @@ class SlurmBackend(Backend):
         for jid in reap:
             self._jobs.pop(jid)
 
-    async def _sacct_request(self, *job_ids):
+    async def async_sacct_request(self, *job_ids):
         if not job_ids:
             raise ValueError('Missing required argument "job_ids"')
 
@@ -361,6 +361,22 @@ class SlurmBackend(Backend):
         log.debug('Launching: {}'.format(cmd))
         p = await self.create_subprocess_shell(cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = await p.communicate()
+
+        res = self._parse_sacct(stdout.decode())
+
+        return res
+
+    def sacct_request(self, *job_ids):
+        if not job_ids:
+            raise ValueError('Missing required argument "job_ids"')
+
+        job_args = ' '.join(['-j {}'.format(jid) for jid in job_ids])
+
+        cmd = 'sacct -P --format all --delimiter={} {}'.format(
+            self.sacct_delimiter, job_args)
+
+        log.debug('Launching: {}'.format(cmd))
+        stdout = subprocess.check_output(cmd)
 
         res = self._parse_sacct(stdout.decode())
 
