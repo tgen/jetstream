@@ -88,6 +88,13 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
 class JsonDict(dict):
     """ Dict subclass that enforces key/values must be JSON serializable """
+    def __init__(self, *args, **kwargs):
+        super(JsonDict, self).__init__(*args, **kwargs)
+
+        # If dict was initialized from iterable, recheck the values
+        for k, v in self.items():
+            self.__setitem__(k, v)
+
     def __setitem__(self, key, val):
         json.dumps(key)
         json.dumps(val)
