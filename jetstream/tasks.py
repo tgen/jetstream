@@ -1,6 +1,7 @@
 from jetstream import utils
 from datetime import datetime
 from hashlib import sha1
+from copy import deepcopy
 
 
 class Task(object):
@@ -9,6 +10,11 @@ class Task(object):
 
     def __init__(self, data=None, **kwargs):
         """
+
+        Task.tid is deliberately not "Task.id" in order to try and prevent
+        confusing the "id(Task)", the object identity, with "Task.tid", the
+        content identity computed by sha1 hash of Task.identity
+
         TODO: Note in docs, access to task data is restricted. Changes to task
         state should be handled through methods, and changing task directives
         might have unpredictable consequences to their workflow.
@@ -23,12 +29,9 @@ class Task(object):
         existing_id = None
         
         if data:
-            # Status is the most important attribute of a task. An invalid
-            # status could break the workflow iterator, so we double check 
-            # the status of tasks that are being reloaded from data.
             if 'status' in data and not data['status'] in Task.valid_status:
                 raise InvalidTaskStatus(data['status'])
-            
+
             for k, v in data.items():
                 if k == 'id':
                     existing_id = v
@@ -71,14 +74,19 @@ class Task(object):
         return self._directives.get(*args, **kwargs)
 
     @property
+    def directives(self):
+        return deepcopy(self._directives)
+
+    @property
+    def state(self):
+        return deepcopy(self._state)
+
+    @property
     def identity(self):
         return utils.json_dumps(self._directives, sort_keys=True)
  
     @property
     def tid(self):
-        # Task.tid is deliberately not "Task.id" in order to try and prevent
-        # confusing the "id(Task)", the object identity, with "Task.tid", the 
-        # content identity computed by sha1 hash of Task.identity 
         return self._tid
 
     def to_json(self):
@@ -86,10 +94,6 @@ class Task(object):
         res.update(self._directives)
         res.update(self._state)
         return utils.json_dumps(res, sort_keys=True)
-
-    @property
-    def state(self):
-        return self._state
     
     @property
     def status(self):
@@ -182,11 +186,12 @@ class Task(object):
 
 class TaskException(Exception):
     """Base class for catching exceptions related to tasks"""
-    pass
+    msg_prefix = ''
+
+    def __init__(self, msg=''):
+        super(TaskException, self).__init__(self.msg_prefix + msg)
 
 
 class InvalidTaskStatus(TaskException):
-    def __init__(self, msg):
-        msg = "Invalid task status: '{}'. Options: {}".format(
-            msg, ', '.join(Task.valid_status))
-        super(InvalidTaskStatus, self).__init__(msg)
+    msg_prefix = "Invalid task status, options: {}: ".format(
+        ', '.join(Task.valid_status))
