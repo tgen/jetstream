@@ -3,9 +3,11 @@ import re
 import logging
 import shlex
 import time
+import json
 import subprocess
 import jetstream
 from datetime import datetime
+import itertools
 from multiprocessing import cpu_count
 import asyncio
 from asyncio import (BoundedSemaphore, Event, create_subprocess_shell,
@@ -25,7 +27,6 @@ class AsyncRunner(object):
         self.logging_interval = logging_interval or 3
         self.output_prefix = output_prefix
         self._fp = jetstream.utils.Fingerprint()
-
         self._started = False
         self._start_time = None
         self._loop = None
@@ -300,6 +301,7 @@ class LocalBackend(Backend):
 
 
 class SlurmBackend(Backend):
+    count = itertools.count()
     sacct_delimiter = '\037'
     submission_pattern = re.compile(r"Submitted batch job (\d*)")
     job_id_pattern = re.compile(r"(?P<jobid>\d*)\.?(?P<taskid>.*)")
@@ -439,8 +441,16 @@ class SlurmBackend(Backend):
 
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
-        args = ['sbatch', '--parsable', '-J', task.tid, '--comment',
-                shlex.quote(self.runner.fp.to_json())]
+        run_id = self.runner.fp['id']
+        count = next(self.count)
+        job_name = '{}.{}'.format(run_id, count)
+
+        comment = json.dumps({
+            'run': self.runner,
+            'task': task.to_json()
+        }, sort_keys=True)
+
+        args = ['sbatch', '--parsable', '-J', job_name, '--comment', comment]
         
         if task.get('stdout'):
             if task.get('stderr'):
