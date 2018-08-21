@@ -47,7 +47,7 @@ def config_arg_parser():
     parser.add_argument('path', nargs='?', default='.',
                         help='Path to a Jetstream project')
 
-    parser.add_argument('--format', choices=['yaml', 'json'], default='json')
+    parser.add_argument('--format', choices=['yaml', 'json'], default='yaml')
 
     parser.add_argument('--json', dest='format',
                         action='store_const', const='json',
@@ -57,8 +57,8 @@ def config_arg_parser():
                         action='store_const', const='yaml',
                         help='Output YAML')
 
-    parser.add_argument('--pretty', action='store_true', default=False,
-                        help='Human-friendlier output')
+    parser.add_argument('--parsable', action='store_true', default=False,
+                        help='Parsable output')
 
     return parser
 
@@ -118,10 +118,10 @@ def config(args=None):
     p = jetstream.Project(args.path)
 
     if args.format == 'json':
-        if args.pretty:
-            print(jetstream.utils.json.dumps(p.config, indent=4))
-        else:
+        if args.parsable:
             print(jetstream.utils.json.dumps(p.config))
+        else:
+            print(jetstream.utils.json.dumps(p.config, indent=4))
     elif args.format == 'yaml':
         jetstream.utils.yaml.dump(p.config, stream=sys.stdout)
 
