@@ -45,6 +45,7 @@ def parse_kvargs(args, type_separator=':', types=kvarg_types):
             log.debug('Adding parser entry for key: "{}" type: "{}"'.format(
                 key, argtype))
             fn = types[argtype]
+            
             parser.add_argument(arg, type=fn, dest=key)
 
     return parser.parse_args(args)

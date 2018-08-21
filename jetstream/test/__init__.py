@@ -69,9 +69,9 @@ if __name__ == '__main__':
 
 else:
     workflow = jetstream.Workflow()
-    workflow.new_task('task1', cmd='echo hello world')
-    workflow.new_task('task2', cmd='okay', after='task1')
-    workflow.new_task('task3', output='task3.results')
-    workflow.new_task('task4', output='task4.results')
-    workflow.new_task('task5', input='.*results')
+    workflow.new_task(name='task1', cmd='echo hello world')
+    workflow.new_task(name='task2', cmd='okay', after='task1')
+    workflow.new_task(name='task3', output='task3.results')
+    workflow.new_task(name='task4', output='task4.results')
+    workflow.new_task(name='task5', input='.*results')
 

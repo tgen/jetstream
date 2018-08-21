@@ -64,7 +64,10 @@ def main(args=None):
 
     kvargs_data = shared.parse_kvargs(
         args=unknown,
-        type_separator=args.kvarg_separator)
+        type_separator=args.kvarg_separator
+    )
+    
+    log.debug(kvargs_data)
 
     tasks = list()
 
@@ -95,7 +98,7 @@ def main(args=None):
         runner = jetstream.runner.AsyncRunner(
             workflow,
             backend=backend,
-            log_path=args.logs,
+            output_prefix=args.logs,
             logging_interval=args.logging_interval
         )
 

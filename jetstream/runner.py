@@ -18,15 +18,16 @@ log = logging.getLogger(__name__)
 
 class AsyncRunner(object):
     def __init__(self, workflow, backend=None, logging_interval=None,
-                 log_path=None):
+                 output_prefix=''):
         self.workflow = workflow
         self.backend = backend
         self.backend.runner = self
         self.logging_interval = logging_interval or 3
-        self.log_path = log_path or 'logs'
+        self.output_prefix = output_prefix
         self._fp = jetstream.utils.Fingerprint()
 
         self._started = False
+        self._start_time = None
         self._loop = None
         self._iterator = None
         self._workflow_manager = None
@@ -106,8 +107,7 @@ class AsyncRunner(object):
         elapsed = datetime.now() - self._start_time
         log.info('Total run time: {}'.format(elapsed))
 
-
-        fails = [t.id for t in self.workflow.tasks(objs=True) if
+        fails = [t.tid for t in self.workflow.tasks(objs=True) if
                  t.status == 'failed']
 
         if fails:
@@ -149,6 +149,9 @@ class AsyncRunner(object):
 
 class Backend(object):
     """ Backends should implement the coroutine method "spawn" """
+
+    # Keep track of the task directives that a backend will use
+    respects = tuple()
 
     # "spawn" will be called by the asyncrunner when a task is ready
     # for execution. It should be asynchronous and return the task_id
@@ -218,6 +221,8 @@ class Backend(object):
 
 
 class LocalBackend(Backend):
+    respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus')
+    
     def __init__(self, cpus=None, *args, **kwargs):
         """ LocalBackend executes tasks as processes on the local machine.
         
@@ -239,33 +244,45 @@ class LocalBackend(Backend):
 
         cpus_reserved = 0
 
-        if task.cmd is None:
+        if task.get('cmd') is None:
             return task.complete(0)
 
         try:
-            for i in range(task.cpus):
+            for i in range(task.get('cpus', 0)):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            if task.stdin:
-                input = task.stdin.encode()
+            if task.get('stdin'):
+                input = task['stdin'].encode()
             else:
                 input = None
 
-            cmd = task.cmd
-            stdout = os.path.join(self.runner.log_path, task.stdout)
-            stderr = os.path.join(self.runner.log_path, task.stderr)
-
-            if stdout == stderr:
-                with open(stdout, 'w') as fp:
-                    p = await self.subprocess_run(cmd, stdin=PIPE, input=input,
-                                                  stdout=fp, stderr=STDOUT,
-                                                  shell=True)
+            cmd = task['cmd']
+            
+            if task.get('stdout'):
+                stdout = self.runner.output_prefix + task.get('stdout')
             else:
-                with open(stdout, 'w') as out, open(stderr, 'w') as err:
-                    p = await self.subprocess_run(cmd, stdin=PIPE, input=input,
-                                                  stdout=out, stderr=err,
-                                                  shell=True)
+                stdout = None
+                
+            if task.get('stderr'):
+                stderr = self.runner.output_prefix + task.get('stderr')
+            else:
+                stderr = None
+            
+            if stdout:
+                stdout_fp = open(stdout, 'w')
+            else:
+                stdout_fp = None
+            
+            if stderr:
+                stderr_fp = open(stderr, 'w')
+            else:
+                stderr_fp = None
+            
+            p = await self.subprocess_run(
+                cmd, stdin=PIPE, input=input, stdout=stdout_fp,
+                stderr=stderr_fp, shell=True
+            )
 
             if p.returncode != 0:
                 return task.fail(p.returncode)
@@ -286,6 +303,8 @@ class SlurmBackend(Backend):
     sacct_delimiter = '\037'
     submission_pattern = re.compile(r"Submitted batch job (\d*)")
     job_id_pattern = re.compile(r"(?P<jobid>\d*)\.?(?P<taskid>.*)")
+    respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
+                'slurm_args')
 
     def __init__(self, max_jobs=None, sacct_frequency=None, chunk_size=None,
                  *args, **kwargs):
@@ -420,32 +439,42 @@ class SlurmBackend(Backend):
 
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
-        args = ['sbatch', '--parsable', '-J', task.id, '--comment',
+        args = ['sbatch', '--parsable', '-J', task.tid, '--comment',
                 shlex.quote(self.runner.fp.to_json())]
-
-        stdout = os.path.join(self.runner.log_path, task.stdout)
-        stderr = os.path.join(self.runner.log_path, task.stderr)
-
-        if stdout == stderr:
-            args.extend(['-o', stdout])
+        
+        if task.get('stdout'):
+            if task.get('stderr'):
+                stdout = self.runner.output_prefix + task['stdout']
+                stderr = self.runner.output_prefix + task['stderr']
+                args.extend(['-o', stdout, '-e', stderr])
+            else:
+                stdout = self.runner.output_prefix + task['stdout']
+                args.extend(['-o', stdout])
         else:
-            args.extend(['-o', stdout, '-e', stderr])
+            if task.get('stderr'):
+                stderr = self.runner.output_prefix + task['stderr']
+                args.extend(['-e', stderr])
+            else:
+                pass  # Don't add any o/e args to slurm command
 
         # Slurm requires that we request at least 1 cpu
-        if task.cpus != 0:
-            args.extend(['-c', str(task.cpus)])
+        if task.get('cpus'):
+            args.extend(['-c', str(task['cpus'])])
 
-        if task.mem != 0:
-            args.extend(['--mem', str(task.mem)])
+        if task.get('mem'):
+            args.extend(['--mem', str(task['mem'])])
 
-        if task.walltime != 0:
-            args.extend(['-t', str(task.time)])
+        if task.get('walltime'):
+            args.extend(['-t', str(task['walltime'])])
+            
+        if task.get('slurm_args'):
+            args.extend(task['slurm_args'])
 
-        if task.stdin:
-            formatted_cmd = 'echo \'{}\' | {}'.format(task.stdin, task.cmd)
-            final_cmd = shlex.quote(formatted_cmd)
+        if task.get('stdin'):
+            formatted = 'echo \'{}\' | {}'.format(task['stdin'], task['cmd'])
+            final_cmd = shlex.quote(formatted)
         else:
-            final_cmd = shlex.quote(task.cmd)
+            final_cmd = shlex.quote(task['cmd'])
 
         args.extend(['--wrap', final_cmd])
 
@@ -462,7 +491,7 @@ class SlurmBackend(Backend):
             # Sbatch fails when called too frequently so here is a bandaid
             time.sleep(.1)
 
-            if task.cmd is None:
+            if task.get('cmd') is None:
                 return task.complete(0)
 
             sbatch_cmd = self.sbatch_cmd(task)

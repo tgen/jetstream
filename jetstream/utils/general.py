@@ -21,15 +21,15 @@ import yaml
 
 
 def represent_none(self, _):
+    """Configures the yaml engine to represent null values as blanks"""
     return self.represent_scalar('tag:yaml.org,2002:null', '')
 
 
 yaml.add_representer(type(None), represent_none)
-
-
+sentinel = object()
 log = logging.getLogger(__name__)
 
-
+# Useful test cases for text file parsing
 TEST_RECORDS = [
     {
         'test': 'whitespace',
@@ -87,19 +87,36 @@ def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
 
 
 class JsonDict(dict):
-    """ Dict subclass that enforces key/values must be JSON serializable """
+    """Dict subclass that enforces JSON serializable keys/values.
+     This is going to be slower than a dictionary, because it's validating
+     every change made to the dict, but will ensure that the items can be 
+     serialized later.
+     """
     def __init__(self, *args, **kwargs):
         super(JsonDict, self).__init__(*args, **kwargs)
-
-        # If dict was initialized from iterable, recheck the values
-        for k, v in self.items():
-            self.__setitem__(k, v)
-
+        json_dumps(self)
+        
+    def __repr__(self):
+        return json_dumps(self)
+    
     def __setitem__(self, key, val):
-        json.dumps(key)
-        json.dumps(val)
+        """When a single item is set, we dont need to revalidate the entire
+        object, just the new key/value"""
+        json.dumps({key: val})
         return super(JsonDict, self).__setitem__(key, val)
-
+    
+    def update(self, other=None, **kwargs):
+        if other is not None:
+            json_dumps(other)
+            super(JsonDict, self).update(other)
+        else:
+            json_dumps(kwargs)
+            super(JsonDict, self).update(**kwargs)
+    
+    def to_dict(self):
+        """Return as a standard dictionary"""
+        return dict(self)
+    
 
 class LogisticDelay:
     def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
@@ -221,6 +238,21 @@ def is_scalar(obj):
         return True
 
 
+def coerce_sequence(obj):
+    """Coerce an object to a sequence.
+    If the object is not already a sequence, this will convert the object
+    to a single item list. Since strings are sequences, iterating over an 
+    object that can be a string or a sequence can be difficult. This solves 
+    the problem by ensuring scalars are converted to sequences. """
+    if obj is None:
+        obj = []
+    elif isinstance(obj, str):
+        obj = [obj, ]
+    elif not isinstance(obj, Sequence):
+        obj = [obj, ]
+    return obj
+
+
 def remove_prefix(string, prefix):
     if string.startswith(prefix):
         return string[len(prefix):]
@@ -239,11 +271,9 @@ def json_loads(data):
     return json.loads(data)
 
 
-def json_dumps(obj, *args, **kwargs):
+def json_dumps(obj, sort_keys=True, *args, **kwargs):
     """Attempt to convert `obj` to a JSON string"""
-    stream = io.StringIO()
-    json.dump(obj, fp=stream, sort_keys=True, *args, **kwargs)
-    return stream.getvalue()
+    return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
 
 
 def json_dump(obj, *args, **kwargs):

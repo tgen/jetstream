@@ -149,10 +149,10 @@ def tasks(args=None):
 
     p = jetstream.Project(args.path)
     wf = p.pipeline()
-    tasks = {t.id: t for t in wf.tasks(objs=True)}
+    tasks = {t.tid: t for t in wf.tasks(objs=True)}
 
-    if args.task_id:
-        for task_id in args.task_id:
+    if args.tid:
+        for task_id in args.tid:
             print(tasks[task_id].pretty())
     else:
         for t in tasks.values():
@@ -167,7 +167,7 @@ def runs(args=None):
     p = jetstream.Project(args.path)
 
     for r in p.runs():
-       print(r.id, r.info.get('datetime'))
+       print(r.tid, r.info.get('datetime'))
 
 
 def main(args=None):

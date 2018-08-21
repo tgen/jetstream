@@ -45,7 +45,7 @@ class ProjectBasics(TimedTestCase):
 
     def test_project_run(self):
         wf = jetstream.Workflow()
-        wf.new_task('task', cmd='echo Hello World')
+        wf.new_task(name='task', cmd='echo Hello World')
 
         p = jetstream.project_init()
         rc = p.run(wf)
