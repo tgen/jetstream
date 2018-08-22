@@ -87,7 +87,7 @@ def main(args=None):
         pass
     elif args.build_only:
         wf = jetstream.workflows.build_workflow(tasks)
-        print(wf.pretty())
+        print(wf.to_yaml())
     else:
         wf = jetstream.workflows.build_workflow(tasks)
 

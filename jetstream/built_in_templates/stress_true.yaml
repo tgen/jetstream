@@ -1,8 +1,8 @@
 
 {% for i in range(tasks) %}
 
-- id: stress_null_{{ i }}
-  cmd: null
+- name: stress_true_{{ i }}
   stdout: /dev/null
+  cmd: "true"
 
 {% endfor %}

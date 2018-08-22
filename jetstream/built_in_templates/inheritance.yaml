@@ -2,7 +2,7 @@
 
 {% extends "test/debug.yaml" %}
 {% block main %}
-- id: get_hostname
+- name: get_hostname
   cmd: hostname
 
 {% endblock %}

@@ -1,9 +1,7 @@
 import os
 import traceback
-import logging
 import jetstream
-
-log = logging.getLogger(__name__)
+from jetstream import log
 
 
 class Project:

@@ -1,23 +1,17 @@
 import os
+import logging
 from pkg_resources import get_distribution, resource_filename
 
 __version__ = get_distribution('jetstream').version
 
-#TODO Load/save config files
-# defaults = {
-#     'auto_save_interval': 60,
-#     'max_local_tasks': 1000,
-#     'site_template_path': resource_filename('jetstream', 'built_in_templates'),
-#     'task_id_template': 'js{}',
-#     'project_index': 'jetstream',
-#     'project_config': 'config',
-#     'project_temp': 'temp',
-#     'project_logs': 'logs',
-#     'project_pid_file': os.path.join('jetstream', 'pid'),
-#     'project_manifest': os.path.join('jetstream', 'manifest'),
-#     'project_workflow': os.path.join('jetstream', 'workflow'),
-#     'project_history': os.path.join('jetstream', 'history'),
-# }
+VERBOSE = 5
+logging.addLevelName(VERBOSE, 'VERBOSE')
+
+def verbose(self, message, *args, **kws):
+    if self.isEnabledFor(VERBOSE):
+        self._log(VERBOSE, message, args, **kws)
+
+logging.Logger.verbose = verbose
 
 built_in_templates = resource_filename('jetstream', 'built_in_templates')
 run_id_template = 'js{}'
@@ -34,6 +28,9 @@ project_history = os.path.join(project_index, 'history')
 # graph library, networkx, uses scipy/numpy. TODO switch to another graph lib?
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
+
+log = logging.getLogger(__name__)
+log.setLevel(1)
 
 from jetstream.exc import *
 from jetstream import utils, legacy

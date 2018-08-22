@@ -1,5 +1,5 @@
 # Just test an embedded bash script task
-- id: bash_script_test
+- name: bash_script_test
   cmd: bash
   cpus: 1
   stdin: |

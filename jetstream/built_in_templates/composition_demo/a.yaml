@@ -1,8 +1,8 @@
 
-- id: hello_world
+- name: hello_world
   cmd: null
 
-- id: foo
+- name: foo
   cmd: null
   after: hello_world
 

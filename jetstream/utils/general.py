@@ -8,7 +8,6 @@ import json
 import logging
 import ulid
 import time
-import textwrap
 import jetstream
 from collections.abc import Sequence, Mapping
 from datetime import datetime
@@ -388,34 +387,14 @@ class Fingerprint(object):
         self.pwd = str(os.getcwd())
         self.parent = str(os.environ.get('JETSTREAM_RUNID'))
 
+    def serialize(self):
+        return vars(self)
+
     def to_yaml(self):
         return yaml_dumps(vars(self))
 
     def to_json(self):
-        return json.dumps(vars(self))
-
-
-def fingerprint(to_json=False):
-    """Gather system info as a dictionary or JSON string."""
-    fp = {
-        'id': jetstream.run_id_template.format(ulid.new().str),
-        'datetime': str(datetime.now()),
-        'user': getuser(),
-        'version': str(get_distribution("jetstream")),
-        'sys.version': sys.version,
-        'sys.platform': sys.platform,
-        'sys.mac': hex(getnode()).upper(),
-        'pid': os.getpid(),
-        'args': sys.argv,
-        'hostname': gethostname(),
-        'pwd': os.getcwd(),
-        'parent': os.environ.get('JETSTREAM_RUNID')
-    }
-
-    if to_json:
-        return json.dumps(fp)
-    else:
-        return fp
+        return json.dumps(vars(self), sort_keys=True)
 
 
 def find(path, name=None):

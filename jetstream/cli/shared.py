@@ -1,9 +1,8 @@
 import os
 import argparse
-import logging
+import tempfile
 import jetstream
-
-log = logging.getLogger(__name__)
+from jetstream import log
 
 
 kvarg_types = {
@@ -57,14 +56,22 @@ def load_template(path, template_search_path=None):
     :param template_search_path: a list of additional paths to add to searchpath
     :return: template
     """
+    log.debug('Load template from: {}'.format(path))
+
+    if os.path.isfile(path):
+        log.debug('Template is a file')
+    elif os.path.exists(path):
+        log.warning('Template is not a file')
+    else:
+        raise FileNotFoundError(path)
+
     template_name = os.path.basename(path)
-    template_dir = os.path.dirname(path)
-    search_path = [template_dir, ]
+    search_path = [os.path.dirname(path), os.getcwd()]
 
     if template_search_path:
         search_path.extend(template_search_path)
 
-    log.debug(search_path)
+    log.debug('Autoconfigured Jinja2 search path: {}'.format(search_path))
 
     env = jetstream.templates.environment(search_path=search_path)
     template = env.get_template_with_source(template_name)

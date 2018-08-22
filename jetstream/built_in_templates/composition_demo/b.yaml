@@ -1,11 +1,11 @@
 
-- id: hello_world
+- name: hello_world
   cmd: null
 
-- id: foo
+- name: foo
   cmd: null
   after: hello_world
 
-- id: bar
+- name: bar
   cmd: null
   after: foo

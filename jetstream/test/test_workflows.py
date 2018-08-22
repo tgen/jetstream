@@ -12,7 +12,8 @@ class WorkflowBasics(TimedTestCase):
     def test_workflow_pretty(self):
         wf = jetstream.Workflow()
         wf.new_task(name='hello_world')
-        wf.pretty()
+        wf.to_yaml()
+        wf.to_json()
 
     def test_add_task(self):
         wf = jetstream.Workflow()

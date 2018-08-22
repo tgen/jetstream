@@ -3,12 +3,11 @@ locations set by arguments or environment variables. """
 import os
 import json
 import hashlib
-import logging
 from types import MethodType
 from jinja2 import (Environment, FileSystemLoader, meta,
                     StrictUndefined, Undefined, evalcontextfilter)
+from jetstream import log
 
-log = logging.getLogger(__name__)
 
 
 def raise_helper(msg):

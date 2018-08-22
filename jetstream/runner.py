@@ -1,21 +1,19 @@
 import os
 import re
-import logging
 import shlex
 import time
 import json
 import subprocess
-import jetstream
 from datetime import datetime
 import itertools
 from multiprocessing import cpu_count
 import asyncio
 from asyncio import (BoundedSemaphore, Event, create_subprocess_shell,
                      create_subprocess_exec)
-from asyncio.subprocess import PIPE, STDOUT
+from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
-
-log = logging.getLogger(__name__)
+import jetstream
+from jetstream import log
 
 
 class AsyncRunner(object):
@@ -35,13 +33,15 @@ class AsyncRunner(object):
         self._logger = None
         self._workflow_complete = Event()
 
+        os.environ.update(JETSTREAM_RUN_ID=self._fp.id)
+
     @property
     def fp(self):
         return self._fp
 
     def log_status(self):
         """ Logs a status report """
-        log.info('AsyncRunner event-loop load: {}'.format(
+        log.verbose('AsyncRunner event-loop load: {}'.format(
             len(asyncio.Task.all_tasks())))
         log.info('Workflow status: {}'.format(self.workflow))
 
@@ -108,7 +108,7 @@ class AsyncRunner(object):
         elapsed = datetime.now() - self._start_time
         log.info('Total run time: {}'.format(elapsed))
 
-        fails = [t.tid for t in self.workflow.tasks(objs=True) if
+        fails = [t for t in self.workflow.tasks(objs=True) if
                  t.status == 'failed']
 
         if fails:
@@ -135,11 +135,11 @@ class AsyncRunner(object):
                 self._loop = loop
 
             manager = self._loop.create_task(self.workflow_manager())
-            logger = self._loop.create_task(self.logger())
+            #logger = self._loop.create_task(self.logger())
             coros = self.start_backend_coros()
 
             self._loop.run_until_complete(manager)
-            logger.cancel()
+            #logger.cancel()
             coros.cancel()
         except KeyboardInterrupt:
             for t in asyncio.Task.all_tasks():
@@ -188,7 +188,7 @@ class Backend(object):
     async def subprocess_run(
             self, args, *, stdin=None, input=None, stdout=None, stderr=None,
             shell=False, cwd=None, check=False, encoding=None,
-            errors=None, env=None, loop=None):
+            errors=None, env=None, loop=None, executable='/bin/bash'):
         """ Asynchronous version of subprocess.run """
         log.debug('Subprocess run: {}'.format(self._sem))
 
@@ -199,12 +199,12 @@ class Backend(object):
                 p = await self.create_subprocess_shell(
                     args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
                     encoding=encoding, errors=errors, env=env, 
-                    loop=loop)
+                    loop=loop, executable=executable)
             else:
                 p = await self.create_subprocess_exec(
                     *args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
                     encoding=encoding, errors=errors, env=env, 
-                    loop=loop)
+                    loop=loop, executable=executable)
 
             stdout, stderr = await p.communicate(input=input)
 
@@ -446,8 +446,8 @@ class SlurmBackend(Backend):
         job_name = '{}.{}'.format(run_id, count)
 
         comment = json.dumps({
-            'run': self.runner,
-            'task': task.to_json()
+            'run': self.runner.fp.serialize(),
+            'task': task.serialize()
         }, sort_keys=True)
 
         args = ['sbatch', '--parsable', '-J', job_name, '--comment', comment]

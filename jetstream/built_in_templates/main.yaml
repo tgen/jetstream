@@ -1,31 +1,57 @@
-# Setup the run
-- id: inform_start
-  help: This task demonstrates how scripts can be embedded in a workflow
-  cmd: python
-  stdin: |
-    import sys
-    print(sys.version)
 
-# TODO
-# Gather input data
+- name: sys_info
+  stdout: sys.log
+  cmd: uname -v
 
-# Alignment Modules
-{% with after = "inform_start" %}
-{% include "dna_align_bwa_mem.yaml" %}
-{% endwith %}
+- name: env_info
+  stdout: env.log
+  after: sys_info
+  cmd: env
 
-- id: alignment_is_done
-  help: This is just a symbolic task that represents the point at which
-    all of the alignment steps are done. It's completely unnecessary, but
-    demonstrates how to specify "after" for multiple items. 
-  after: mark_duplicates_.*
+- name: null_command
+  after: env_info
   cmd: null
 
-# Somatic variant calling modules
-{% for dnapair in project.config.run_parameters.dnapair %}
-{% with after = "alignment_is_done", dnapair = dnapair %}
-{% include "mutect2.yaml" %}
-{% include "strelka2.yaml" %}
-{% endwith %}
+{% for i in range(5) %}
+- name: test_range_{{ loop.index }}
+  after: null_command
+  cmd: echo {{ loop.index }}
 {% endfor %}
 
+- name: say_hello
+  help: >
+   This block will be replaced with other tasks if a child template
+   is rendered. Otherwise, this task will remain.
+  cmd: say Hello, world. This is the main jetstream instance ${JETSTREAM_RUN_ID}
+
+
+{% with after = "test_range_.*" %}
+{% include "show_env.yaml" %}
+{% endwith %}
+
+- name: test_nested_workflows
+  after: say_hello
+  cmd: >
+    jetstream --log-debug run <(echo '- cmd: say i am a nested call
+    to jetstream, the id of this run is ${JETSTREAM_RUN_ID}')
+
+- name: test_log_capture
+  cmd: bash
+  stdin: |
+    #!/bin/bash
+
+    for i in $(seq 10); do
+      cat /dev/urandom | head | base64
+    done
+
+- name: test_failures
+  cmd: bash
+  after: test_log_capture
+  stdin: |
+    #!/bin/bash
+    echo "This task should fail"
+    exit 1
+
+- name: test_dependency_failures
+  cmd: echo This command should fail due to dependency
+  after: test_failures

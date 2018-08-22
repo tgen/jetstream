@@ -1,7 +1,7 @@
 
-- id: hello_world
+- name: hello_world
   cmd: echo Hello, World
 
-- id: goodbye_world
+- name: goodbye_world
   after: hello_world
   cmd: echo Goodbye, world

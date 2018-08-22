@@ -1,5 +1,5 @@
 
-- id: hello_world
+- name: hello_world
   type: slurm
   cmd: null
 
