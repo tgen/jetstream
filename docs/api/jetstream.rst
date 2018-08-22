@@ -21,8 +21,10 @@ Submodules
 
 .. toctree::
 
+   jetstream.exc
    jetstream.projects
-   jetstream.runners
+   jetstream.runner
+   jetstream.tasks
    jetstream.templates
    jetstream.workflows
 

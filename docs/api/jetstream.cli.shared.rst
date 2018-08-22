@@ -1,7 +1,7 @@
-jetstream.cli.kvargs 
+jetstream.cli.shared 
 ===========================
 
-.. automodule:: jetstream.cli.kvargs
+.. automodule:: jetstream.cli.shared
     :members:
     :undoc-members:
     :show-inheritance:

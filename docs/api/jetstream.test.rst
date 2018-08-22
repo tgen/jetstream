@@ -11,5 +11,7 @@ Submodules
 
 .. toctree::
 
+   jetstream.test.test_projects
+   jetstream.test.test_tasks
    jetstream.test.test_workflows
 
