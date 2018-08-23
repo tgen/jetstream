@@ -5,7 +5,6 @@ from jetstream.test import TimedTestCase
 
 
 class ProjectBasics(TimedTestCase):
-
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
@@ -45,9 +44,31 @@ class ProjectBasics(TimedTestCase):
 
     def test_project_run(self):
         wf = jetstream.Workflow()
-        wf.new_task(name='task', cmd='echo Hello World')
+        wf.new_task(name='task', cmd='echo test_project_run ${JETSTREAM_RUN_ID}')
         p = jetstream.Project(new=True)
         runner = jetstream.runner.AsyncRunner()
-        rc = runner.start(wf, p)
+        rc = runner.start(workflow=wf, project=p)
         self.assertEqual(rc, 0)
 
+
+class RunnerBasics(TimedTestCase):
+    def setUp(self):
+        """ All of these tests take place in the context of a project
+        directory. So setUp creates a temp dir and chdir to it. """
+        super(RunnerBasics, self).setUp()
+        self._original_dir = os.getcwd()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self._temp_dir.name)
+
+    def tearDown(self):
+        os.chdir(self._original_dir)
+        self._temp_dir.cleanup()
+
+    def test_runner(self):
+        runner = jetstream.AsyncRunner()
+        wf = jetstream.Workflow()
+        wf.new_task(cmd='hostname')
+
+        rc = runner.start(workflow=wf)
+        self.assertEqual(rc, 0)
+    

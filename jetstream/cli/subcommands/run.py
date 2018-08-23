@@ -103,6 +103,7 @@ def main(args=None):
     )
 
     rc = runner.start(workflow=workflow)
+    runner.close()
 
     sys.exit(rc)
 

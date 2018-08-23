@@ -1,7 +1,12 @@
-import random
 import jetstream
+from random import Random
 from jetstream.tasks import Task
 from jetstream.test import TimedTestCase
+
+# Seed the rng because otherwise there's a small chance
+# of generating a negative control string that matches
+# the id pattern.
+random = Random(42)
 
 
 class WorkflowBasics(TimedTestCase):
@@ -235,17 +240,6 @@ class WorkflowDependencies(TimedTestCase):
         
         self.assertEqual(wf.is_ready(t1), True)
         self.assertEqual(wf.is_ready(t2), False)
-    
-    # This is no longer a problem because names are not unique
-    # def test_neg_composition(self):
-    #     wf = jetstream.Workflow()
-    #     wf.new_task(name='task1')
-    # 
-    #     wf2 = jetstream.Workflow()
-    #     wf2.new_task(name='task1', output='hello')
-    #     wf2.new_task(name='task2', input='hello')
-    # 
-    #     self.assertRaises(ValueError, wf.compose, wf2)
 
     # TODO Pos composition, compose_all
 
@@ -264,7 +258,7 @@ class WorkflowIteration(TimedTestCase):
         status = jetstream.workflows.Task.valid_status
 
         for i in range(100):
-            wf.new_task(name=str(i), status=random.choice((status)))
+            wf.new_task(name=str(i), status=random.choice(status))
 
         i = iter(wf)
 

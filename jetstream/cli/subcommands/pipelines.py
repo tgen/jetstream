@@ -92,6 +92,7 @@ def main(args=None):
     )
 
     rc = runner.start(workflow=workflow, project=project)
+    runner.close()
 
     jetstream.save_workflow(workflow, project.workflow_file)
     sys.exit(rc)

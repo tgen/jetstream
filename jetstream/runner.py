@@ -60,6 +60,7 @@ class AsyncRunner(object):
             if self.project:
                 path = self.project.workflow_file
             else:
+                # TODO move this to a config module
                 path = 'jetstream_workflow_{}.yaml'.format(self.fp.id)
 
             save_workflow(self.workflow, path=path)
@@ -113,10 +114,6 @@ class AsyncRunner(object):
         return coros
 
     def finalize_run(self):
-        log.info('Shutting down event loop')
-        self._loop.run_until_complete(self._loop.shutdown_asyncgens())
-        self._loop.close()
-
         fails = [t for t in self.workflow.tasks(objs=True) if
                  t.status == 'failed']
 
@@ -127,6 +124,10 @@ class AsyncRunner(object):
             rc = 0
 
         return rc
+
+    def close(self):
+        if self._loop:
+            self._loop.close()
 
     def start(self, workflow, project=None, loop=None):
         self.workflow = workflow
@@ -159,7 +160,9 @@ class AsyncRunner(object):
             for t in asyncio.Task.all_tasks():
                 t.cancel()
         finally:
-            rc =  self.finalize_run()
+            rc = self.finalize_run()
+            log.info('Shutting down event loop')
+            self._loop.run_until_complete(self._loop.shutdown_asyncgens())
 
         elapsed = datetime.now() - start
         log.info('Run {} Elapsed: {}'.format(self.fp.id, elapsed))
