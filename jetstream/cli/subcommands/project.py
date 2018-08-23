@@ -1,5 +1,4 @@
 """Interact with jetstream projects."""
-import os
 import sys
 import argparse
 import logging
@@ -19,20 +18,6 @@ def arg_parser(actions=None):
 
     parser.add_argument('args', nargs=argparse.REMAINDER,
                         help='remaining args are passed to the chosen action')
-
-    return parser
-
-
-def init_arg_parser():
-    """Argument parser for the init action"""
-    parser = argparse.ArgumentParser(
-        prog='jetstream project init',
-        description='Initialize a Jetstream project'
-
-    )
-
-    parser.add_argument('path', nargs='?', default='.',
-                        help='Path to a Jetstream project')
 
     return parser
 
@@ -59,14 +44,6 @@ def config_arg_parser():
 
     parser.add_argument('--parsable', action='store_true', default=False,
                         help='Parsable output')
-
-    return parser
-
-
-def samples_arg_parser():
-    parser = config_arg_parser()
-    parser.prog = 'jetstream project samples'
-    parser.description = 'List samples in a project'
 
     return parser
 
@@ -101,15 +78,6 @@ def runs_arg_parser():
     return parser
 
 
-def init(args=None):
-    parser = init_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    os.chdir(args.path)
-    jetstream.project_init()
-
-
 def config(args=None):
     parser =config_arg_parser()
     args = parser.parse_args(args)
@@ -126,29 +94,13 @@ def config(args=None):
         jetstream.utils.yaml.dump(p.config, stream=sys.stdout)
 
 
-def samples(args=None):
-    parser = config_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    p = jetstream.Project(args.path)
-
-    if args.format == 'json':
-        if args.pretty:
-            print(jetstream.utils.json.dumps(p.samples(), indent=4))
-        else:
-            print(jetstream.utils.json.dumps(p.samples()))
-    elif args.format == 'yaml':
-        jetstream.utils.yaml.dump(p.samples(), stream=sys.stdout)
-
-
 def tasks(args=None):
     parser = tasks_arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project(args.path)
-    wf = p.pipeline()
+    wf = p.workflow()
     tasks = {t.tid: t for t in wf.tasks(objs=True)}
 
     if args.tid:
@@ -166,15 +118,14 @@ def runs(args=None):
 
     p = jetstream.Project(args.path)
 
-    for r in p.runs():
-       print(r.tid, r.info.get('datetime'))
+    for r in p.runs(paths=True):
+        r = jetstream.utils.yaml_load(r)
+        print(r['id'], r['datetime'])
 
 
 def main(args=None):
     actions = {
-        'init': init,
         'config': config,
-        'samples': samples,
         'tasks': tasks,
         'runs': runs,
 

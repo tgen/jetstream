@@ -19,11 +19,11 @@ class ProjectBasics(TimedTestCase):
         self._temp_dir.cleanup()
 
     def test_project_init(self):
-        p = jetstream.project_init()
+        p = jetstream.Project(new=True)
         self.assertIsInstance(p, jetstream.Project)
 
     def test_loading_project_data_json(self):
-        p = jetstream.project_init()
+        p = jetstream.Project(new=True)
 
         test_data = {
             "sampleA": {
@@ -35,7 +35,7 @@ class ProjectBasics(TimedTestCase):
             }
         }
 
-        test_data_path = os.path.join(p.config_path, 'samples.json')
+        test_data_path = os.path.join(p.config_dir, 'samples.json')
 
         with open(test_data_path, 'w') as fp:
             jetstream.utils.json_dump(test_data, fp)
@@ -46,9 +46,8 @@ class ProjectBasics(TimedTestCase):
     def test_project_run(self):
         wf = jetstream.Workflow()
         wf.new_task(name='task', cmd='echo Hello World')
-
-        p = jetstream.project_init()
-        rc = p.run(wf)
-
+        p = jetstream.Project(new=True)
+        runner = jetstream.runner.AsyncRunner()
+        rc = runner.start(wf, p)
         self.assertEqual(rc, 0)
 

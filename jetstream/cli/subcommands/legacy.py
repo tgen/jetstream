@@ -1,10 +1,8 @@
 import sys
 import argparse
-import logging
 import jetstream
 
-
-log = logging.getLogger(__name__)
+log = jetstream.log
 
 
 def arg_parser():

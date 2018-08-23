@@ -26,9 +26,9 @@ def arg_parser():
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument('template', help='Template path', nargs='+')
+    parser.add_argument('templates', help='Template path', nargs='+')
 
-    parser.add_argument('-t', '--template-search-path', action='append',
+    parser.add_argument('-t', '--search-path', action='append', default=None,
                         help='Manually configure the template search. This '
                              'argument can be used multiple times.')
 
@@ -44,11 +44,11 @@ def arg_parser():
     parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
                         help='Specify the runner backend (default: local)')
 
-    parser.add_argument('--logs', default='./',
-                        help='Default path for task output')
+    parser.add_argument('--autosave', default=0, type=int,
+                        help='Automatically save the workflow during run')
 
-    parser.add_argument('--logging-interval', default=60, type=int,
-                        help='Time between workflow status updates')
+    parser.add_argument('--resume',
+                        help='Resume a workflow that was already in progress')
 
     parser.add_argument('--max-forks', default=None, type=int,
                         help='Override the default fork limits of the task '
@@ -59,51 +59,52 @@ def arg_parser():
 
 def main(args=None):
     parser = arg_parser()
-    args, unknown = parser.parse_known_args(args)
+    args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
-    kvargs_data = shared.parse_kvargs(
-        args=unknown,
-        type_separator=args.kvarg_separator
-    )
-    
-    log.debug(kvargs_data)
-
-    tasks = list()
-
-    for path in args.template:
-        template = shared.load_template(path, args.template_search_path)
-        rendered = template.render(**vars(kvargs_data))
-
-        if args.render_only:
-            print(rendered)
-            continue
-
-        loaded = jetstream.utils.yaml_loads(rendered)
-        tasks.extend(loaded)
-
-    if args.render_only:
-        pass
-    elif args.build_only:
-        wf = jetstream.workflows.build_workflow(tasks)
-        print(wf.to_yaml())
+    if args.resume:
+        workflow = jetstream.load_workflow(args.resume)
     else:
-        workflow = jetstream.workflows.build_workflow(tasks)
+        data = vars(shared.parse_kvargs(
+            args=remaining,
+            type_separator=args.kvarg_separator
+        ))
 
-        if args.backend == 'slurm':
-            backend = jetstream.SlurmBackend(max_forks=args.max_forks)
-        else:
-            backend = jetstream.LocalBackend(max_forks=args.max_forks)
+        log.debug('Template render data: {}'.format(data))
 
-        runner = jetstream.runner.AsyncRunner(
-            workflow,
-            backend=backend,
-            output_prefix=args.logs,
-            logging_interval=args.logging_interval
+        templates = jetstream.render_templates(
+            *args.templates,
+            data=data,
+            search_path=args.search_path
         )
 
-        rc = runner.start()
-        sys.exit(rc)
+        if args.render_only:
+            for t in templates:
+                print(t)
+            sys.exit(0)
+
+        workflow = jetstream.build_workflow('\n'.join(templates))
+
+    log.debug('Workflow data: {}'.format(workflow))
+
+    if args.build_only:
+        print(workflow.to_yaml())
+        sys.exit(0)
+
+    if args.backend == 'slurm':
+        backend = jetstream.SlurmBackend()
+    else:
+        backend = jetstream.LocalBackend()
+
+    runner = jetstream.AsyncRunner(
+        backend=backend,
+        max_forks=args.max_forks,
+        autosave=args.autosave
+    )
+
+    rc = runner.start(workflow=workflow)
+
+    sys.exit(rc)
 
 
 if __name__ == '__main__':

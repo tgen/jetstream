@@ -33,7 +33,6 @@ class TimedTestCase(unittest.TestCase):
         })
 
 
-
 def summarize_results():
     for test_id, trials in RESULTS.items():
         print('\nTest:', test_id)

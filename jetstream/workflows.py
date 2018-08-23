@@ -190,6 +190,8 @@ class Workflow(object):
         if task.tid in self.graph:
             raise ValueError('Duplicate task ID: {}'.format(task.tid))
 
+        log.info('Adding task: {}'.format(task))
+
         task.workflow = self
         self.graph.add_node(task.tid, obj=task)
 
@@ -297,9 +299,14 @@ class Workflow(object):
         :param workflow: Another workflow to add to this workflow
         :return: None
         """
+        log.info('Composing {} with {}'.format(self, workflow))
+
         with self:
             for task in workflow.tasks(objs=True):
-                self.add_task(task)
+                if not task in self:
+                    self.add_task(task)
+                else:
+                    log.info('{} already in workflow'.format(task))
 
     def dependencies(self, task):
         """Returns a generator that yields the dependencies of a given task"""
@@ -521,7 +528,7 @@ def search_pattern(pat):
     return re.compile('^{}$'.format(pat))
 
 
-def save(workflow, path):
+def save_workflow(workflow, path):
     start = datetime.now()
     lock_path = path + '.lock'
 
@@ -571,6 +578,11 @@ def load_workflow(path):
     return from_node_link_data(graph)
 
 
+def build_workflow_from_string(tasks):
+    parsed = utils.yaml_loads(tasks)
+    return build_workflow(parsed)
+
+
 def build_workflow(tasks):
     """ Given a sequence of tasks (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
@@ -590,4 +602,5 @@ def build_workflow(tasks):
         for task_mapping in tasks:
             wf.add_task(Task(data=task_mapping))
 
+    log.info('Workflow ready: {}'.format(wf))
     return wf

@@ -96,7 +96,7 @@ class JsonDict(dict):
         json_dumps(self)
         
     def __repr__(self):
-        return json_dumps(self)
+        return 'JsonDict({})'.format(super(JsonDict, self).__repr__())
     
     def __setitem__(self, key, val):
         """When a single item is set, we dont need to revalidate the entire
@@ -374,7 +374,7 @@ def write_test_data(path, dialect='unix'):
 
 class Fingerprint(object):
     def __init__(self):
-        self.id = str(jetstream.run_id_template.format(ulid.new().str))
+        self.id = jetstream.run_id()
         self.datetime = str(datetime.now())
         self.user = str(getuser())
         self.version = str(get_distribution("jetstream"))

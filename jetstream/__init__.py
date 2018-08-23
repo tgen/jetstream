@@ -1,4 +1,6 @@
 import os
+import re
+import ulid
 import logging
 from pkg_resources import get_distribution, resource_filename
 
@@ -14,15 +16,12 @@ def verbose(self, message, *args, **kws):
 logging.Logger.verbose = verbose
 
 built_in_templates = resource_filename('jetstream', 'built_in_templates')
+
 run_id_template = 'js{}'
-project_index = 'jetstream'
-project_config = 'config'
-project_temp = 'temp'
-project_logs = 'logs'
-project_pid_file = os.path.join(project_index, 'pid')
-project_manifest = os.path.join(project_index, 'manifest')
-project_workflow = os.path.join(project_index, 'workflow')
-project_history = os.path.join(project_index, 'history')
+run_id_pattern = re.compile(r'^js[A-Z0-9]{26}$')
+
+def run_id():
+    return run_id_template.format(ulid.new().str)
 
 # This prevents numpy from starting a bunch of threads when imported. The
 # graph library, networkx, uses scipy/numpy. TODO switch to another graph lib?
@@ -52,11 +51,11 @@ from jetstream.runner import AsyncRunner, SlurmBackend, LocalBackend
 from jetstream.workflows import Workflow, Task
 from jetstream.projects import Project
 from jetstream import templates, projects, workflows
+from jetstream.templates import (environment, render_template, load_template,
+                                 render_templates, load_templates)
+from jetstream.workflows import (build_workflow, build_workflow_from_string,
+                                 save_workflow, load_workflow)
 
-project_init = Project.init
-load_template = templates.load_template
-build_workflow = workflows.build_workflow
-template_environment = templates.environment
 
 
 def load_data_file(path):

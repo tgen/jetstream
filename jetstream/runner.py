@@ -4,88 +4,105 @@ import shlex
 import time
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 import itertools
 from multiprocessing import cpu_count
 import asyncio
-from asyncio import (BoundedSemaphore, Event, create_subprocess_shell,
-                     create_subprocess_exec)
+from asyncio import BoundedSemaphore, Event, create_subprocess_shell
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
-import jetstream
+from jetstream.workflows import save_workflow
+from jetstream import utils
 from jetstream import log
 
 
 class AsyncRunner(object):
-    def __init__(self, workflow, backend=None, logging_interval=None,
-                 output_prefix=''):
-        self.workflow = workflow
-        self.backend = backend
+    def __init__(self, backend=None, max_forks=None, output_prefix='',
+                 autosave=0, default_yield=1):
+        """AsyncRunner executes a workflow using a given backend
+        :param backend: Backend object used to spawn tasks
+        :param output_prefix:
+        :param max_forks: If this is omitted, an estimate of 25% of the system
+            thread limit is used. Over subscribing the fork limit may cause the
+            system to reject creation of new processes, and tasks will fail to
+            launch.
+        """
+        self.backend = backend or LocalBackend()
         self.backend.runner = self
-        self.logging_interval = logging_interval or 3
         self.output_prefix = output_prefix
-        self._fp = jetstream.utils.Fingerprint()
-        self._started = False
+        self.autosave = timedelta(seconds=autosave)
+        self.default_yield = default_yield
+        self.workflow = None
+        self.project = None
+        self.fp = None
+        self.run = Event()
         self._start_time = None
         self._loop = None
-        self._iterator = None
         self._workflow_manager = None
-        self._logger = None
-        self._workflow_complete = Event()
-
-        os.environ.update(JETSTREAM_RUN_ID=self._fp.id)
-
-    @property
-    def fp(self):
-        return self._fp
+        self._last_save = datetime.now()
+        self._sem = BoundedSemaphore(max_forks or guess_max_forks())
 
     def log_status(self):
         """ Logs a status report """
-        log.verbose('AsyncRunner event-loop load: {}'.format(
+        log.info('AsyncRunner event-loop load: {}'.format(
             len(asyncio.Task.all_tasks())))
         log.info('Workflow status: {}'.format(self.workflow))
 
-    async def logger(self):
-        log.info('Logger started!')
+    async def _yield(self, delay=None):
+        if delay is None:
+            delay = self.default_yield
 
-        try:
-            while not self._workflow_complete.is_set():
-                await asyncio.sleep(self.logging_interval)
-                self.log_status()
-        finally:
-            log.info('Logger stopped!')
+        log.verbose('Yield for {}s'.format(delay))
+
+        if self.autosave and (datetime.now() - self._last_save) > self.autosave:
+            self._last_save = datetime.now()
+
+            if self.project:
+                path = self.project.workflow_file
+            else:
+                path = 'jetstream_workflow_{}.yaml'.format(self.fp.id)
+
+            save_workflow(self.workflow, path=path)
+
+        await asyncio.sleep(delay)
 
     async def workflow_manager(self):
+        """Workflow manager will constantly ask workflow for new tasks
+        and spawn a new coroutine for each task when ready. """
         log.info('Workflow manager started!')
 
-        self._iterator = iter(self.workflow)
-
         try:
-            while 1:
-                try:
-                    task = next(self._iterator)
-                except StopIteration:
-                    break
-
+            for task in self.workflow:
                 if task is None:
-                    await asyncio.sleep(.1)
+                    await self._yield()
                 else:
                     await self.spawn(task)
 
-                await asyncio.sleep(0)
+                await self._yield(0)
+        except Exception as e:
+            log.exception(e)
+            log.info('Exception in workflow manager, halting run!')
+            self._loop.stop()
         finally:
             log.info('Workflow manager stopped!')
-            self._workflow_complete.set()
+            self.run.clear()
 
     async def spawn(self, task):
-        log.debug('Registering backend.spawn: {}'.format(task))
+        log.verbose('Registering backend.spawn: {}'.format(task))
+        log.verbose('Runner concurrency semaphore: {}'.format(self._sem))
+
+        if task.get('cmd') is None:
+            return task.complete(0)
 
         try:
+            await self._sem.acquire()
             asyncio.ensure_future(self.backend.spawn(task))
         except Exception as e:
             log.exception(e)
             log.info('Exception during task spawn, halting run!')
             self._loop.stop()
+        finally:
+            self._sem.release()
 
     def start_backend_coros(self):
         if hasattr(self.backend, 'start_coros'):
@@ -95,18 +112,10 @@ class AsyncRunner(object):
 
         return coros
 
-    def init_run(self):
-        self._start_time = datetime.now()
-        log.info('Run ID: {}'.format(self.fp.id))
-
     def finalize_run(self):
+        log.info('Shutting down event loop')
         self._loop.run_until_complete(self._loop.shutdown_asyncgens())
         self._loop.close()
-
-        log.info('Finalizing run: {}'.format(self.fp.id))
-
-        elapsed = datetime.now() - self._start_time
-        log.info('Total run time: {}'.format(elapsed))
 
         fails = [t for t in self.workflow.tasks(objs=True) if
                  t.status == 'failed']
@@ -117,57 +126,60 @@ class AsyncRunner(object):
         else:
             rc = 0
 
-        self._start_time = None
         return rc
 
-    def start(self, loop=None):
-        if self._started:
-            raise RuntimeError('Runners can only be started once')
+    def start(self, workflow, project=None, loop=None):
+        self.workflow = workflow
+        self.project = project
+        self.fp = utils.Fingerprint()
+        self.run.set()
+
+        start = datetime.now()
+        os.environ.update(JETSTREAM_RUN_ID=self.fp.id)
+        log.info('Starting Run ID: {}'.format(self.fp.id))
+
+        if project:
+            history_file = os.path.join(project.history_dir, self.fp.id)
+            with open(history_file, 'w') as fp:
+                utils.yaml_dump(self.fp.serialize(), stream=fp)
+
+        if loop is None:
+            self._loop = asyncio.get_event_loop()
         else:
-            self._started = True
+            self._loop = loop
 
         try:
-            self.init_run()
-
-            if loop is None:
-                self._loop = asyncio.get_event_loop()
-            else:
-                self._loop = loop
-
             manager = self._loop.create_task(self.workflow_manager())
-            #logger = self._loop.create_task(self.logger())
             coros = self.start_backend_coros()
-
             self._loop.run_until_complete(manager)
-            #logger.cancel()
             coros.cancel()
         except KeyboardInterrupt:
+            log.critical('Received interrupt: Shutting down!')
+            self.run.clear()
             for t in asyncio.Task.all_tasks():
                 t.cancel()
         finally:
-            return self.finalize_run()
+            rc =  self.finalize_run()
+
+        elapsed = datetime.now() - start
+        log.info('Run {} Elapsed: {}'.format(self.fp.id, elapsed))
+        return rc
 
 
 class Backend(object):
-    """ Backends should implement the coroutine method "spawn" """
+    """Backends should implement the coroutine method "spawn".
 
-    # Keep track of the task directives that a backend will use
-    respects = tuple()
+    Backend.spawn will be called by the AsyncRunner when a task is ready
+    for execution. It should be asynchronous and return the task_id
+    and return code as a tuple: (task_id, returncode)
 
-    # "spawn" will be called by the asyncrunner when a task is ready
-    # for execution. It should be asynchronous and return the task_id
-    # and returncode as a tuple: (task_id, returncode)
-    def __init__(self, max_forks=None):
-        self.runner = None
-        self._sem = BoundedSemaphore(max_forks or guess_max_forks())
-        log.info('Initialized with: {}'.format(self._sem))
+    Backends should declare a set of task directives that are used when
+    executing a task: Backend.respects """
+    respects = set()
+    runner = None
 
-    def status(self):
-        return 'Backend status: {}'.format(str(self._sem))
-
-    @staticmethod
-    async def create_subprocess_shell(cmd, **kwargs):
-        while 1:
+    async def create_subprocess_shell(self, cmd, **kwargs):
+        while self.runner.run.is_set():
             try:
                 return await create_subprocess_shell(cmd, **kwargs)
             except BlockingIOError as e:
@@ -175,78 +187,50 @@ class Backend(object):
                 log.info('Retry in 10 seconds.')
                 await asyncio.sleep(10)
 
-    @staticmethod
-    async def create_subprocess_exec(*args, **kwargs):
-        while 1:
-            try:
-                return await create_subprocess_exec(*args, **kwargs)
-            except BlockingIOError as e:
-                log.info('Unable to start subprocess: {}'.format(e))
-                log.info('Retry in 10 seconds.')
-                await asyncio.sleep(10)
-
-    async def subprocess_run(
+    async def subprocess_run_sh(
             self, args, *, stdin=None, input=None, stdout=None, stderr=None,
-            shell=False, cwd=None, check=False, encoding=None,
-            errors=None, env=None, loop=None, executable='/bin/bash'):
-        """ Asynchronous version of subprocess.run """
-        log.debug('Subprocess run: {}'.format(self._sem))
+            cwd=None, check=False, encoding=None, errors=None, env=None,
+            loop=None, executable='/bin/bash'):
+        """Asynchronous version of subprocess.run
 
-        await self._sem.acquire()
+        This will always use a shell to launch the subprocess, and it prefers
+        /bin/bash (can be changed via arguments)"""
+        log.verbose('subprocess_run_sh: {}'.format(args))
 
-        try:
-            if shell:
-                p = await self.create_subprocess_shell(
-                    args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
-                    encoding=encoding, errors=errors, env=env, 
-                    loop=loop, executable=executable)
-            else:
-                p = await self.create_subprocess_exec(
-                    *args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
-                    encoding=encoding, errors=errors, env=env, 
-                    loop=loop, executable=executable)
+        p = await self.create_subprocess_shell(
+            args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
+            encoding=encoding, errors=errors, env=env,
+            loop=loop, executable=executable)
 
-            stdout, stderr = await p.communicate(input=input)
+        stdout, stderr = await p.communicate(input=input)
 
-            if check and p.returncode != 0:
-                raise ChildProcessError(args)
+        if check and p.returncode != 0:
+            raise ChildProcessError(args)
 
-            c = subprocess.CompletedProcess(args, p.returncode, stdout, stderr)
-            return c
-
-        finally:
-            self._sem.release()
-
-    async def spawn(self, *args, **kwargs):
-        raise NotImplementedError
+        return subprocess.CompletedProcess(args, p.returncode, stdout, stderr)
 
 
 class LocalBackend(Backend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus')
     
-    def __init__(self, cpus=None, *args, **kwargs):
-        """ LocalBackend executes tasks as processes on the local machine.
+    def __init__(self, cpus=None):
+        """The LocalBackend executes tasks as processes on the local machine.
         
-        :param max_subprocess: Total number of subprocess allowed regardless of
-        cpu requirements. If this is omitted, an estimate of 25% of the system 
-        thread limit is used. If child processes in a workflow spawn several 
-        threads, the system may start to reject creation of new processes.
+        :param cpus: If this is None, the number of available CPUs will be
+            guessed.
         """
-        super(LocalBackend, self).__init__(*args, **kwargs)
-        self._cpu_sem = BoundedSemaphore(cpus or guess_local_cpus())
-        log.info('LocalBackend initialized with: {}'.format(self._cpu_sem))
+        n_cpus = cpus or guess_local_cpus()
+        self._cpu_sem = BoundedSemaphore(n_cpus)
+        log.info('LocalBackend initialized with {} cpus'.format(n_cpus))
     
     def status(self):
-        return 'CPUs: {} Forks: {} '.format(self._cpu_sem, self._sem)
+        return 'CPUs: {}'.format(self._cpu_sem)
 
     async def spawn(self, task):
         log.info('Spawn: {}'.format(task))
         log.debug(self.status())
 
         cpus_reserved = 0
-
-        if task.get('cmd') is None:
-            return task.complete(0)
 
         try:
             for i in range(task.get('cpus', 0)):
@@ -280,9 +264,8 @@ class LocalBackend(Backend):
             else:
                 stderr_fp = None
             
-            p = await self.subprocess_run(
-                cmd, stdin=PIPE, input=input, stdout=stdout_fp,
-                stderr=stderr_fp, shell=True
+            p = await self.subprocess_run_sh(
+                cmd, stdin=PIPE, input=input, stdout=stdout_fp, stderr=stderr_fp
             )
 
             if p.returncode != 0:
@@ -308,19 +291,16 @@ class SlurmBackend(Backend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, max_jobs=None, sacct_frequency=None, chunk_size=None,
-                 *args, **kwargs):
-        super(SlurmBackend, self).__init__(*args, **kwargs)
-        self.sacct_frequency = sacct_frequency or 60
-        self.chunk_size = chunk_size or 10000
-        self._monitor_jobs = Event()
+    def __init__(self, max_jobs=9001, sacct_frequency=10, chunk_size=1000):
+        self.sacct_frequency = sacct_frequency
+        self.chunk_size = chunk_size
         self._jobs = {}
-        self._jobs_sem = BoundedSemaphore(max_jobs or 1000000)
+        self._jobs_sem = BoundedSemaphore(max_jobs)
 
-        log.info('SlurmBackend initialized with: {}'.format(self._jobs_sem))
+        log.info('SlurmBackend initialized with {} max jobs'.format(max_jobs))
 
     def status(self):
-        return 'Forks: {} Slurm jobs: {}'.format(self._sem, self._jobs_sem)
+        return 'Slurm jobs: {}'.format(self._jobs_sem)
 
     def chunk_jobs(self):
         seq = list(self._jobs.keys())
@@ -334,14 +314,16 @@ class SlurmBackend(Backend):
 
     async def start_coros(self):
         log.info('Slurm job monitor started!')
-        self._monitor_jobs.set()
 
         try:
-            while self._monitor_jobs.is_set():
+            while self.runner.run.is_set():
                 await asyncio.sleep(self.sacct_frequency)
                 await self._update_jobs()
         except CancelledError:
-            self._monitor_jobs.clear()
+            if self._jobs:
+                jids = ' '.join(list(self._jobs.keys()))
+                log.info('Requesting scancel for: {}'.format(jids))
+                await self.subprocess_run_sh('scancel {}'.format(jids))
         finally:
             log.info('Slurm job monitor stopped!')
 
@@ -492,7 +474,6 @@ class SlurmBackend(Backend):
 
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
-
         job = None
 
         try:
@@ -501,15 +482,12 @@ class SlurmBackend(Backend):
             # Sbatch fails when called too frequently so here is a bandaid
             time.sleep(.1)
 
-            if task.get('cmd') is None:
-                return task.complete(0)
-
             sbatch_cmd = self.sbatch_cmd(task)
             cmd = ' '.join(sbatch_cmd)
 
             log.debug('Final command: {}'.format(cmd))
 
-            p = await self.subprocess_run(cmd, stdout=PIPE, shell=True)
+            p = await self.subprocess_run_sh(cmd, stdout=PIPE)
 
             jid = p.stdout.decode().strip()
 
@@ -529,7 +507,7 @@ class SlurmBackend(Backend):
 
         except CancelledError:
             if job is not None:
-                await self.subprocess_run('scancel {}'.format(job.jid))
+                await self.subprocess_run_sh('scancel {}'.format(job.jid))
 
             return task.complete(-15)
 

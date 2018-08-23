@@ -1,6 +1,5 @@
 """Run a Jetstream workflow inside a project
 
-
 Template variable data is usually saved as files in ``<project>/config``, but 
 command arguments can also be used to pass variable data to templates. All 
 arguments remaining after parsing the command line (arguments that are not 
@@ -17,87 +16,85 @@ evaluated by the appropriate type function.
 
 """
 import sys
-import logging
-import argparse
 import jetstream
+from jetstream import log
 from jetstream.cli import shared
+from jetstream.cli.subcommands.run import arg_parser
 
-log = logging.getLogger(__name__)
 
+def generate_workflow(templates, data, search_path, render_only, build_only):
+    log.debug('Template render data: {}'.format(data))
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream pipelines',
-        description=__doc__.replace('``', '"'),
-        formatter_class = argparse.RawDescriptionHelpFormatter,
+    templates = jetstream.render_templates(
+        *templates,
+        data=data,
+        search_path=search_path
     )
 
-    parser.add_argument('template', help='Template path', nargs='+')
+    if render_only:
+        for t in templates:
+            print(t)
+        sys.exit(0)
 
-    parser.add_argument('-t', '--template-search-path', action='append',
-                        help='Manually configure the template search. This '
-                             'argument can be used multiple times.')
+    workflow = jetstream.build_workflow('\n'.join(templates))
 
-    parser.add_argument('--kvarg-separator', default=':',
-                        help='Specify an alternate separator for kvargs')
+    if build_only:
+        print(workflow.to_yaml())
+        sys.exit(0)
 
-    parser.add_argument('-r', '--render-only', action='store_true',
-                        help='Just render the template and print to stdout')
-
-    parser.add_argument('-b', '--build-only', action='store_true',
-                        help='Just build the workflow and print to stdout')
-
-    parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
-                        help='Specify the runner backend (default: local)')
-
-    parser.add_argument('--logging-interval', default=60, type=int,
-                        help='Time between workflow status updates')
-
-    parser.add_argument('--max-forks', default=None, type=int,
-                        help='Override the fork limits of the task backend.')
-
-    return parser
+    return workflow
 
 
 def main(args=None):
     parser = arg_parser()
-    args, unknown = parser.parse_known_args(args)
+    parser.prog = 'jetstream pipelines'
+    args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
-    kvargs_data = shared.parse_kvargs(
-        args=unknown,
-        type_separator=args.kvarg_separator)
+    project = jetstream.Project()
+    workflow = project.workflow()
 
-    p = jetstream.Project()
+    log.info('Project: {} Workflow: {}'.format(project, workflow))
 
-    tasks = list()
+    data = vars(shared.parse_kvargs(
+        args=remaining,
+        type_separator=args.kvarg_separator
+    ))
 
-    for path in args.template:
-        template = shared.load_template(path, args.template_search_path)
-        rendered = template.render(project=p, **vars(kvargs_data))
+    if 'project' not in data:
+        data['project'] = project
 
-        if args.render_only:
-            print(rendered)
-            continue
 
-        loaded = jetstream.utils.yaml_loads(rendered)
-        tasks.extend(loaded)
+    new_workflow = generate_workflow(
+        templates=args.templates,
+        data=data,
+        search_path=args.search_path,
+        render_only=args.render_only,
+        build_only=args.build_only
+    )
 
-    if args.render_only:
-        pass
-    elif args.build_only:
-        wf = jetstream.workflows.build_workflow(tasks)
-        print(wf.to_yaml())
+    if workflow is None:
+        workflow = new_workflow
     else:
-        wf = jetstream.workflows.build_workflow(tasks)
+        workflow.compose(new_workflow)
 
-        if args.backend == 'slurm':
-            backend = jetstream.SlurmBackend(max_forks=args.max_forks)
-        else:
-            backend = jetstream.LocalBackend(max_forks=args.max_forks)
+    log.info('Workflow data after composition: {}'.format(workflow))
 
-        rc = p.run(wf, backend=backend, logging_interval=args.logging_interval)
-        sys.exit(rc)
+    if args.backend == 'slurm':
+        backend = jetstream.SlurmBackend()
+    else:
+        backend = jetstream.LocalBackend()
+
+    runner = jetstream.AsyncRunner(
+        backend=backend,
+        max_forks=args.max_forks,
+        autosave=args.autosave
+    )
+
+    rc = runner.start(workflow=workflow, project=project)
+
+    jetstream.save_workflow(workflow, project.workflow_file)
+    sys.exit(rc)
 
 
 if __name__ == '__main__':

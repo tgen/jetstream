@@ -5,7 +5,7 @@ from jetstream import utils, log
 
 
 class Task(object):
-    state_values = ('status', 'returncode', 'start', 'end')
+    state_values = ('status', 'returncode', 'start', 'end', 'meta')
     valid_status = ('new', 'pending', 'complete', 'failed')
 
     def __init__(self, data=None, **kwargs):
@@ -52,9 +52,20 @@ class Task(object):
         self._tid = sha1(self.identity.encode()).digest().hex()
 
         if existing_tid and existing_tid != self._tid:
-            raise ValueError(
-                'Different id from rehydrated task:\n{}\n{}\n'
-                'Task data: {}'.format(existing_tid, self._tid, data
+            msg = (
+                'Conflicting id from rehydrated task!\n'
+                'tid from data: {}\n'
+                'self tid: {}\n'
+                'self identity: {}\n'
+                'self directives: {}\n'
+                'self state: {}\n'
+            )
+            raise ValueError(msg.format(
+                existing_tid,
+                self.tid,
+                self.identity,
+                self.directives,
+                self.state
             ))
 
     def __repr__(self):
