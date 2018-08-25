@@ -45,10 +45,20 @@ def arg_parser():
                         help='Specify the runner backend (default: local)')
 
     parser.add_argument('--autosave', default=0, type=int,
-                        help='Automatically save the workflow during run')
+                        help='Automatically save the workflow during run.')
 
-    parser.add_argument('--resume',
-                        help='Resume a workflow that was already in progress')
+    parser.add_argument('-w', '--workflow',
+                        help='Run an existing workflow. Generally used for retry/resume '
+                             'when a workflow run fails.')
+
+    parser.add_argument('--method', choices=['retry', 'resume'], default='retry',
+                        help='Method to use when restarting existing workflows')
+
+    parser.add_argument('--retry', dest='method', action='store_const', const='retry',
+                        help='Reset "failed" and "pending" tasks before starting')
+
+    parser.add_argument('--resume',  dest='method', action='store_const', const='resume',
+                        help='Reset "pending" tasks before starting')
 
     parser.add_argument('--max-forks', default=None, type=int,
                         help='Override the default fork limits of the task '
@@ -62,8 +72,12 @@ def main(args=None):
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
-    if args.resume:
-        workflow = jetstream.load_workflow(args.resume)
+    if args.workflow:
+        workflow = jetstream.load_workflow(args.workflow)
+        if args.method == 'retry':
+            workflow.retry()
+        else:
+            workflow.resume()
     else:
         data = vars(shared.parse_kvargs(
             args=remaining,

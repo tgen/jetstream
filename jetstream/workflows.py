@@ -190,7 +190,7 @@ class Workflow(object):
         if task.tid in self.graph:
             raise ValueError('Duplicate task ID: {}'.format(task.tid))
 
-        log.info('Adding task: {}'.format(task))
+        log.debug('Adding task: {}'.format(task))
 
         task.workflow = self
         self.graph.add_node(task.tid, obj=task)
@@ -306,7 +306,7 @@ class Workflow(object):
                 if not task in self:
                     self.add_task(task)
                 else:
-                    log.info('{} already in workflow'.format(task))
+                    log.debug('Skipping {}, already in workflow'.format(task))
 
     def dependencies(self, task):
         """Returns a generator that yields the dependencies of a given task"""
@@ -513,8 +513,8 @@ class WorkflowIterator(object):
             log.verbose('Considering: {}'.format(task))
             
             if task.is_done():
-                self.tasks.pop(i)
-                log.info(self.workflow)
+                t = self.tasks.pop(i)
+                log.verbose('{} is done, removing from workflow iterator'.format(t))
             elif task.is_ready():
                 self.tasks.pop(i)
                 self.pending.append(task)
@@ -546,8 +546,9 @@ def from_node_link_data(data):
     graph = json_graph.node_link_graph(data)
     wf = Workflow()
 
-    for node_id, node_data in graph.nodes(data=True):
-        wf.new_task(node_data['obj'])
+    with wf:
+        for node_id, node_data in graph.nodes(data=True):
+            wf.new_task(node_data['obj'])
 
     return wf
 

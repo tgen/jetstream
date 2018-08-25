@@ -77,6 +77,11 @@ def main(args=None):
         workflow = new_workflow
     else:
         workflow.compose(new_workflow)
+    
+    if args.method == 'retry':
+        workflow.retry()
+    else:
+        workflow.resume()
 
     log.info('Workflow data after composition: {}'.format(workflow))
 
