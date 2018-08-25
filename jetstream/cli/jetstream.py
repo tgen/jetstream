@@ -37,7 +37,7 @@ def arg_parser():
     main_parser.add_argument('--log-format', default=color_format)
 
     main_parser.add_argument('--log-level', default='INFO',
-                             choices=list(logging._nameToLevel.keys()))
+                             choices=('WARNING', 'INFO', 'DEBUG', 'VERBOSE'))
 
     return main_parser
 
