@@ -38,7 +38,10 @@ class Task(object):
 
             for k, v in data.items():
                 if k == 'tid':
+                    # Consume the existing tid to check it against the new tid
                     existing_tid = v
+                elif k == 'meta':
+                    self._state['meta'] = utils.JsonDict(v)
                 elif k in Task.state_values:
                     log.debug('Set state key: "{}" value: "{}"'.format(k, v))
                     self._state[k] = v
@@ -53,7 +56,7 @@ class Task(object):
 
         if existing_tid and existing_tid != self._tid:
             msg = (
-                'Conflicting id from rehydrated task!\n'
+                'Conflicting tid from rehydrated task!\n'
                 'tid from data: {}\n'
                 'self tid: {}\n'
                 'self identity: {}\n'
@@ -79,7 +82,7 @@ class Task(object):
         return self._directives.__getitem__(item)
     
     def __setitem__(self, key, value):
-        raise ValueError('Task data should not be modified.')
+        raise AttributeError('Task directives should not be modified.')
     
     def __eq__(self, other):
         if hasattr(other, 'tid'):
@@ -120,7 +123,12 @@ class Task(object):
     def serialize(self):
         res = dict(tid=self.tid)
         res.update(self.directives)
-        res.update(self.state)
+
+        state = self.state
+        if 'meta' in state:
+            state['meta'] = state['meta'].to_dict()
+        res.update(state)
+
         return res
 
     # Methods to update task state
@@ -212,3 +220,4 @@ class TaskException(Exception):
 class InvalidTaskStatus(TaskException):
     msg_prefix = "Invalid task status, options: {}: ".format(
         ', '.join(Task.valid_status))
+

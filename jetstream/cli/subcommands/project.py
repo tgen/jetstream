@@ -103,12 +103,12 @@ def tasks(args=None):
     wf = p.workflow()
     tasks = {t.tid: t for t in wf.tasks(objs=True)}
 
-    if args.tid:
-        for task_id in args.tid:
-            print(tasks[task_id].pretty())
+    if args.task_id:
+        for task_id in args.task_id:
+            print(jetstream.utils.yaml_dumps(tasks[task_id].serialize()))
     else:
         for t in tasks.values():
-            print(t)
+            print(t, t.tid)
 
 
 def runs(args=None):

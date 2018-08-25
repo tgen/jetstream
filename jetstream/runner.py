@@ -3,6 +3,7 @@ import re
 import shlex
 import time
 import json
+import tempfile
 import subprocess
 from datetime import datetime, timedelta
 import itertools
@@ -331,14 +332,14 @@ class SlurmBackend(Backend):
             log.info('Slurm job monitor stopped!')
 
     async def _update_jobs(self):
-        log.info('Sacct request for {} jobs...'.format(len(self._jobs)))
+        log.verbose('Sacct request for {} jobs...'.format(len(self._jobs)))
         sacct_data = {}
 
         for chunk in self.chunk_jobs():
             data = await self.async_sacct_request(*chunk)
             sacct_data.update(data)
 
-        log.info('Status updates for {} jobs'.format(len(sacct_data)))
+        log.verbose('Status updates for {} jobs'.format(len(sacct_data)))
 
         reap = set()
         for jid, job in self._jobs.items():
@@ -364,7 +365,7 @@ class SlurmBackend(Backend):
         cmd = 'sacct -P --format all --delimiter={} {}'.format(
             self.sacct_delimiter, job_args)
 
-        log.debug('Launching: {}'.format(cmd))
+        log.verbose('Launching: {}'.format(cmd))
         p = await self.create_subprocess_shell(cmd, stdout=PIPE, stderr=PIPE)
         stdout, stderr = await p.communicate()
 
@@ -381,7 +382,7 @@ class SlurmBackend(Backend):
         cmd = 'sacct -P --format all --delimiter={} {}'.format(
             self.sacct_delimiter, job_args)
 
-        log.debug('Launching: {}'.format(cmd))
+        log.verbose('Launching: {}'.format(cmd))
         stdout = subprocess.check_output(cmd)
 
         res = self._parse_sacct(stdout.decode())
@@ -426,16 +427,23 @@ class SlurmBackend(Backend):
 
     def sbatch_cmd(self, task):
         """ Returns a formatted sbatch command. """
-        run_id = self.runner.fp['id']
+        run_id = self.runner.fp.id
         count = next(self.count)
         job_name = '{}.{}'.format(run_id, count)
 
+        tags = task.get('tags', [])
+        if isinstance(tags, str):
+            tags = tags.split()
+
         comment = json.dumps({
             'run': self.runner.fp.serialize(),
-            'task': task.serialize()
+            'task': {
+                'tid': task.tid,
+                'tags': tags,
+            }
         }, sort_keys=True)
 
-        args = ['sbatch', '--parsable', '-J', job_name, '--comment', comment]
+        args = ['sbatch', '--parsable', '-J', job_name, '--comment \'{}\''.format(comment)]
         
         if task.get('stdout'):
             if task.get('stderr'):
@@ -498,7 +506,8 @@ class SlurmBackend(Backend):
                 log.info('Error submitting job: {}'.format(jid))
                 return task.fail(1)
 
-            log.info("Submitted batch job {}".format(jid))
+            log.info("{} Slurm JobID: {}".format(task, jid))            
+            task.set_state(slurm_job_id=jid)
 
             job = self.add_jid(jid)
             rc = await job.wait()
