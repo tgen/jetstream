@@ -31,10 +31,8 @@ setup(
     ],
     install_requires=[
         'networkx',
-        'ruamel.yaml',
+        'pyyaml',
         'ulid-py',
-        'tempstore',
-        'requests',
         'jinja2'
     ],
     extras_require={

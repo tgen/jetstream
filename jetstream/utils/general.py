@@ -6,7 +6,6 @@ import fnmatch
 import gzip
 import json
 import logging
-import ulid
 import time
 import jetstream
 from collections.abc import Sequence, Mapping
@@ -14,7 +13,6 @@ from datetime import datetime
 from getpass import getuser
 from socket import gethostname
 from uuid import getnode
-from urllib.parse import quote as urlquote
 from pkg_resources import get_distribution
 import yaml
 
@@ -28,82 +26,52 @@ yaml.add_representer(type(None), represent_none)
 sentinel = object()
 log = logging.getLogger(__name__)
 
-# Useful test cases for text file parsing
-TEST_RECORDS = [
-    {
-        'test': 'whitespace',
-        'data': ' \t\n\n\x0b\x0c'
-    },
-    {
-        'test': 'punctuation',
-        'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-    },
-    {
-        'test': 'printable',
-        'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
-    },
-    {
-        'test': 'digits',
-        'data': '0123456789'
-    },
-    {
-        'test': 'ascii_letters',
-        'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    }
-]
 
+class Fingerprint(object):
+    """Generate a new run ID with a snapshot of the system info."""
+    def __init__(self):
+        self.id = jetstream.run_id()
+        self.datetime = str(datetime.now())
+        self.user = str(getuser())
+        self.version = str(get_distribution("jetstream"))
+        self.sys_version = str(sys.version)
+        self.sys_platform = str(sys.platform)
+        self.sys_mac = hex(getnode()).upper()
+        self.pid = int(os.getpid())
+        self.args = ' '.join(sys.argv)
+        self.hostname = str(gethostname())
+        self.pwd = str(os.getcwd())
 
+    def serialize(self):
+        return vars(self)
 
-def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
-               LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
-               SM=None, strict=True, **unknown):
-    """Returns a SAM group header line. This function takes a set of keyword
-    arguments that are known tags listed in the SAM specification:
+    def to_yaml(self):
+        return yaml_dumps(vars(self))
 
-        https://samtools.github.io/hts-specs/
-
-    Unknown tags will raise a `TypeError` unless 'strict' is False
-
-    :param strict: Raise error for unknown read group tags
-    :type strict: bool
-    :return: str
-    """
-    if unknown and strict:
-        raise TypeError('Unknown read group tags: {}'.format(unknown))
-
-    fields = locals()
-    col_order = ('ID', 'CN', 'DS', 'DT', 'FO', 'KS', 'LB', 'PG', 'PI', 'PL',
-                 'PM', 'PU', 'SM')
-
-    final = ['@RG']
-    for field in col_order:
-        value = fields.get(field)
-        if value is not None:
-            final.append('{}:{}'.format(field, value))
-
-    return '\t'.join(final)
+    def to_json(self):
+        return json_dumps(vars(self), sort_keys=True)
 
 
 class JsonDict(dict):
     """Dict subclass that enforces JSON serializable keys/values.
      This is going to be slower than a dictionary, because it's validating
-     every change made to the dict, but will ensure that the items can be 
+     every change made to the dict, but will ensure that the items can be
      serialized later.
      """
+
     def __init__(self, *args, **kwargs):
         super(JsonDict, self).__init__(*args, **kwargs)
         json_dumps(self)
-        
+
     def __repr__(self):
         return 'JsonDict({})'.format(super(JsonDict, self).__repr__())
-    
+
     def __setitem__(self, key, val):
         """When a single item is set, we dont need to revalidate the entire
         object, just the new key/value"""
         json.dumps({key: val})
         return super(JsonDict, self).__setitem__(key, val)
-    
+
     def update(self, other=None, **kwargs):
         if other is not None:
             json_dumps(other)
@@ -111,11 +79,11 @@ class JsonDict(dict):
         else:
             json_dumps(kwargs)
             super(JsonDict, self).update(**kwargs)
-    
+
     def to_dict(self):
         """Return as a standard dictionary"""
         return dict(self)
-    
+
 
 class LogisticDelay:
     def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
@@ -182,6 +150,7 @@ class Source(str):
     explain upfront, but it's much is easier to work with downstream. This class
     behaves exactly like a string except in one case: `str.splitlines()` which
     generates a list of Source objects instead of strings. """
+
     def __new__(cls, data='', line_number=None):
         line = super(Source, cls).__new__(cls, data)
         line.line_number = line_number
@@ -196,6 +165,63 @@ class Source(str):
     def print_ln(self):
         """Format this string along with its line number"""
         return '{}: {}'.format(self.line_number, self)
+
+
+def test_csv_records():
+    """Returns some test data for table parsers"""
+    return [
+        {
+            'test': 'whitespace',
+            'data': ' \t\n\n\x0b\x0c'
+        },
+        {
+            'test': 'punctuation',
+            'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+        },
+        {
+            'test': 'printable',
+            'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+                    '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
+        },
+        {
+            'test': 'digits',
+            'data': '0123456789'
+        },
+        {
+            'test': 'ascii_letters',
+            'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        }
+    ]
+
+
+def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
+               LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
+               SM=None, strict=True, **unknown):
+    """Returns a SAM group header line. This function takes a set of keyword
+    arguments that are known tags listed in the SAM specification:
+
+        https://samtools.github.io/hts-specs/
+
+    Unknown tags will raise a `TypeError` unless 'strict' is False
+
+    :param strict: Raise error for unknown read group tags
+    :type strict: bool
+    :return: str
+    """
+    if unknown and strict:
+        raise TypeError('Unknown read group tags: {}'.format(unknown))
+
+    fields = locals()
+    col_order = ('ID', 'CN', 'DS', 'DT', 'FO', 'KS', 'LB', 'PG', 'PI', 'PL',
+                 'PM', 'PU', 'SM')
+
+    final = ['@RG']
+    for field in col_order:
+        value = fields.get(field)
+        if value is not None:
+            final.append('{}:{}'.format(field, value))
+
+    return '\t'.join(final)
 
 
 def read_lines_allow_gzip(path):
@@ -362,41 +388,6 @@ def records_to_csv(records, outpath):
         dw.writerows(records)
 
 
-def write_test_data(path, dialect='unix'):
-    """Writes csv test data out to a file. """
-    with open(path, 'w') as fp:
-        w = csv.DictWriter(fp, fieldnames=['test', 'data'], dialect=dialect)
-        w.writeheader()
-        for case in TEST_RECORDS:
-            w.writerow(case)
-    return path
-
-
-class Fingerprint(object):
-    def __init__(self):
-        self.id = jetstream.run_id()
-        self.datetime = str(datetime.now())
-        self.user = str(getuser())
-        self.version = str(get_distribution("jetstream"))
-        self.sys_version = str(sys.version)
-        self.sys_platform = str(sys.platform)
-        self.sys_mac = hex(getnode()).upper()
-        self.pid = int(os.getpid())
-        self.args = ' '.join(sys.argv)
-        self.hostname = str(gethostname())
-        self.pwd = str(os.getcwd())
-        self.parent = str(os.environ.get('JETSTREAM_RUNID'))
-
-    def serialize(self):
-        return vars(self)
-
-    def to_yaml(self):
-        return yaml_dumps(vars(self))
-
-    def to_json(self):
-        return json.dumps(vars(self), sort_keys=True)
-
-
 def find(path, name=None):
     """Similar to BSD find, finds files matching name pattern."""
     for dirname, subdirs, files in os.walk(path):
@@ -405,7 +396,3 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
             elif fnmatch.fnmatch(f, name):
                 yield os.path.join(dirname, f)
-
-
-def cleanse_filename(s):
-    return urlquote(s)

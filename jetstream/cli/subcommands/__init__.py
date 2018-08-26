@@ -25,9 +25,8 @@ def main(args):
 """
 
 __all__ = [
-    "legacy",
+    "init",
     "project",
-    "report",
     "pipelines",
     "run",
 ]

@@ -1,5 +1,7 @@
-deploy*
-site*
+deploy/
+site/
+docs/_build/
+venv/
 
 .DS_Store
 .idea/
@@ -52,6 +54,3 @@ coverage.xml
 *.log
 *.pot
 
-# Sphinx documentation
-docs/_build/
-jetstream-venv/

@@ -1,8 +1,0 @@
-
-- name: hello_world
-  cmd: null
-
-- name: foo
-  cmd: null
-  after: hello_world
-

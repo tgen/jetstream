@@ -1,3 +1,0 @@
-- name: test_pipe_stdout_back_to_runner
-  after: {{ after }}
-  cmd: env

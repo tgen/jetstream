@@ -19,6 +19,7 @@ import sys
 import jetstream
 from jetstream import log
 from jetstream.cli import shared
+from jetstream.backends import LocalBackend, SlurmBackend
 from jetstream.cli.subcommands.run import arg_parser
 
 
@@ -86,9 +87,9 @@ def main(args=None):
     log.info('Workflow data after composition: {}'.format(workflow))
 
     if args.backend == 'slurm':
-        backend = jetstream.SlurmBackend()
+        backend = SlurmBackend()
     else:
-        backend = jetstream.LocalBackend()
+        backend = LocalBackend()
 
     runner = jetstream.AsyncRunner(
         backend=backend,

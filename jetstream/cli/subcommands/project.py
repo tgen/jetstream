@@ -65,9 +65,9 @@ def tasks_arg_parser():
     return parser
 
 
-def runs_arg_parser():
+def history_arg_parser():
     parser = argparse.ArgumentParser(
-        prog='jetstream project runs',
+        prog='jetstream project history',
         description='Records are saved for every workflow that has been run on'
                     'a project. This command lists the run ids in a project.'
     )
@@ -107,18 +107,31 @@ def tasks(args=None):
         for task_id in args.task_id:
             print(jetstream.utils.yaml_dumps(tasks[task_id].serialize()))
     else:
+        print('\t'.join((
+            'status',
+            'task_id',
+            'task_name',
+            'start',
+            'end'
+        )))
         for t in tasks.values():
-            print(t, t.tid)
+            print('\t'.join((
+                t.state['status'],
+                t.tid,
+                str(t.directives.get('name')),
+                str(t.state['start']),
+                str(t.state['end'])
+            )))
 
 
-def runs(args=None):
-    parser = runs_arg_parser()
+def history(args=None):
+    parser = history_arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
     p = jetstream.Project(args.path)
 
-    for r in p.runs(paths=True):
+    for r in p.history(paths=True):
         r = jetstream.utils.yaml_load(r)
         print(r['id'], r['datetime'])
 
@@ -127,7 +140,7 @@ def main(args=None):
     actions = {
         'config': config,
         'tasks': tasks,
-        'runs': runs,
+        'history': history,
 
     }
 

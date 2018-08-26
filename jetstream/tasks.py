@@ -28,6 +28,7 @@ class Task(object):
         self.workflow = None
         self._directives = utils.JsonDict()
         self._state = utils.JsonDict()
+        self._tid = ''
         existing_tid = None
         
         if data:
@@ -50,9 +51,9 @@ class Task(object):
                     self._directives[k] = v
         else:
             self._directives.update(kwargs)
-            self.reset()
+            self._init_state()
 
-        self._tid = sha1(self.identity.encode()).digest().hex()
+        self._set_tid()
 
         if existing_tid and existing_tid != self._tid:
             msg = (
@@ -72,23 +73,104 @@ class Task(object):
             ))
 
     def __repr__(self):
-        name = self.get('name', self.tid)
-        return '<Task({}): {}>'.format(self.status, name)
+        return '<Task {}>'.format(self.tid[:8])
 
     def __hash__(self):
         return hash(self._tid)
 
-    def __getitem__(self, item):
-        return self._directives.__getitem__(item)
-    
-    def __setitem__(self, key, value):
-        raise AttributeError('Task data should not be modified.')
-    
     def __eq__(self, other):
         if hasattr(other, 'tid'):
             return self.tid == other.tid
         else:
             return False
+
+    def _set_tid(self):
+        self._tid = sha1(self.identity.encode()).digest().hex()
+
+    def _init_state(self):
+        self._state.update(
+            status='new',
+            returncode=None,
+            start=None,
+            end=None,
+            meta=utils.JsonDict()
+        )
+
+    def reset(self):
+        """Reset the state state of this task"""
+        log.info('{} is reset'.format(self))
+        self._init_state()
+
+    def start(self):
+        """Indicate that this task has been started"""
+        log.info('{} has started'.format(self))
+        self._state.update(
+            status='pending',
+            start=datetime.now().isoformat()
+        )
+
+    def complete(self, returncode=0):
+        """Indicate that this task is complete"""
+        log.info('{} is complete'.format(self))
+        self._state.update(
+            status='complete',
+            returncode=returncode,
+            end=datetime.now().isoformat(),
+        )
+
+    def fail(self, returncode=1):
+        log.info('{} has failed'.format(self))
+        self._state.update(
+            status='failed',
+            returncode=returncode,
+            end=datetime.now().isoformat()
+        )
+
+        if self.workflow:
+            for dep in self.workflow.dependents(self):
+                dep.set_state(dependency_failed=self.tid)
+                dep.fail(returncode=123)
+
+    def set_state(self, **kwargs):
+        """Add information to task state meta data"""
+        log.info('{} set state: {}'.format(self, kwargs))
+        if 'meta' not in self._state:
+            self._state['meta'] = utils.JsonDict()
+
+        self._state['meta'].update(**kwargs)
+
+    def is_new(self):
+        if self.status == 'new':
+            return True
+        else:
+            return False
+
+    def is_pending(self):
+        if self.status == 'pending':
+            return True
+        else:
+            return False
+
+    def is_done(self):
+        if self.status in ('complete', 'failed'):
+            return True
+        else:
+            return False
+
+    def is_complete(self):
+        if self.status == 'complete':
+            return True
+        else:
+            return False
+
+    def is_failed(self):
+        if self.status == 'failed':
+            return True
+        else:
+            return False
+
+    def is_ready(self):
+        return self.workflow.is_ready(self)
 
     def get(self, *args, **kwargs):
         return self._directives.get(*args, **kwargs)
@@ -130,83 +212,6 @@ class Task(object):
         res.update(state)
 
         return res
-
-    # Methods to update task state
-    def reset(self):
-        self._state.update(
-            status='new',
-            returncode=None,
-            start=None,
-            end=None
-        )
-
-    def start(self):
-        """Indicate that this task has been started"""
-        self._state.update(
-            status='pending',
-            start=datetime.now().isoformat()
-        )
-
-    def complete(self, returncode=0):
-        """Indicate that this task is complete"""
-        self._state.update(
-            status='complete',
-            returncode=returncode,
-            end=datetime.now().isoformat(),
-        )
-        
-    def fail(self, returncode=1):
-        self._state.update(
-            status='failed',
-            returncode=returncode,
-            end=datetime.now().isoformat()
-        )
-        
-        if self.workflow:
-            for dep in self.workflow.dependents(self):
-                dep.set_state(dependency_failed=str(self))
-                dep.fail(returncode=123)
-
-    def set_state(self, **kwargs):
-        """Add information to task state meta data"""
-        if 'meta' not in self._state:
-            self._state['meta'] = utils.JsonDict()
-
-        self._state['meta'].update(**kwargs)
-
-    # Helper methods for checking status
-    def is_new(self):
-        if self.status == 'new':
-            return True
-        else:
-            return False
-
-    def is_pending(self):
-        if self.status == 'pending':
-            return True
-        else:
-            return False
-
-    def is_done(self):
-        if self.status in ('complete', 'failed'):
-            return True
-        else:
-            return False
-
-    def is_complete(self):
-        if self.status == 'complete':
-            return True
-        else:
-            return False
-
-    def is_failed(self):
-        if self.status == 'failed':
-            return True
-        else:
-            return False
-        
-    def is_ready(self):
-        return self.workflow.is_ready(self)
 
 
 class TaskException(Exception):

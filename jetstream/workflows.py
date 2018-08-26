@@ -102,7 +102,6 @@ internally.
 
 """
 import re
-import logging
 import shutil
 from datetime import datetime
 import networkx as nx
@@ -110,15 +109,16 @@ from networkx.readwrite import json_graph
 import jetstream
 from threading import Lock
 from collections import Counter
+from pkg_resources import get_distribution
 from jetstream import utils, log
 from jetstream.tasks import Task
 
-log = logging.getLogger(__name__)
+__version__ = get_distribution('jetstream').version
 
 
 class Workflow(object):
     def __init__(self):
-        self.graph = nx.DiGraph()
+        self.graph = nx.DiGraph(jetstream_version=__version__)
         self._lock = Lock()
         self._stack = list()
 

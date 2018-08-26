@@ -3,13 +3,8 @@ import importlib
 import logging
 import sys
 import traceback
-import jetstream
-from jetstream import log
-
-msg = "%(asctime)s: %(message)s"
-color_format = "[\033[4m\033[92m\U0001F335 %(module)10s\033[0m] " + msg
-basic_format = "%(module)10s " + msg
-verbose_format = "%(name)s.%(funcName)s:%(lineno)d " + msg
+from pkg_resources import get_distribution
+from jetstream import logs, settings
 
 
 def arg_parser():
@@ -22,22 +17,21 @@ def arg_parser():
     main_parser.add_argument('subcommand', nargs='?', help='subcommand name')
 
     main_parser.add_argument('-v', '--version', action='version',
-                             version=jetstream.__version__)
+                             version=get_distribution('jetstream').version)
 
     main_parser.add_argument('--log-debug', action='store_true',
-                             help='Enable debug logging')
+                             help='Alias for debug log settings')
 
     main_parser.add_argument('--log-verbose', action='store_true',
-                             help='Enable lowest-level logging')
+                             help='Alias for lowest-level log settings')
+
+    main_parser.add_argument('--log-format', default=None)
 
     main_parser.add_argument('--log-filename', default=None)
 
-    main_parser.add_argument('--log-filemode', default='a')
+    main_parser.add_argument('--log-filemode', default=None)
 
-    main_parser.add_argument('--log-format', default=color_format)
-
-    main_parser.add_argument('--log-level', default='INFO',
-                             choices=('WARNING', 'INFO', 'DEBUG', 'VERBOSE'))
+    main_parser.add_argument('--log-level', default=None)
 
     return main_parser
 
@@ -47,35 +41,43 @@ def get_subcommands():
     return ', '.join(subcommands)
 
 
+def get_loglevel(value):
+    """Determine logging level numeric value from int or level name"""
+    try:
+        numeric_level = int(value)
+    except ValueError:
+        numeric_level = logging._nameToLevel[value.upper()]
+
+    return numeric_level
+
+
 def main(args=None):
     parser = arg_parser()
     args, remainder = parser.parse_known_args(args)
 
-    log_level = logging._nameToLevel.get(args.log_level, 30)
-    log_format = args.log_format
-    log_filename = args.log_filename
-    log_filemode = args.log_filemode
-
-    if args.log_debug:
-        log_level = 10
-        log_format = verbose_format
-
-    if args.log_verbose:
-        log_level = 1
-        log_format = verbose_format
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(log_level)
-    stream_handler.setFormatter(logging.Formatter(log_format))
-    log.addHandler(stream_handler)
+    log_level = get_loglevel(args.log_level or settings.get('log_level') or 20)
+    log_format = args.log_format or settings.get('log_format') or logs.color_format
+    log_filename = args.log_filename or settings.get('log_filename')
+    log_filemode = args.log_filemode or settings.get('log_filemode')
 
     if log_filename:
         file_handler = logging.FileHandler(log_filename, log_filemode)
         file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter(basic_format))
-        log.addHandler(file_handler)
+        file_handler.setFormatter(logging.Formatter(logs.debug_format))
+        logs.log.addHandler(file_handler)
 
-    log.info('Version {}'.format(jetstream.__version__))
+    if args.log_debug:
+        log_level = 10
+        log_format = logs.debug_format
+
+    if args.log_verbose:
+        log_level = 1
+        log_format = logs.debug_format
+
+    log = logs.start_logging(format=log_format, level=log_level)
+
+    log.info('Version {}'.format(get_distribution('jetstream')))
+    log.debug('Settings: {}'.format(settings))
     log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
@@ -94,7 +96,7 @@ def main(args=None):
             mod.main(remainder)
 
         except ModuleNotFoundError:
-            log.debug(traceback.format_exc())
+            log.critical(traceback.format_exc())
             parser.print_help()
 
             if args.subcommand != 'help':

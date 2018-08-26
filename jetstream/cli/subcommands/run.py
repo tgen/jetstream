@@ -15,6 +15,7 @@ import logging
 import argparse
 import jetstream
 from jetstream.cli import shared
+from jetstream.backends import LocalBackend, SlurmBackend
 
 log = logging.getLogger(__name__)
 
@@ -106,9 +107,9 @@ def main(args=None):
         sys.exit(0)
 
     if args.backend == 'slurm':
-        backend = jetstream.SlurmBackend()
+        backend = SlurmBackend()
     else:
-        backend = jetstream.LocalBackend()
+        backend = LocalBackend()
 
     runner = jetstream.AsyncRunner(
         backend=backend,

@@ -1,7 +1,0 @@
-
-{% for i in range(tasks) %}
-
-- name: stress_sleepRand_{{ i }}
-  cmd: sleep {{ range(1, 60) | random }}
-
-{% endfor %}
