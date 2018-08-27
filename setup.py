@@ -22,7 +22,7 @@ setup(
     long_description=read('README.md'),
     long_description_content_type="text/markdown",
     keywords="ngs pipeline automation",
-    packages=find_packages(),
+    packages=find_packages(exclude=("test",)),
     include_package_data=True,
     python_requires='>=3',
     classifiers=[
