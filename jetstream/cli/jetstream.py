@@ -1,20 +1,38 @@
 import argparse
-import importlib
 import logging
 import sys
 import traceback
 from pkg_resources import get_distribution
 from jetstream import logs, settings
+from jetstream.cli import subcommands
+
+description = """Run a Jetstream command.
+Available commands are:
+{}
+""".format(subcommands.summary)
+
+def get_loglevel(value):
+    """Determine logging level numeric value from int or level name"""
+    try:
+        numeric_level = int(value)
+    except ValueError:
+        numeric_level = logging._nameToLevel[value.upper()]
+
+    return numeric_level
 
 
 def arg_parser():
     main_parser = argparse.ArgumentParser(
-        description='Available sub-commands are: {}'.format(get_subcommands()),
+        description='Available commands are:\n\n{}'.format(
+            subcommands.summary()),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='Use \'jetstream <subcommand> -h/--help\' for help '
                'with specific commands.',
         add_help=False)
 
-    main_parser.add_argument('subcommand', nargs='?', help='subcommand name')
+    main_parser.add_argument('subcommand', nargs='?',
+                             choices=list(subcommands.__all__),
+                             help=argparse.SUPPRESS)
 
     main_parser.add_argument('-v', '--version', action='version',
                              version=get_distribution('jetstream').version)
@@ -34,21 +52,6 @@ def arg_parser():
     main_parser.add_argument('--log-level', default=None)
 
     return main_parser
-
-
-def get_subcommands():
-    from jetstream.cli.subcommands import __all__ as subcommands
-    return ', '.join(subcommands)
-
-
-def get_loglevel(value):
-    """Determine logging level numeric value from int or level name"""
-    try:
-        numeric_level = int(value)
-    except ValueError:
-        numeric_level = logging._nameToLevel[value.upper()]
-
-    return numeric_level
 
 
 def main(args=None):
@@ -83,12 +86,10 @@ def main(args=None):
 
     if args.subcommand is None:
         parser.print_help()
+        sys.exit(1)
     else:
         try:
-            # Dynamically import the requested sub-command
-            mod = importlib.import_module(
-                '.subcommands.' + args.subcommand,
-                package=__package__)
+            mod = getattr(subcommands, args.subcommand)
 
             log.debug('Launch {} args: {}'.format(
                 mod.__name__, ' '.join(remainder)))

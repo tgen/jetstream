@@ -1,4 +1,4 @@
-"""Run a Jetstream workflow inside a project
+"""Run a Jetstream workflow inside a project.
 
 Template variable data is usually saved as files in ``<project>/config``, but 
 command arguments can also be used to pass variable data to templates. All 

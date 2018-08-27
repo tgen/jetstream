@@ -1,4 +1,4 @@
-"""Run a Jetstream workflow
+"""Run a Jetstream workflow.
 
 Template variable arguments should follow the syntax: ``--<key> <value>``.
 The key must start with two hyphens and the value is the following argument. The

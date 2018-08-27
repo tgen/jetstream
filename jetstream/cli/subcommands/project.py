@@ -1,4 +1,4 @@
-"""Interact with jetstream projects."""
+"""Interact with jetstream projects. View tasks, run history, or config data."""
 import sys
 import argparse
 import logging

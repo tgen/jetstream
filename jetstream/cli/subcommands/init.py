@@ -1,3 +1,8 @@
+"""Create or a new project or reinitialize an existing project.
+
+This command can be used to create a new Jetstrema project with the
+recommended project folders. If config files are included, they will
+be copied into the project config directory."""
 import os
 import shutil
 import argparse
@@ -9,7 +14,7 @@ def init_arg_parser():
     """Argument parser for the init action"""
     parser = argparse.ArgumentParser(
         prog='jetstream project init',
-        description='Initialize a Jetstream project'
+        description=__doc__
     )
 
     parser.add_argument('path', nargs='?', default=os.getcwd(),
