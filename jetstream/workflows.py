@@ -57,7 +57,7 @@ or, equivalently:
 
 Finally, Jinja templating can be used to add dynamic elements.
 
-.. code-block:: ansible
+.. code-block:: yaml
 
     {% for sample in project.config.samples %}
 
@@ -102,299 +102,42 @@ internally.
 
 """
 import re
-import logging
 import shutil
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
 import jetstream
 from threading import Lock
-from collections import Counter, deque
-from jetstream import utils
+from collections import Counter
+from pkg_resources import get_distribution
+from jetstream import utils, log
+from jetstream.tasks import Task
 
-log = logging.getLogger(__name__)
-
-
-class NoFallback:
-    """Sentinel value that allows task searches to fallback to None"""
-    pass
-
-
-def search_pattern(pat):
-    return re.compile('^{}$'.format(pat))
-
-
-def save(workflow, path):
-    start = datetime.now()
-    lock_path = path + '.lock'
-
-    with open(lock_path, 'w') as fp:
-        log.info('Saving workflow...'.format(lock_path))
-        fp.write(workflow.to_yaml())
-
-    shutil.move(lock_path, path)
-
-    elapsed = datetime.now() - start
-    log.info('Workflow saved (after {}) to {}'.format(elapsed, path))
-
-
-def coerce_str_to_list(value):
-    if value is None or isinstance(value, list):
-        return value
-    elif isinstance(value, str):
-        return [value, ]
-    else:
-        raise ValueError(value)
-
-
-class InvalidTaskDirective(Exception):
-    pass
-
-
-class Task(object):
-    states_lookup = {
-        0: 'new',
-        1: 'pending',
-        2: 'complete',
-        3: 'failed'
-    }
-
-    valid_states = list(states_lookup.keys())
-    status_lookup = {v: k for k, v in states_lookup.items()}
-    valid_status = list(status_lookup.keys())
-    id_pattern = re.compile(r'^\w+\.?\d+$')
-
-    @staticmethod
-    def validate_id(id):
-        if not isinstance(id, str):
-            raise InvalidTaskDirective('Task id must be a string: {}'.format(id))
-        if not Task.id_pattern.match(id):
-            raise InvalidTaskDirective('Invalid task ID: {}'.format(id))
-        return id
-
-    @staticmethod
-    def validate_description(**kwargs):
-        # Description is meant to be an open ended field
-        return kwargs
-
-    @staticmethod
-    def validate_flow(before=None, after=None, input=None, output=None):
-        try:
-            before = coerce_str_to_list(before)
-        except ValueError:
-            msg = '"before" must be str or list'
-            raise InvalidTaskDirective(msg) from None
-
-        try:
-            after = coerce_str_to_list(after)
-        except ValueError:
-            msg = '"after" must be str or list'
-            raise InvalidTaskDirective(msg) from None
-
-        try:
-            input = coerce_str_to_list(input)
-        except ValueError:
-            msg = '"input" must be str or list'
-            raise InvalidTaskDirective(msg) from None
-
-        try:
-            output = coerce_str_to_list(output)
-        except ValueError:
-            msg = '"output" must be str or list'
-            raise InvalidTaskDirective(msg) from None
-
-        return {
-            'before': before,
-            'after': after,
-            'input': input,
-            'output': output
-        }
-
-    @staticmethod
-    def validate_action(execute=None, split=None, apply=None, combine=None,
-                        name=None):
-
-        if execute and any((split, apply, combine, name)):
-            raise InvalidTaskDirective(
-                '"execute" is can not be included with "split", "apply", '
-                'combine", or "name"')
-
-    #
-    # def __init__(self, id, *, description=None, flow=None, action=None):
-    #     self.id = self.validate_id(id)
-    #     self.description = self.validate_description(**description)
-    #     self.flow = self.validate_flow(**flow)
-    #     self.action = self.validate_action(**action)
-
-    def __init__(self, id, *, cmd=None, before=None, after=None, input=None,
-                 output=None, stdin=None, stdout=None, stderr=None, cpus=0,
-                 mem=0, walltime=0, status='new', returncode=None, start=None,
-                 end=None, methods=None, description=None, help=None,
-                 workflow=None):
-
-        self.id = str(id)
-        self.cmd = cmd
-        self.before = coerce_str_to_list(before)
-        self.after = coerce_str_to_list(after)
-        self.input = coerce_str_to_list(input)
-        self.output = coerce_str_to_list(output)
-        self.stdin = stdin
-        self.stdout = stdout
-
-        if self.stdout is None:
-            # Remove whitespace from id to form default out path
-            self.stdout = re.sub(r'\s', '_', self.id) + '.out'
-
-        self.stderr = stderr or self.stdout
-        self.cpus = int(cpus)
-        self.mem = mem
-        self._state = None
-        self.status = status
-        self.returncode = returncode
-        self.start = start
-        self.end = end
-        self.walltime = walltime
-        self.methods = methods
-        self.description = description
-        self.help = help
-        self._workflow = workflow
-
-    def __repr__(self):
-        return '<Task({}): {} >'.format(self.status, self.id)
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def pretty(self):
-        return utils.yaml_dumps(self.serialize())
-
-    def serialize(self):
-        data = {k: v for k, v in vars(self).items() if not k.startswith('_')}
-        data.update(status=self.status)
-        return data
-
-    @property
-    def state(self):
-        return self._state
-
-    @state.setter
-    def state(self, value):
-        if value not in Task.states_lookup:
-            err = 'State must be one of {}'.format(Task.valid_states)
-            raise ValueError(err) from None
-        else:
-            self._state = value
-
-    @property
-    def status(self):
-        return Task.states_lookup[self._state]
-
-    @status.setter
-    def status(self, value):
-        try:
-            self._state = Task.status_lookup[value]
-        except KeyError:
-            err = 'Status must be one of {}'.format(Task.valid_status)
-            raise KeyError(err) from None
-
-    @property
-    def workflow(self):
-        # By making workflow a property, it can be get/set as task.workflow
-        # but will not be included when serializing.
-        return self._workflow
-
-    @workflow.setter
-    def workflow(self, value):
-        self._workflow = value
-
-    def add_to_workflow(self, wf):
-        return wf.add_task(self)
-
-    def is_new(self):
-        if self.status == 'new':
-            return True
-        else:
-            return False
-
-    def is_pending(self):
-        if self.status == 'pending':
-            return True
-        else:
-            return False
-
-    def is_done(self):
-        if self.status in ('complete', 'failed'):
-            return True
-        else:
-            return False
-
-    def is_complete(self):
-        if self.status == 'complete':
-            return True
-        else:
-            return False
-
-    def is_failed(self):
-        if self.status == 'failed':
-            return True
-        else:
-            return False
-
-    def is_ready(self):
-        return self._workflow.is_ready(self.id)
-
-    def reset(self):
-        log.info('{} reset!'.format(self.id))
-
-        self._state = 0
-        self.returncode = None
-        self.start = None
-        self.end = None
-
-    def pending(self):
-        """ Set this task to "pending" status. """
-        log.info('{} is pending!'.format(self.id))
-
-        self._state = 1
-        self.start = str(datetime.now())
-
-    def complete(self, returncode=0):
-        """ Set this task to "complete" status. """
-        log.info('{} is complete!'.format(self.id))
-
-        self._state = 2
-        self.returncode = returncode
-        self.end = str(datetime.now())
-
-    def fail(self, returncode=1):
-        """ Set this task to "failed" status. """
-        log.info('{} failed!'.format(self.id))
-
-        self._state = 3
-        self.returncode = returncode
-        self.end = str(datetime.now())
-
-        for task in self._workflow.dependents(self.id):
-            task.fail(returncode)
+__version__ = get_distribution('jetstream').version
 
 
 class Workflow(object):
     def __init__(self):
-        self.graph = nx.DiGraph()
+        self.graph = nx.DiGraph(jetstream_version=__version__)
         self._lock = Lock()
         self._stack = list()
 
+    def __contains__(self, item):
+        if isinstance(item, str):
+            return item in self.graph
+        else:
+            return item.tid in self.graph
+
     def __enter__(self):
-        """ Workflows can be edited in a transaction using the context manager
+        """Workflows can be edited in a transaction using the context manager
         statement "with". This allows multiple task additions to take place
         with only a single update to the workflow edges. """
         self._lock.acquire()
         self._stack = list()
 
     def __exit__(self, exc_type, exc_value, traceback):
-        """ If there is an error during the transaction, all nodes will
+        """If there is an error during the transaction, all nodes will
         be rolled back on exit. """
-
         if exc_value is not None:
             for task_id in self._stack:
                 self.graph.remove_node(task_id)
@@ -403,182 +146,15 @@ class Workflow(object):
         self._stack = list()
         self._lock.release()
 
-    def __repr__(self):
-        stats = Counter([t.status for t in self.tasks(objs=True)])
-        return '<jetstream.Workflow {}>'.format(stats)
+    def __iter__(self):
+        return WorkflowIterator(self)
 
     def __len__(self):
         return len(self.graph)
 
-    def __iter__(self):
-        return WorkflowIterator(self)
-
-    def add_task(self, task):
-        if not isinstance(task, Task):
-            raise ValueError('task must be instance of {}'.format(Task))
-
-        if task.id in self.graph:
-            raise ValueError('Duplicate task ID: {}'.format(task.id))
-
-        task.workflow = self
-        self.graph.add_node(task.id, obj=task)
-
-        if self.is_locked():
-            self._stack.append(task.id)
-        else:
-            try:
-                self.update()
-            except Exception as e:
-                self.graph.remove_node(task.id)
-                raise e
-
-        return task
-
-    def new_task(self, task_id, **directives):
-        task = Task(task_id, **directives)
-        return self.add_task(task)
-
-    def update(self):
-        current = list(self.graph.edges())
-        self.graph.remove_edges_from(current)
-
-        try:
-            for task_id in self.graph.nodes():
-                self._link_dependencies(task_id)
-        except Exception as e:
-            self.graph.remove_edges_from(list(self.graph.edges()))
-            self.graph.add_edges_from(current)
-            raise e from None
-
-    def resume(self):
-        """ Returns all pending nodes to an incomplete state. """
-        for task in self.tasks(objs=True):
-            if task.status == 'pending':
-                task.reset()
-
-    def reset(self):
-        """ Returns all nodes to a new state. """
-        for task in self.tasks(objs=True):
-            task.reset()
-
-    def retry(self):
-        """ Resets all pending and failed tasks. """
-        for task in self.tasks(objs=True):
-            if task.status in ('pending', 'failed'):
-                task.reset()
-
-    def remove_task(self, task_id):
-        return self.graph.remove_node(task_id)
-
-    def tasks(self, objs=False):
-        if objs:
-            return (t['obj'] for i, t in self.graph.nodes(data=True))
-        else:
-            return self.graph.nodes()
-
-    def list_tasks(self):
-        return list(self.tasks(objs=True))
-
-    def get_task(self, task_id):
-        return self.graph.nodes[task_id]['obj']
-
-    def dependencies(self, task_id):
-        return (self.get_task(dep) for dep in self.graph.successors(task_id))
-
-    def dependents(self, task_id):
-        return (self.get_task(dep) for dep in self.graph.predecessors(task_id))
-
-    def is_ready(self, task_id):
-        """ Returns True if "task_id" is ready for execution. """
-        task = self.get_task(task_id)
-
-        if task.status != 'new':
-            return False
-
-        for dependency in self.dependencies(task_id):
-            if dependency.status != 'complete':
-                return False
-        else:
-            return True
-
-    def find_by_id(self, pattern, fallback=NoFallback):
-        log.debug('Find by id pattern: {}'.format(pattern))
-
-        pat = search_pattern(pattern)
-        fn = lambda task_id: pat.match(task_id)
-        gen = self.graph.nodes()
-        matches = set(filter(fn, gen))
-
-        log.debug('Found matches: {}'.format(matches))
-
-        if matches:
-            return matches
-        elif fallback is NoFallback:
-            raise ValueError('No tasks match value: {}'.format(pattern))
-        else:
-            return fallback
-
-    def find_by_cmd(self, pattern, fallback=NoFallback):
-        log.debug('Find by cmd pattern: {}'.format(pattern))
-
-        pat = search_pattern(pattern)
-        matches = set()
-
-        for task_id, data in self.graph.nodes(True):
-            task = data['obj']
-
-            if task.cmd is None:
-                continue
-
-            if pat.match(task.cmd):
-                matches.add(task_id)
-
-        if matches:
-            return matches
-        elif fallback is NoFallback:
-            raise ValueError('No tasks match value: {}'.format(pattern))
-        else:
-            return fallback
-
-    def find_by_output(self, pattern, fallback=NoFallback):
-        log.debug('Find by output pattern: {}'.format(pattern))
-
-        pat = search_pattern(pattern)
-        matches = set()
-
-        for task_id, data in self.graph.nodes(True):
-            task = data['obj']
-
-            if task.output is None:
-                continue
-
-            for value in task.output:
-                if pat.match(value):
-                    matches.add(task_id)
-
-        if matches:
-            return matches
-        elif fallback is NoFallback:
-            raise ValueError('No tasks match value: {}'.format(pattern))
-        else:
-            return fallback
-
-    def is_locked(self):
-        return self._lock.locked()
-
-    def serialize(self):
-        data = to_node_link_data(self)
-
-        for node in data['nodes']:
-            node['obj'] = node['obj'].serialize()
-
-        return data
-
-    def to_yaml(self):
-        return utils.yaml_dumps(self.serialize())
-
-    def dump_yaml(self, *args, **kwargs):
-        return utils.yaml_dump(self.serialize(), *args, **kwargs)
+    def __repr__(self):
+        stats = Counter([t.status for t in self.tasks(objs=True)])
+        return '<jetstream.Workflow {}>'.format(stats)
 
     def _add_edge(self, from_node, to_node):
         """ Edges represent dependencies between tasks. Edges run FROM one node
@@ -603,216 +179,376 @@ class Workflow(object):
             self.graph.remove_edge(from_node, to_node)
             raise jetstream.NotDagError
 
-    def _link_dependencies(self, task_id):
-        log.debug('Linking dependencies for: {}'.format(task_id))
-        task = self.get_task(task_id)
+    def _add_node(self, task):
+        """Add a node to the graph.
+        Nodes are expected to be an instance of Jetstream.Task. If the workflow
+        is not locked, via "with" statement, this will trigger Workflow.update.
+        """
+        if not isinstance(task, Task):
+            raise ValueError('task must be instance of {}'.format(Task))
 
-        if task.after:
-            log.debug('Linking "after" dependencies')
-            # "after" specifies edges that should run:
-            #    task_id ---depends on---> target, ...
+        if task.tid in self.graph:
+            raise ValueError('Duplicate task ID: {}'.format(task.tid))
 
-            for value in task.after:
-                matches = self.find_by_id(value)
+        log.debug('Adding task: {}'.format(task))
 
-                if task.id in matches:
+        task.workflow = self
+        self.graph.add_node(task.tid, obj=task)
+
+        if self.is_locked():
+            self._stack.append(task.tid)
+        else:
+            try:
+                self.update()
+            except Exception as e:
+                self.graph.remove_node(task.tid)
+                raise e
+
+        return task
+
+    def _flow_after(self, task):
+        """Generate edges for "after" directives of a task
+        "after" specifies edges that run:
+            task ---depends on---> target, ...
+        """
+        after = task.get('after')
+        log.debug('"after" directive: {}'.format(after))
+
+        if after:
+            after = utils.coerce_sequence(after)
+            log.debug('"after" directive after coercion: {}'.format(after))
+
+            for value in after:
+                matches = self.find(value)
+
+                if task.tid in matches:
                     raise ValueError(
                         'Task "after" directives cannot match itself - '
-                        'Task: {} Pattern: {}'.format(task_id, value)
+                        'Task: {} Pattern: {}'.format(task.tid, value)
                     )
 
                 for tar_id in matches:
-                    self._add_edge(task_id, tar_id)
+                    self._add_edge(task.tid, tar_id)
 
-        if task.before:
-            log.debug('Linking "before" dependencies')
+    def _flow_before(self, task):
+        """Generate edges for "before" directives of a task
+        "before" specifies edges that should run:
+            task <---depends on--- target, ...
+        """
+        before = task.get('before')
+        log.debug('"before" directive: {}'.format(before))
 
-            # "before" specifies edges that should run:
-            #    task_id <---depends on--- target, ...
+        if before:
+            before = utils.coerce_sequence(before)
+            log.debug('"before" directive after coercion: {}'.format(before))
 
-            for value in task.before:
-                matches = self.find_by_id(value)
+            for value in before:
+                matches = self.find(value)
 
-                if task_id in matches:
+                if task.tid in matches:
                     raise ValueError(
                         'Task "before" directives cannot match itself - '
-                        'Task: {} Pattern: {}'.format(task_id, value)
+                        'Task: {} Pattern: {}'.format(task.tid, value)
                     )
 
                 for tar_id in matches:
-                    self._add_edge(tar_id, task_id)
+                    self._add_edge(tar_id, task.tid)
 
-        if task.input:
-            log.debug('Linking "input" dependencies')
+    def _flow_input(self, task):
+        """Generate edges for "input" directives of a task
+        "input" specifies edges that should run:
+            task ---depends on---> target, ...
+        Where target includes an "output" value matching the "input" value."""
+        input = task.get('input')
+        log.debug('"input" directive: {}'.format(input))
 
-            # "input" specifies edges that should run:
-            #    task_id ---depends on---> target, ...
-            # Where target includes an "output" value
-            # matching the "input" value.
+        if input:
+            input = utils.coerce_sequence(input)
+            log.debug('"input" directive after coercion: {}'.format(input))
 
-            for value in task.input:
+            for value in input:
                 matches = self.find_by_output(value)
 
-                if task_id in matches:
+                if task.tid in matches:
                     raise ValueError(
                         'Task "input" directives cannot match itself - '
-                        'Task: {} Pattern: {}'.format(task_id, value)
+                        'Task: {} Pattern: {}'.format(task.tid, value)
                     )
 
                 for tar_id in matches:
-                    self._add_edge(task_id, tar_id)
+                    self._add_edge(task.tid, tar_id)
 
-    def compose(self, wf):
-        for task in wf.tasks(objs=True):
+    def add_task(self, task):
+        return self._add_node(task)
 
-            if task.id not in self.graph:
-                self.add_task(task)
+    def compose(self, workflow):
+        """Compose this workflow with another workflow.
+        This adds all tasks from another workflow to this workflow.
 
-            else:
-                existing_task = self.get_task(task.id)
+        Note: This will not roll back changes if an error occurs during
+        the merge.
 
-                if existing_task.is_failed():
-                    self.remove_task(existing_task.id)
+        ::
+
+                G (wf)    --->    H (self)     =   self.graph
+           ---------------------------------------------------
+                                    (A)new         (A)complete
+             (A)complete  --->       |        =     |
+                                    (B)new         (B)new
+
+        :param workflow: Another workflow to add to this workflow
+        :return: None
+        """
+        log.info('Composing {} with {}'.format(self, workflow))
+
+        with self:
+            for task in workflow.tasks(objs=True):
+                if not task in self:
                     self.add_task(task)
                 else:
-                    # Preserve tasks that are not problematic
-                    pass
+                    log.debug('Skipping {}, already in workflow'.format(task))
 
-    # def compose(self, wf):
-    #     """ Compose this workflow with another.
-    #
-    #     This add nodes and edges from another workflow to this workflow
-    #     graph. See networkx.compose(). G -> H where G is "new_wf" and H
-    #     is this workflow. The result is that node status from the current
-    #     workflow is preserved. If a workflow contains overlapping node ids
-    #     this will essentially extend the workflow.
-    #
-    #     ::
-    #
-    #              G (new_wf) -->    H (self)     =   self.graph
-    #         ---------------------------------------------------
-    #             (A)new                              (A)complete
-    #              |         --->   (A)complete   =    |
-    #             (B)new                              (B)new
-    #
-    #
-    #     :param new_wf: Another workflow to add to this workflow
-    #     :return: None
-    #     """
-    #     old_graph = self.graph
-    #     graph = nx.compose(wf.graph, self.graph)
-    #
-    #     try:
-    #         self.graph = graph
-    #         self.update()
-    #     except Exception as e:
-    #         log.info('Composition would result in a workflow with '
-    #                      'errors in task dependency graph. See traceback '
-    #                      'for more details.')
-    #         self.graph = old_graph
-    #         raise e from None
-    #
-    # def compose_all(self, *wfs):
-    #     """ Compose this workflow with multiple other workflows.
-    #     See Workflow.compose for more details. """
-    #     old_graph = self.graph
-    #     wfs = [wf.graph for wf in wfs] + [self.graph]
-    #     graph = nx.compose_all(wfs)
-    #
-    #     try:
-    #         self.graph = graph
-    #         self.update()
-    #     except Exception as e:
-    #         log.info('Composition would result in a workflow with '
-    #                      'errors in task dependency graph. See traceback '
-    #                      'for more details.')
-    #         self.graph = old_graph
-    #         raise e from None
+    def dependencies(self, task):
+        """Returns a generator that yields the dependencies of a given task"""
+        if isinstance(task, str):
+            task_id = task
+        else:
+            task_id = task.tid
 
-    def pretty(self):
+        return (self.get_task(tid) for tid in self.graph.successors(task_id))
+
+    def dependents(self, task):
+        """Returns a generator that yields the dependents of a given task"""
+        if isinstance(task, str):
+            task_id = task
+        else:
+            task_id = task.tid
+
+        return (self.get_task(tid) for tid in self.graph.predecessors(task_id))
+
+    def find(self, pattern, fallback=utils.sentinel):
+        """Find searches for tasks by "name" with a regex pattern."""
+        log.debug('Find: {}'.format(pattern))
+
+        pat = search_pattern(pattern)
+        matches = set()
+
+        for task_id, data in self.graph.nodes(True):
+            task = data['obj']
+            name = task.get('name')
+
+            if name is None:
+                continue
+
+            if pat.match(name):
+                matches.add(task_id)
+
+        if matches:
+            return matches
+        elif fallback is utils.sentinel:
+            raise ValueError('No task names match value: {}'.format(pattern))
+        else:
+            return fallback
+
+    # TODO I've accumulated several "find" methods that can probably be
+    # generalized into a find_by(key, value) method.
+
+    def find_by_id(self, pattern, fallback=utils.sentinel):
+        log.debug('Find by id pattern: {}'.format(pattern))
+
+        pat = search_pattern(pattern)
+        fn = lambda task_id: pat.match(task_id)
+        gen = self.graph.nodes()
+        matches = set(filter(fn, gen))
+
+        log.debug('Found matches: {}'.format(matches))
+
+        if matches:
+            return matches
+        elif fallback is utils.sentinel:
+            raise ValueError('No task ids match value: {}'.format(pattern))
+        else:
+            return fallback
+
+    def find_by_output(self, pattern, fallback=utils.sentinel):
+        log.debug('Find by output: {}'.format(pattern))
+
+        pat = search_pattern(pattern)
+        matches = set()
+
+        for task_id, data in self.graph.nodes(True):
+            task = data['obj']
+            output = task.get('output')
+
+            if output is None:
+                continue
+
+            output = utils.coerce_sequence(output)
+
+            for value in output:
+                if pat.match(value):
+                    matches.add(task_id)
+                    break
+
+        if matches:
+            return matches
+        elif fallback is utils.sentinel:
+            raise ValueError('No task outputs match value: {}'.format(pattern))
+        else:
+            return fallback
+
+    def get_task(self, task_id):
+        return self.graph.nodes[task_id]['obj']
+
+    def is_locked(self):
+        """Returns True if this workflow is locked.
+        A locked workflow will not automatically trigger edge updates when
+        adding new tasks. This allows tasks to be added "out-of-order"
+        regarding their dependency chain. """
+        return self._lock.locked()
+
+    def is_ready(self, task):
+        """Returns True if task is ready for execution."""
+        if isinstance(task, str):
+            task = self.get_task(task)
+
+        if task.status != 'new':
+            return False
+
+        for dependency in self.dependencies(task):
+            if not dependency.is_done():
+                return False
+        else:
+            return True
+
+    def list_tasks(self):
+        return list(self.tasks(objs=True))
+
+    def new_task(self, *args, **kwargs):
+        """Shortcut to create a new Task object and add to this workflow."""
+        task = Task(*args, **kwargs)
+        return self.add_task(task)
+
+    def remove_task(self, task_id):
+        return self.graph.remove_node(task_id)
+
+    def reset(self):
+        """Resets all tasks state."""
+        log.critical('Resetting state for all tasks')
+        for task in self.tasks(objs=True):
+            task.reset()
+
+    def resume(self):
+        """Resets all "pending" tasks state."""
+        for task in self.tasks(objs=True):
+            if task.status == 'pending':
+                task.reset()
+
+    def retry(self):
+        """Resets all "pending" and "failed" tasks state."""
+        for task in self.tasks(objs=True):
+            if task.status in ('pending', 'failed'):
+                task.reset()
+
+    def serialize(self):
+        """Convert the workflow to a node-link formatted object that can
+        be easily dumped to JSON/YAML """
+        data = to_node_link_data(self)
+
+        for node in data['nodes']:
+            node['obj'] = node['obj'].serialize()
+
+        return data
+
+    def tasks(self, objs=True):
+        """Access to the tasks in this workflow.
+        If objs is False, only the tids will be returned."""
+        if objs:
+            return (t['obj'] for i, t in self.graph.nodes(data=True))
+        else:
+            return self.graph.nodes()
+
+    def to_json(self, indent=None, sort_keys=True):
+        """Returns JSON string representation of this workflow"""
+        return utils.json_dumps(
+            self.serialize(), indent=indent, sort_keys=sort_keys
+        )
+
+    def to_yaml(self):
+        """Returns YAML string representation of this workflow"""
         return utils.yaml_dumps(self.serialize())
+
+    def update(self):
+        """Recalculate the edges for this workflow"""
+        for task in self.tasks(objs=True):
+            log.debug('Linking dependencies for: {}'.format(task))
+            self._flow_after(task)
+            self._flow_before(task)
+            self._flow_input(task)
 
 
 class WorkflowIterator(object):
     def __init__(self, workflow):
         self.workflow = workflow
-        self._queues = [deque(), deque()]
-        self.done = list()
-        self.queue, self.stack = self._queues
-
-        self.workflow.retry()
-
-        for task in self.workflow.tasks(objs=True):
-            if task.is_complete():
-                self.done.append(task)
-            else:
-                self.queue.append(task)
+        self.total = len(workflow)
+        self.tasks = workflow.list_tasks()
+        self.pending = list()
 
     def __repr__(self):
-        return '<jetstream.Workflow {}>'.format(self.status())
-
-    def status(self):
-        return {
-            'queue': len(self.queue),
-            'stack': len(self.stack),
-            'done': len(self.done)
-        }
-
-    def swap(self):
-        #log.debug('Swap queue and stack')
-        self.queue, self.stack = self.stack, self.queue
-
+        msg = '{}/{} remaining'.format(
+            len(self.tasks) + len(self.pending), self.total)
+        return '<jetstream.WorkflowIterator: {}>'.format(msg)
+    
     def __next__(self):
-        there_are_pending_tasks = False
-        checked_stack = False
+        log.verbose('Request for next task')
+        
+        self.pending = [t for t in self.pending if not t.is_done()]
+        log.verbose('Pending: {}'.format(self.pending))
+        
+        if not self.tasks and not self.pending:
+            raise StopIteration
+        
+        for i in reversed(range(len(self.tasks))):
+            task = self.tasks[i]
+            log.verbose('Considering: {}'.format(task))
+            
+            if task.is_done():
+                t = self.tasks.pop(i)
+                log.verbose('{} is done, removing from workflow iterator'.format(t))
+            elif task.is_ready():
+                self.tasks.pop(i)
+                self.pending.append(task)
+                task.start()
+                return task
+        else:
+            return None
 
-        while 1:
-            try:
-                task = self.queue.popleft()
-                #log.debug('Checking {}'.format(task.id))
 
-                if task.is_done():
-                    self.done.append(task)
+def search_pattern(pat):
+    return re.compile('^{}$'.format(pat))
 
-                elif task.is_pending():
-                    self.stack.append(task)
-                    there_are_pending_tasks = True
 
-                elif task.is_ready():
-                    self.stack.append(task)
-                    task.pending()
-                    return task
+def save_workflow(workflow, path):
+    start = datetime.now()
+    lock_path = path + '.lock'
 
-                else:
-                    # task is not ready
-                    self.stack.append(task)
+    with open(lock_path, 'w') as fp:
+        log.info('Saving workflow...'.format(lock_path))
+        fp.write(workflow.to_yaml())
 
-            except IndexError:
-                #log.debug('Queue empty, checking stack...')
+    shutil.move(lock_path, path)
 
-                if not self.stack:
-                    if there_are_pending_tasks:
-                        return None
-                    else:
-                        # Queue is empty, stack is empty, and no pending.
-                        log.info('All tasks complete!')
-                        raise StopIteration from None
-
-                elif self.stack and not checked_stack:
-                    checked_stack = True
-                    self.swap()
-
-                else:
-                    return None
+    elapsed = datetime.now() - start
+    log.info('Workflow saved (after {}) to {}'.format(elapsed, path))
 
 
 def from_node_link_data(data):
     graph = json_graph.node_link_graph(data)
     wf = Workflow()
 
-    for node_id, node_data in graph.nodes(data=True):
-        task_id = node_data['obj'].pop('id')
-        wf.new_task(task_id, **node_data['obj'])
+    with wf:
+        for node_id, node_data in graph.nodes(data=True):
+            wf.new_task(node_data['obj'])
 
     return wf
 
@@ -843,6 +579,11 @@ def load_workflow(path):
     return from_node_link_data(graph)
 
 
+def build_workflow_from_string(tasks):
+    parsed = utils.yaml_loads(tasks)
+    return build_workflow(parsed)
+
+
 def build_workflow(tasks):
     """ Given a sequence of tasks (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
@@ -859,7 +600,8 @@ def build_workflow(tasks):
     wf = Workflow()
 
     with wf:
-        for task in tasks:
-            wf.new_task(task_id=task.pop('id'), **task)
+        for task_mapping in tasks:
+            wf.add_task(Task(data=task_mapping))
 
+    log.info('Workflow ready: {}'.format(wf))
     return wf

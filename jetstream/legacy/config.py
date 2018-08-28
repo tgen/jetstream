@@ -21,7 +21,6 @@ def load(path):
 # def dump(*args, **kwargs):
 #     """ There is no dumper for legacy config files. You shouldn't be
 #      converting to the old format """
-#     raise NotImplementedError
 
 
 def loads(data):
@@ -76,7 +75,7 @@ def loads(data):
 
     return {
         'run_parameters': run_parameters,
-        'data': data_objects,
+        'read_groups': data_objects,
         'samples': sample_objects
     }
 
@@ -86,11 +85,11 @@ def explode(config, outdir=''):
         os.mkdir(outdir)
 
     samples_path = os.path.join(outdir, 'samples.csv')
-    data_path = os.path.join(outdir, 'data.csv')
+    data_path = os.path.join(outdir, 'read_groups.csv')
     run_parameters_path = os.path.join(outdir, 'run_parameters.yaml')
 
     records_to_csv(config['samples'], samples_path)
-    records_to_csv(config['data'], data_path)
+    records_to_csv(config['read_groups'], data_path)
 
     if os.path.exists(run_parameters_path):
         raise FileExistsError(run_parameters_path)
@@ -183,7 +182,7 @@ def _parse_run_parameters_lines(lines):
 #    was later changed in Pegasus. The dilution ID is also called a library,
 #    and is eventually used for making read groups. This parser always adds
 #    dilution id (library) as a property of the data.
-#
+
 def _group_sample_lines(lines):
     """ Groups sample lines together with data lines """
     samples = []

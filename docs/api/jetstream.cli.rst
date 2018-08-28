@@ -19,5 +19,5 @@ Submodules
 .. toctree::
 
    jetstream.cli.jetstream
-   jetstream.cli.kvargs
+   jetstream.cli.shared
 

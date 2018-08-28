@@ -11,6 +11,16 @@ Command-Line
         :ref: jetstream.cli.jetstream.arg_parser
         :prog: jetstream
 
+run
+----------
+
+    ``jetstream run``
+
+
+    .. argparse::
+        :ref: jetstream.cli.subcommands.run.arg_parser
+        :prog: jetstream run
+        :nodefault:
 
 pipelines
 ----------
@@ -46,25 +56,6 @@ project config
        :prog: jetstream project config
        :nodefault:
 
-project init
----------------
-
-    ``jetstream project init``
-
-    .. argparse::
-       :ref: jetstream.cli.subcommands.project.init_arg_parser
-       :prog: jetstream project init
-       :nodefault:
-
-project samples
----------------
-
-    ``jetstream project samples``
-
-    .. argparse::
-       :ref: jetstream.cli.subcommands.project.samples_arg_parser
-       :prog: jetstream project samples
-       :nodefault:
 
 project tasks
 ---------------
@@ -77,33 +68,13 @@ project tasks
        :nodefault:
 
 
-project runs
+project history
 ---------------
 
-    ``jetstream project runs``
+    ``jetstream project history``
 
     .. argparse::
-       :ref: jetstream.cli.subcommands.project.runs_arg_parser
-       :prog: jetstream project runs
+       :ref: jetstream.cli.subcommands.project.history_arg_parser
+       :prog: jetstream project history
        :nodefault:
 
-
-legacy
--------
-
-    ``jetstream legacy``
-
-    .. argparse::
-       :ref: jetstream.cli.subcommands.legacy.arg_parser
-       :prog: jetstream legacy
-       :nodefault:
-
-report
--------
-
-    ``jetstream report``
-
-    .. argparse::
-       :ref: jetstream.cli.subcommands.report.arg_parser
-       :prog: jetstream report
-       :nodefault:

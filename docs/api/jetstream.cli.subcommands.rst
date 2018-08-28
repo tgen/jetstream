@@ -11,10 +11,8 @@ Submodules
 
 .. toctree::
 
-   jetstream.cli.subcommands.debug_build
-   jetstream.cli.subcommands.debug_render
-   jetstream.cli.subcommands.legacy
+   jetstream.cli.subcommands.init
    jetstream.cli.subcommands.pipelines
    jetstream.cli.subcommands.project
-   jetstream.cli.subcommands.report
+   jetstream.cli.subcommands.run
 

@@ -3,7 +3,8 @@ import logging
 import re
 from os import path, walk, listdir
 
-from jetstream.utils.batch_schedulers import slurm
+from jetstream.backends.slurm import SlurmBackend
+
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ class Project(object):
         # It's faster to batch them together in a single request
         jids = list(self._jids())
         if jids:
-            return slurm.get_jobs(*jids)
+            return SlurmBackend().sacct_request(*jids)
         else:
             return []
 
@@ -145,9 +146,11 @@ def find_queued_signals(project_dir):
     return queues
 
 
-def find_jids_in_log(log_path, pat=slurm.submission_pattern):
+def find_jids_in_log(log_path):
     """ Given path to a log file, search the log file for job ids """
     log.debug('Searching for job ids in: %s' % log_path)
+
+    pat = re.compile("Submitted batch job (\d*)")
 
     with open(log_path, 'r') as fp:
         for line in fp.readlines():

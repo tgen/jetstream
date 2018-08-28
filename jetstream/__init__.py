@@ -1,84 +1,49 @@
+import sys
 import os
-from pkg_resources import get_distribution, resource_filename
+import re
+import ulid
+import traceback
+from jetstream import profile, logs
+from jetstream.profile import load_profile, dumps_profile, profile_path
 
-__version__ = get_distribution('jetstream').version
-
-#TODO Load/save config files
-# defaults = {
-#     'auto_save_interval': 60,
-#     'max_local_tasks': 1000,
-#     'site_template_path': resource_filename('jetstream', 'built_in_templates'),
-#     'task_id_template': 'js{}',
-#     'project_index': 'jetstream',
-#     'project_config': 'config',
-#     'project_temp': 'temp',
-#     'project_logs': 'logs',
-#     'project_pid_file': os.path.join('jetstream', 'pid'),
-#     'project_manifest': os.path.join('jetstream', 'manifest'),
-#     'project_workflow': os.path.join('jetstream', 'workflow'),
-#     'project_history': os.path.join('jetstream', 'history'),
-# }
-
-built_in_templates = resource_filename('jetstream', 'built_in_templates')
-run_id_template = 'js{}'
-project_index = 'jetstream'
-project_config = 'config'
-project_temp = 'temp'
-project_logs = 'logs'
-project_pid_file = os.path.join(project_index, 'pid')
-project_manifest = os.path.join(project_index, 'manifest')
-project_workflow = os.path.join(project_index, 'workflow')
-project_history = os.path.join(project_index, 'history')
-
-# This prevents numpy from starting a bunch of threads when imported. The
-# graph library, networkx, uses scipy/numpy. TODO switch to another graph lib?
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
-os.environ['MKL_NUM_THREADS'] = '1'
-
-from jetstream.exc import *
-from jetstream import utils, legacy
+log = logs.logging.getLogger('jetstream')
+settings = None
 
 
-data_loaders = {
-    '.txt': utils.table_to_records,
-    '.csv': utils.table_to_records,
-    '.mer': utils.table_to_records,
-    '.tsv': utils.table_to_records,
-    '.json': utils.json_load,
-    '.yaml': utils.yaml_load,
-    '.yml': utils.yaml_load,
-    '.config': legacy.config.load,
-}
+try:
+    settings = load_profile()
+
+    # Configure parallel library dependencies (Used by numpy)
+    if 'OPENBLAS_NUM_THREADS' not in os.environ:
+        _openblas_num_threads = str(settings['openblas_num_threads'])
+        os.environ.update(OPENBLAS_NUM_THREADS=_openblas_num_threads)
+
+    if 'MKL_NUM_THREADS' not in os.environ:
+        _mkl_num_threads = str(settings['mkl_num_threads'])
+        os.environ.update(MKL_NUM_THREADS=_mkl_num_threads)
+
+    # Sortable unique id generator and precompiled regex pattern
+    run_id_template = 'js{}'
+    run_id_pattern = re.compile(r'^js[A-Z0-9]{26}$')
+
+    from jetstream import utils
+    from jetstream.utils import load_data_file, loadable_files
+    from jetstream import backends
+    from jetstream.runner import AsyncRunner
+    from jetstream.projects import Project
+    from jetstream.templates import (environment, render_template, load_template,
+                                     render_templates, load_templates)
+    from jetstream.workflows import (build_workflow, build_workflow_from_string,
+                                     save_workflow, load_workflow, Workflow,
+                                     Task)
+except Exception as e:
+    msg = 'Current settings profile:\n{}\n'\
+          'Error! Jetstream failed to load, there may be errors in the ' \
+          'settings profile.\nSee traceback for details.'
+    print(traceback.format_exc(), file=sys.stderr)
+    print(msg.format(dumps_profile(settings)), file=sys.stderr)
+    sys.exit(1)
 
 
-from jetstream.runner import AsyncRunner, SlurmBackend, LocalBackend
-from jetstream.workflows import Workflow, Task
-from jetstream.projects import Project
-from jetstream import templates, projects, workflows
-
-project_init = Project.init
-load_template = templates.load_template
-build_workflow = workflows.build_workflow
-template_environment = templates.environment
-
-
-def load_data_file(path):
-    """Attempts to load a data file from path, raises :ValueError
-    if an suitable loader function is not found in data_loaders"""
-    for ext, fn in data_loaders.items():
-        if path.endswith(ext):
-            loader = fn
-            break
-    else:
-        raise ValueError('No loader fn found for {}'.format(path))
-
-    return loader(path)
-
-
-def loadable_files(directory):
-    """Generator yields all files we can load (see data_loaders) """
-    for file in os.listdir(directory):
-        path = os.path.join(directory, file)
-        if os.path.isfile(path) \
-                and path.endswith(tuple(data_loaders.keys())):
-            yield path
+def run_id():
+    return run_id_template.format(ulid.new().str)

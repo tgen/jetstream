@@ -23,10 +23,14 @@ project = 'Jetstream'
 copyright = '2018, Ryan Richholt'
 author = 'Ryan Richholt'
 
+with open('../VERSION', 'r') as fp:
+    ver = fp.read()
+
 # The short X.Y version
-version = ''
+version = ver
+
 # The full version, including alpha/beta/rc tags
-release = '0.0.7'
+release = ver
 
 
 # -- General configuration ---------------------------------------------------

@@ -12,6 +12,8 @@ Welcome to Jetstream's documentation!
 
    Installation <installation.rst>
    Command-line Interface <usage.rst>
+   Tutorial <tutorial.rst>
+   Advanced Workflow Design <advanced_workflow_design.rst>
    Troubleshooting <troubleshooting.rst>
    API Documentation <api/jetstream.rst>
    Contributing <contributing.rst>

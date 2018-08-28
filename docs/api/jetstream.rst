@@ -11,9 +11,9 @@ Subpackages
 
 .. toctree::
 
+    jetstream.backends
     jetstream.cli
     jetstream.legacy
-    jetstream.test
     jetstream.utils
 
 Submodules
@@ -21,8 +21,11 @@ Submodules
 
 .. toctree::
 
+   jetstream.logs
+   jetstream.profile
    jetstream.projects
-   jetstream.runners
+   jetstream.runner
+   jetstream.tasks
    jetstream.templates
    jetstream.workflows
 

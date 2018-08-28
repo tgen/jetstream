@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import json
+import shutil
 import argparse
 import logging
 import subprocess
@@ -45,11 +46,23 @@ def publish_docs(args=None):
         settings['deploy_docs_uri']
     ])
 
+# This is not working. I think there is a bug in pip install when running
+# inside of a python script, the binary path is not configured correctly
+# def test(args=None):
+#     try:
+#         shutil.rmtree('venv')
+#     except FileNotFoundError:
+#         pass
+#
+#     subprocess.check_call('virtualenv venv', shell=True)
+#     subprocess.check_call('source venv/bin/activate && which pip && pip install . && cat /Users/rrichholt/jetstream/venv/bin/jetstream', shell=True)
+#     subprocess.check_call('source venv/bin/activate && which python && python3 -m unittest discover', shell=True)
+
 
 def main(args=None):
     actions = {
         'build-docs': build_docs,
-        'publish-docs': publish_docs
+        'publish-docs': publish_docs,
     }
 
     parser = arg_parser(actions=actions)

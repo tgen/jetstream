@@ -2,7 +2,6 @@ import os
 from glob import glob
 from setuptools import setup, find_packages
 
-
 package = 'jetstream'
 version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
 with open(version_file, 'r') as fp:
@@ -23,7 +22,7 @@ setup(
     long_description=read('README.md'),
     long_description_content_type="text/markdown",
     keywords="ngs pipeline automation",
-    packages=find_packages(),
+    packages=find_packages(exclude=("test",)),
     include_package_data=True,
     python_requires='>=3',
     classifiers=[
@@ -32,10 +31,8 @@ setup(
     ],
     install_requires=[
         'networkx',
-        'ruamel.yaml',
+        'pyyaml',
         'ulid-py',
-        'tempstore',
-        'requests',
         'jinja2'
     ],
     extras_require={

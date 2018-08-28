@@ -1,9 +1,0 @@
-# Just test an embedded bash script task
-- id: bash_script_test
-  cmd: bash
-  cpus: 1
-  stdin: |
-    #!/bin/bash
-
-    echo hello world
-    hostname
