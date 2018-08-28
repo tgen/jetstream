@@ -69,7 +69,9 @@ def main(args=None):
 
         with workflow:
             for t in tasks:
-                workflow.add_task(t)
+                if not t in workflow:
+                    workflow.add_task(t)
+
 
     # Reset the workflow tasks according to method
     if args.method == 'retry':
