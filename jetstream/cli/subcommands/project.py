@@ -103,11 +103,11 @@ def config(args=None):
 
     if args.format == 'json':
         if args.parsable:
-            print(jetstream.utils.json.dumps(p.config))
+            print(jetstream.utils.json_dumps(p.config))
         else:
-            print(jetstream.utils.json.dumps(p.config, indent=4))
+            print(jetstream.utils.json_dumps(p.config, indent=4))
     elif args.format == 'yaml':
-        jetstream.utils.yaml.dump(p.config, stream=sys.stdout)
+        jetstream.utils.yaml_dump(p.config, stream=sys.stdout)
 
 
 def tasks(args=None):
