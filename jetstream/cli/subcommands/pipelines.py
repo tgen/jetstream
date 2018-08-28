@@ -30,61 +30,49 @@ def arg_parser():
     return parser
 
 
-def generate_workflow(templates, data, search_path, render_only, build_only):
-    log.debug('Template render data: {}'.format(data))
-
-    templates = jetstream.render_templates(
-        *templates,
-        data=data,
-        search_path=search_path
-    )
-
-    if render_only:
-        for t in templates:
-            print(t)
-        sys.exit(0)
-
-    workflow = jetstream.build_workflow('\n'.join(templates))
-
-    if build_only:
-        print(workflow.to_yaml())
-        sys.exit(0)
-
-    return workflow
-
-
 def main(args=None):
     parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
-    project = jetstream.Project()
-    workflow = project.workflow()
-
-    log.info('Project: {} Workflow: {}'.format(project, workflow))
-
-    data = vars(shared.parse_kvargs(
+    # Load existing project and workflow
+    variable_data = vars(shared.parse_kvargs(
         args=remaining,
         type_separator=args.kvarg_separator
     ))
 
-    if 'project' not in data:
-        data['project'] = project
+    project = jetstream.Project()
+    workflow = project.workflow()
 
+    if 'project' not in variable_data:
+        variable_data['project'] = project
 
-    new_workflow = generate_workflow(
-        templates=args.templates,
-        data=data,
-        search_path=args.search_path,
-        render_only=args.render_only,
-        build_only=args.build_only
+    log.info('Project: {} Workflow: {}'.format(project, workflow))
+
+    # Render the the new workflow template
+    templates = jetstream.render_templates(
+        *args.templates,
+        data=variable_data,
+        search_path=args.search_path
     )
 
+    # Combine the old workflow with the new tasks
     if workflow is None:
-        workflow = new_workflow
+        # If no workflow is present in the project, just build one
+        workflow = jetstream.build_workflow('\n'.join(templates))
     else:
-        workflow.compose(new_workflow)
-    
+        # If a workflow is present, we may need to link dependencies in the
+        # new workflow to tasks in that workflow, so the build process is
+        # different.
+        rendered_templates = jetstream.render_template('\n'.join(templates))
+        tasks_data = jetstream.utils.yaml_loads(rendered_templates)
+        tasks = [jetstream.Task(**data) for data in tasks_data]
+
+        with workflow:
+            for t in tasks:
+                workflow.add_task(t)
+
+    # Reset the workflow tasks according to method
     if args.method == 'retry':
         workflow.retry()
     else:
