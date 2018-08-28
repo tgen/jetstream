@@ -64,8 +64,7 @@ def main(args=None):
         # If a workflow is present, we may need to link dependencies in the
         # new workflow to tasks in that workflow, so the build process is
         # different.
-        rendered_templates = jetstream.render_template('\n'.join(templates))
-        tasks_data = jetstream.utils.yaml_loads(rendered_templates)
+        tasks_data = jetstream.utils.yaml_loads('\n'.join(templates))
         tasks = [jetstream.Task(**data) for data in tasks_data]
 
         with workflow:
