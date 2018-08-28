@@ -261,7 +261,7 @@ class SlurmBackend(Backend):
             with open(temp_path.name, 'w') as fp:
                 fp.write(script)
 
-            sbatch_cmd.extend(temp_path.name)
+            sbatch_cmd.append(temp_path.name)
 
             cmd = ' '.join(sbatch_cmd)
             log.debug('Final command: {}'.format(cmd))
