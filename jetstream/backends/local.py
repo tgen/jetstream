@@ -42,12 +42,12 @@ class LocalBackend(Backend):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            if 'stdin' in task.directives:
-                input = task.directives['stdin'].encode()
-            else:
-                input = None
+            stdin, stdout, stderr = self.get_fd_paths(task)
 
-            stdout, stderr = self.get_output_paths(task)
+            if stdin:
+                stdin_fp = open(stdin, 'r')
+            else:
+                stdin_fp = None
 
             if stdout:
                 stdout_fp = open(stdout, 'w')
@@ -60,7 +60,7 @@ class LocalBackend(Backend):
                 stderr_fp = None
 
             p = await self.subprocess_run_sh(
-                cmd, input=input, stdout=stdout_fp, stderr=stderr_fp
+                cmd, stdin=stdin_fp, stdout=stdout_fp, stderr=stderr_fp
             )
 
             if p.returncode != 0:

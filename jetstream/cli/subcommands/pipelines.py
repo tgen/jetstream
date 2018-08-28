@@ -72,7 +72,6 @@ def main(args=None):
                 if not t in workflow:
                     workflow.add_task(t)
 
-
     # Reset the workflow tasks according to method
     if args.method == 'retry':
         workflow.retry()

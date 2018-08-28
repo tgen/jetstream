@@ -19,7 +19,7 @@ class Backend(object):
     respects = set()
     runner = None
 
-    def get_output_paths(self, task):
+    def get_fd_paths(self, task):
         """When working inside project, task outputs will be directed into
         log files inside project.logs_dir. But task.stdout/stderr should
         override this behavior. Backends should use this method to get the
@@ -49,7 +49,12 @@ class Backend(object):
             else:
                 stderr = None
 
-        return stdout, stderr
+        if 'stdin' in task.directives:
+            stdin = task.directives['stdin']
+        else:
+            stdin = None
+
+        return stdin, stdout, stderr
 
 
     async def create_subprocess_shell(self, cmd, **kwargs):
@@ -71,8 +76,9 @@ class Backend(object):
         /bin/bash (can be changed via arguments)"""
         log.debug('subprocess_run_sh: {}'.format(args))
 
-        if stdin:
-            pass
+        if stdin and input:
+            raise ValueError('Input and Stdin given to subprocess_run_sh.'
+                             'Choose only one.')
         else:
             if input:
                 stdin = asyncio.subprocess.PIPE

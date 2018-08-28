@@ -4,6 +4,7 @@ import time
 import json
 import subprocess
 import itertools
+import tempfile
 import asyncio
 from asyncio import BoundedSemaphore, Event
 from asyncio.subprocess import PIPE
@@ -207,7 +208,10 @@ class SlurmBackend(Backend):
         args = ['sbatch', '--parsable', '-J', job_name,
                 '--comment \'{}\''.format(comment)]
 
-        stdout, stderr = self.get_output_paths(task)
+        stdin, stdout, stderr = self.get_fd_paths(task)
+
+        if stdin:
+            args.extend(['--input', stdin])
 
         if stdout:
             args.extend(['-o', stdout])
@@ -228,34 +232,41 @@ class SlurmBackend(Backend):
         if 'sbatch_args' in task.directives:
             args.extend(task.directives['sbatch_args'])
 
-        if 'stdin' in task.directives:
-            formatted = 'echo \'{}\' | {}'.format(
-                task.directives['stdin'], task.directives['cmd'])
-            final_cmd = shlex.quote(formatted)
-        else:
-            final_cmd = shlex.quote(task.directives['cmd'])
-
-        args.extend(['--wrap', final_cmd])
-
         return args
+
+    def build_job_script(self, cmd):
+        if cmd.startswith('#!'):
+            return cmd
+        else:
+            return '#!/bin/bash\n{}'.format(cmd)
 
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
         job = None
 
         try:
+            if 'cmd' not in task.directives:
+                task.complete(0)
+                return
+
             await self._jobs_sem.acquire()
 
             # Sbatch fails when called too frequently so here is a bandaid
             time.sleep(.1)
 
             sbatch_cmd = self.build_sbatch_cmd(task)
-            cmd = ' '.join(sbatch_cmd)
+            script = self.build_job_script(task.directives['cmd'])
 
+            temp_path = tempfile.NamedTemporaryFile(delete=False)
+            with open(temp_path.name, 'w') as fp:
+                fp.write(script)
+
+            sbatch_cmd.extend(temp_path.name)
+
+            cmd = ' '.join(sbatch_cmd)
             log.debug('Final command: {}'.format(cmd))
 
             p = await self.subprocess_run_sh(cmd, stdout=PIPE)
-
             jid = p.stdout.decode().strip()
 
             if p.returncode != 0:
@@ -269,8 +280,12 @@ class SlurmBackend(Backend):
             rc = await job.wait()
 
             if rc != 0:
+                log.info('Slurm job failed {}, '
+                         'saving job script at: {}'.format(
+                    jid, temp_path.name))
                 return task.fail(rc)
             else:
+                temp_path.cleanup()
                 return task.complete(rc)
 
         except CancelledError:
