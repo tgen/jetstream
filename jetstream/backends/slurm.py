@@ -182,7 +182,13 @@ class SlurmBackend(Backend):
 
     def build_sbatch_cmd(self, task):
         """Returns a formatted sbatch command as a list of args"""
-        run_id = self.runner.fp.id
+        try:
+            run = self.runner.fp.serialize()
+            run_id = self.runner.fp.id
+        except AttributeError:
+            run = {}
+            run_id = 'jetstream'
+
         count = next(self.count)
         job_name = '{}.{}'.format(run_id, count)
 
@@ -191,7 +197,7 @@ class SlurmBackend(Backend):
             tags = tags.split()
 
         comment = json.dumps({
-            'run': self.runner.fp.serialize(),
+            'run': run,
             'task': {
                 'tid': task.tid,
                 'tags': tags,
