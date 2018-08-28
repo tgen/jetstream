@@ -6,14 +6,6 @@ jetstream.utils
     :undoc-members:
     :show-inheritance:
 
-Subpackages
------------
-
-.. toctree::
-
-    jetstream.utils.batch_schedulers
-    jetstream.utils.formats
-
 Submodules
 ----------
 

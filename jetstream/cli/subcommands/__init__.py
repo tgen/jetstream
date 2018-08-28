@@ -45,7 +45,7 @@ def import_submodules(package_name):
 
 
 cmds = import_submodules(__name__)
-__all__ = cmds.keys()
+__all__ = list(cmds.keys())
 
 
 def descriptions():

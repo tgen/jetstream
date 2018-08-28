@@ -20,7 +20,14 @@ import jetstream
 from jetstream import log
 from jetstream.cli import shared
 from jetstream.backends import LocalBackend, SlurmBackend
-from jetstream.cli.subcommands.run import arg_parser
+from jetstream.cli.subcommands.run import arg_parser as run_arg_parser
+
+
+def arg_parser():
+    parser = run_arg_parser()
+    parser.prog = 'jetstream pipelines'
+    parser.description = __doc__
+    return parser
 
 
 def generate_workflow(templates, data, search_path, render_only, build_only):
@@ -48,7 +55,6 @@ def generate_workflow(templates, data, search_path, render_only, build_only):
 
 def main(args=None):
     parser = arg_parser()
-    parser.prog = 'jetstream pipelines'
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 

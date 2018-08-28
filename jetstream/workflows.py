@@ -57,7 +57,7 @@ or, equivalently:
 
 Finally, Jinja templating can be used to add dynamic elements.
 
-.. code-block:: ansible
+.. code-block:: yaml
 
     {% for sample in project.config.samples %}
 
