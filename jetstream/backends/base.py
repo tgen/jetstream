@@ -21,15 +21,15 @@ class Backend(object):
 
     def get_output_paths(self, task):
         """When working inside project, task outputs will be directed into
-        log files inside project.logs_dir. But task.stdout/stderr will
-        override this behavior. Use this method to get the correct ouput paths
-        for a task."""
+        log files inside project.logs_dir. But task.stdout/stderr should
+        override this behavior. Backends should use this method to get the
+        correct output paths for a task."""
         if self.runner.project:
             if 'stdout' in task.directives:
                 stdout = task.directives['stdout']
             else:
                 filename = settings['task_out_filename_template']
-                params = defaultdict(str, **task.serialize())
+                params = defaultdict(lambda: 'task', **task.serialize())
                 filename = filename.format_map(params)
                 stdout = os.path.join(self.runner.project.logs_dir, filename)
 
@@ -57,8 +57,8 @@ class Backend(object):
             try:
                 return await create_subprocess_shell(cmd, **kwargs)
             except BlockingIOError as e:
-                log.info('Unable to start subprocess: {}'.format(e))
-                log.info('Retry in 10 seconds.')
+                log.warning('Unable to start subprocess: {}'.format(e))
+                log.warning('Retry in 10 seconds.')
                 await asyncio.sleep(10)
 
     async def subprocess_run_sh(

@@ -78,6 +78,22 @@ def history_arg_parser():
     return parser
 
 
+def task_action_arg_parser(action=None):
+    parser = argparse.ArgumentParser(
+        prog='jetstream project {}-task'.format(action),
+        description='Warning - Experimental feature! '
+                    '{} a task in the current project'.format(action)
+    )
+
+    parser.add_argument('task_id', nargs='+',
+                        help='Task ID to {}'.format(action))
+
+    parser.add_argument('--path', default='.',
+                        help='Jetstream project path')
+
+    return parser
+
+
 def config(args=None):
     parser =config_arg_parser()
     args = parser.parse_args(args)
@@ -108,20 +124,72 @@ def tasks(args=None):
             print(jetstream.utils.yaml_dumps(tasks[task_id].serialize()))
     else:
         print('\t'.join((
-            'status',
             'task_id',
-            'task_name',
-            'start',
-            'end'
+            'task_name'
+            'status',
         )))
         for t in tasks.values():
             print('\t'.join((
-                t.state['status'],
                 t.tid,
                 str(t.directives.get('name')),
-                str(t.state['start']),
-                str(t.state['end'])
+                t.state['status'],
             )))
+
+
+def remove_task(args=None):
+    parser = task_action_arg_parser('remove')
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    p = jetstream.Project(args.path)
+    wf = p.workflow()
+
+    for tid in args.task_id:
+        wf.remove_task(tid)
+
+    jetstream.save_workflow(wf, path=p.workflow_file)
+
+
+def reset_task(args=None):
+    parser = task_action_arg_parser('reset')
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    p = jetstream.Project(args.path)
+    wf = p.workflow()
+
+    for tid in args.task_id:
+        wf.get_task(tid).reset()
+
+    jetstream.save_workflow(wf, path=p.workflow_file)
+
+
+def complete_task(args=None):
+    parser = task_action_arg_parser('complete')
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    p = jetstream.Project(args.path)
+    wf = p.workflow()
+
+    for tid in args.task_id:
+        wf.get_task(tid).complete()
+
+    jetstream.save_workflow(wf, path=p.workflow_file)
+
+
+def fail_task(args=None):
+    parser = task_action_arg_parser('fail')
+    args = parser.parse_args(args)
+    log.debug('{}: {}'.format(__name__, args))
+
+    p = jetstream.Project(args.path)
+    wf = p.workflow()
+
+    for tid in args.task_id:
+        wf.get_task(tid).fail()
+
+    jetstream.save_workflow(wf, path=p.workflow_file)
 
 
 def history(args=None):
@@ -141,7 +209,10 @@ def main(args=None):
         'config': config,
         'tasks': tasks,
         'history': history,
-
+        'remove-task': remove_task,
+        'reset-task': reset_task,
+        'complete-task': complete_task,
+        'fail-task': fail_task
     }
 
     parser = arg_parser(actions=list(actions.keys()))

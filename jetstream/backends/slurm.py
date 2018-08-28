@@ -13,6 +13,11 @@ from jetstream.backends import Backend
 
 
 class SlurmBackend(Backend):
+    """SlurmBackend will spawn tasks using a Slurm batch scheduler.
+
+    The spawn coroutine will return when the slurm job ID for a task is
+    complete. This works by maintaining a dict of SlurmBatchJobs, and
+    periodically asking for updates from sacct."""
     count = itertools.count()
     sacct_delimiter = '\037'
     submission_pattern = re.compile(r"Submitted batch job (\d*)")
@@ -21,11 +26,21 @@ class SlurmBackend(Backend):
                 'slurm_args')
 
     def __init__(self, max_jobs=9001, sacct_frequency=10, chunk_size=1000):
+        """SlurmBackend submits tasks as jobs to a Slurm batch cluster
+
+        max_jobs cannot be changed after instantiation
+
+        :param max_jobs: A hard limit on the number of active jobs this backend
+        will permit simultaneously
+        :param sacct_frequency: Frequency in seconds that job updates will
+        be requested from sacct
+        :param chunk_size: Number of jobs that will be checked with each
+        request to sacct
+        """
         self.sacct_frequency = sacct_frequency
         self.chunk_size = chunk_size
         self._jobs = {}
         self._jobs_sem = BoundedSemaphore(max_jobs)
-
         log.info('SlurmBackend initialized with {} max jobs'.format(max_jobs))
 
     def status(self):
@@ -57,6 +72,12 @@ class SlurmBackend(Backend):
             log.info('Slurm job monitor stopped!')
 
     async def _update_jobs(self):
+        """Request job data updates from sacct for each job in self._jobs.
+
+        This may perform several sacct calls depending on the length of
+        self._jobs. After job data is received, each job will be updated.
+        If the job is complete, this will cause its Backend.spawn coroutine
+        to complete and return. """
         log.verbose('Sacct request for {} jobs...'.format(len(self._jobs)))
         sacct_data = {}
 
@@ -76,12 +97,20 @@ class SlurmBackend(Backend):
                 if job.is_complete:
                     reap.add(jid)
             else:
+                # It may take several seconds for a Slurm job to get a
+                # record in the accounting database. So, this can't be
+                # treated as an error. It may become necessary to add
+                # some time window where this is acceptable, depending
+                # on the failure rate of slurm jobs to propagate into
+                # the accounting database.
                 log.warning('No sacct data found for {}'.format(jid))
 
         for jid in reap:
             self._jobs.pop(jid)
 
     async def async_sacct_request(self, *job_ids):
+        """Asynchronously request data from sacct, this method returns a
+        coroutine."""
         if not job_ids:
             raise ValueError('Missing required argument "job_ids"')
 
@@ -99,6 +128,7 @@ class SlurmBackend(Backend):
         return res
 
     def sacct_request(self, *job_ids):
+        """Request job data from sacct"""
         if not job_ids:
             raise ValueError('Missing required argument "job_ids"')
 
@@ -115,7 +145,7 @@ class SlurmBackend(Backend):
         return res
 
     def _parse_sacct(self, data):
-        """ Parse stdout from sacct to a dictionary of jobs and job_data. """
+        """Parse stdout from sacct to a dictionary of jobs and job_data. """
         if not data:
             return {}
 
@@ -150,8 +180,8 @@ class SlurmBackend(Backend):
         log.debug('Parsed data for {} jobs'.format(len(jobs)))
         return jobs
 
-    def sbatch_cmd(self, task):
-        """ Returns a formatted sbatch command. """
+    def build_sbatch_cmd(self, task):
+        """Returns a formatted sbatch command as a list of args"""
         run_id = self.runner.fp.id
         count = next(self.count)
         job_name = '{}.{}'.format(run_id, count)
@@ -219,7 +249,7 @@ class SlurmBackend(Backend):
             # Sbatch fails when called too frequently so here is a bandaid
             time.sleep(.1)
 
-            sbatch_cmd = self.sbatch_cmd(task)
+            sbatch_cmd = self.build_sbatch_cmd(task)
             cmd = ' '.join(sbatch_cmd)
 
             log.debug('Final command: {}'.format(cmd))

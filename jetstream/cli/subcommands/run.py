@@ -49,16 +49,18 @@ def arg_parser():
                         help='Automatically save the workflow during run.')
 
     parser.add_argument('-w', '--workflow',
-                        help='Run an existing workflow. Generally used for retry/resume '
-                             'when a workflow run fails.')
+                        help='Run an existing workflow. Generally used for '
+                             'retry/resume when a workflow run fails.')
 
     parser.add_argument('--method', choices=['retry', 'resume'], default='retry',
                         help='Method to use when restarting existing workflows')
 
-    parser.add_argument('--retry', dest='method', action='store_const', const='retry',
+    parser.add_argument('--retry', dest='method', action='store_const',
+                        const='retry',
                         help='Reset "failed" and "pending" tasks before starting')
 
-    parser.add_argument('--resume',  dest='method', action='store_const', const='resume',
+    parser.add_argument('--resume',  dest='method', action='store_const',
+                        const='resume',
                         help='Reset "pending" tasks before starting')
 
     parser.add_argument('--max-forks', default=None, type=int,
