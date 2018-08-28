@@ -207,20 +207,13 @@ class SlurmBackend(Backend):
         args = ['sbatch', '--parsable', '-J', job_name,
                 '--comment \'{}\''.format(comment)]
 
-        if task.directives.get('stdout'):
-            if task.directives.get('stderr'):
-                stdout = self.runner.output_prefix + task['stdout']
-                stderr = self.runner.output_prefix + task['stderr']
-                args.extend(['-o', stdout, '-e', stderr])
-            else:
-                stdout = self.runner.output_prefix + task['stdout']
-                args.extend(['-o', stdout])
-        else:
-            if task.directives.get('stderr'):
-                stderr = self.runner.output_prefix + task['stderr']
-                args.extend(['-e', stderr])
-            else:
-                pass  # Don't add any o/e args to slurm command
+        stdout, stderr = self.get_output_paths(task)
+
+        if stdout:
+            args.extend(['-o', stdout])
+
+        if stderr:
+            args.extend(['-e', stdout])
 
         # Slurm requires that we request at least 1 cpu
         if 'cpus' in task.directives:
