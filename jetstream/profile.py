@@ -5,8 +5,9 @@ import yaml
 
 def default():
     return {
-        'profile_name': 'default',
+        'profile': 'default',
         'backend': 'local',
+        'autosave': 0,
         'project_index_dir': 'jetstream',
         'project_temp_dir': 'temp',
         'project_logs_dir': 'logs',
@@ -36,7 +37,7 @@ def load_profile(path=None):
     if os.path.isfile(path):
         with open(path, 'r') as fp:
             settings.update(yaml.safe_load(fp))
-        settings.update(profile_loaded_from=path)
+        settings.update(profile=path)
 
     return settings
 

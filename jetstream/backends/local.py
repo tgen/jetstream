@@ -32,20 +32,20 @@ class LocalBackend(Backend):
         cpus_reserved = 0
 
         try:
-            for i in range(task.get('cpus', 0)):
+            if 'cmd' not in task.directives:
+                task.complete(0)
+                return
+
+            cmd = task.directives['cmd']
+
+            for i in range(task.directives.get('cpus', 0)):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            if task.get('stdin'):
+            if 'stdin' in task.directives:
                 input = task.directives['stdin'].encode()
             else:
                 input = None
-
-            cmd = task.directives.get('cmd')
-
-            if not cmd:
-                task.complete(0)
-                return
 
             stdout, stderr = self.get_output_paths(task)
 

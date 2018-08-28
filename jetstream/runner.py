@@ -81,7 +81,7 @@ class AsyncRunner(object):
         log.verbose('Registering backend.spawn: {}'.format(task))
         log.verbose('Runner concurrency semaphore: {}'.format(self._sem))
 
-        if task.get('cmd') is None:
+        if task.directives.get('cmd') is None:
             return task.complete(0)
 
         try:

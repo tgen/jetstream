@@ -211,7 +211,7 @@ class Workflow(object):
         "after" specifies edges that run:
             task ---depends on---> target, ...
         """
-        after = task.get('after')
+        after = task.directives.get('after')
         log.debug('"after" directive: {}'.format(after))
 
         if after:
@@ -235,7 +235,7 @@ class Workflow(object):
         "before" specifies edges that should run:
             task <---depends on--- target, ...
         """
-        before = task.get('before')
+        before = task.directives.get('before')
         log.debug('"before" directive: {}'.format(before))
 
         if before:
@@ -259,7 +259,7 @@ class Workflow(object):
         "input" specifies edges that should run:
             task ---depends on---> target, ...
         Where target includes an "output" value matching the "input" value."""
-        input = task.get('input')
+        input = task.directives.get('input')
         log.debug('"input" directive: {}'.format(input))
 
         if input:
@@ -335,7 +335,7 @@ class Workflow(object):
 
         for task_id, data in self.graph.nodes(True):
             task = data['obj']
-            name = task.get('name')
+            name = task.directives.get('name')
 
             if name is None:
                 continue
@@ -378,7 +378,7 @@ class Workflow(object):
 
         for task_id, data in self.graph.nodes(True):
             task = data['obj']
-            output = task.get('output')
+            output = task.directives.get('output')
 
             if output is None:
                 continue

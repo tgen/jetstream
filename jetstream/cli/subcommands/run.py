@@ -42,10 +42,12 @@ def arg_parser():
     parser.add_argument('-b', '--build-only', action='store_true',
                         help='Just build the workflow and print to stdout')
 
-    parser.add_argument('--backend', choices=['local', 'slurm'], default='local',
+    parser.add_argument('--backend', choices=['local', 'slurm'],
+                        default=jetstream.settings['backend'],
                         help='Specify the runner backend (default: local)')
 
-    parser.add_argument('--autosave', default=0, type=int,
+    parser.add_argument('--autosave', type=int,
+                        default=jetstream.settings['autosave'],
                         help='Automatically save the workflow during run.')
 
     parser.add_argument('-w', '--workflow',

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """Generate project reports.
 
 This tool only works with Pegasus/Medusa projects."""
@@ -48,3 +49,4 @@ def main(args=None):
     log.debug('Reporting on: {}'.format(str(projects)))
     for p in projects:
         print(p.report(fast=args.fast, all_jobs=args.all_jobs))
+

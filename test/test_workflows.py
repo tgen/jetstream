@@ -61,22 +61,22 @@ class WorkflowBasics(TimedTestCase):
         stdin = '#!/bin/bash\necho hello world'
         t = wf.new_task(name='task', stdin=stdin)
 
-        self.assertEqual(t.get('stdin'), stdin)
+        self.assertEqual(t.directives.get('stdin'), stdin)
 
     def test_add_task_w_stdout(self):
         wf = jetstream.Workflow()
         stdout = 'out.txt'
         t = wf.new_task(name='task', stdout=stdout)
 
-        self.assertEqual(t.get('stdout'), stdout)
-        self.assertEqual(t.get('stderr'), None)
+        self.assertEqual(t.directives.get('stdout'), stdout)
+        self.assertEqual(t.directives.get('stderr'), None)
 
     def test_add_task_w_stderr(self):
         wf = jetstream.Workflow()
         stderr = 'err.txt'
         t = wf.new_task(name='task', stderr=stderr)
 
-        self.assertEqual(t.get('stderr'), stderr)
+        self.assertEqual(t.directives.get('stderr'), stderr)
 
     def test_add_task_w_stdout_stderr(self):
         wf = jetstream.Workflow()
@@ -84,22 +84,22 @@ class WorkflowBasics(TimedTestCase):
         stderr = 'err.txt'
         t = wf.new_task(name='task', stdout=stdout, stderr=stderr)
 
-        self.assertEqual(t.get('stdout'), stdout)
-        self.assertEqual(t.get('stderr'), stderr)
+        self.assertEqual(t.directives.get('stdout'), stdout)
+        self.assertEqual(t.directives.get('stderr'), stderr)
 
     def test_add_task_w_cpus(self):
         wf = jetstream.Workflow()
         cpus = 4
         t = wf.new_task(name='task', cpus=cpus)
         
-        self.assertEqual(t.get('cpus'), cpus)
+        self.assertEqual(t.directives.get('cpus'), cpus)
 
     def test_add_task_w_mem(self):
         wf = jetstream.Workflow()
         mem = 4
         t = wf.new_task(name='task', mem=mem)
 
-        self.assertEqual(t.get('mem'), mem)
+        self.assertEqual(t.directives.get('mem'), mem)
 
     def test_find_by_id(self):
         wf = jetstream.Workflow()
@@ -165,7 +165,7 @@ class WorkflowDependencies(TimedTestCase):
     def test_coerce_sequence_from_str(self):
         wf = jetstream.Workflow()
         t = wf.new_task(name='task', output='banana.txt')
-        op = jetstream.utils.coerce_sequence(t.get('output'))      
+        op = jetstream.utils.coerce_sequence(t.directives.get('output'))
         
         self.assertIsInstance(op, list)
 
@@ -173,7 +173,7 @@ class WorkflowDependencies(TimedTestCase):
         wf = jetstream.Workflow()
 
         t = wf.new_task(name='task', output=['output1.txt', 'output2.txt'])
-        op = jetstream.utils.coerce_sequence(t.get('output'))
+        op = jetstream.utils.coerce_sequence(t.directives.get('output'))
 
         self.assertIsInstance(op, list)
 

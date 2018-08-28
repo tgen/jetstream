@@ -172,9 +172,6 @@ class Task(object):
     def is_ready(self):
         return self.workflow.is_ready(self)
 
-    def get(self, *args, **kwargs):
-        return self._directives.get(*args, **kwargs)
-
     @property
     def directives(self):
         return deepcopy(self._directives)

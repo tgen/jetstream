@@ -186,7 +186,7 @@ class SlurmBackend(Backend):
         count = next(self.count)
         job_name = '{}.{}'.format(run_id, count)
 
-        tags = task.get('tags', [])
+        tags = task.directives.get('tags', [])
         if isinstance(tags, str):
             tags = tags.split()
 
@@ -201,8 +201,8 @@ class SlurmBackend(Backend):
         args = ['sbatch', '--parsable', '-J', job_name,
                 '--comment \'{}\''.format(comment)]
 
-        if task.get('stdout'):
-            if task.get('stderr'):
+        if task.directives.get('stdout'):
+            if task.directives.get('stderr'):
                 stdout = self.runner.output_prefix + task['stdout']
                 stderr = self.runner.output_prefix + task['stderr']
                 args.extend(['-o', stdout, '-e', stderr])
@@ -210,30 +210,31 @@ class SlurmBackend(Backend):
                 stdout = self.runner.output_prefix + task['stdout']
                 args.extend(['-o', stdout])
         else:
-            if task.get('stderr'):
+            if task.directives.get('stderr'):
                 stderr = self.runner.output_prefix + task['stderr']
                 args.extend(['-e', stderr])
             else:
                 pass  # Don't add any o/e args to slurm command
 
         # Slurm requires that we request at least 1 cpu
-        if task.get('cpus'):
-            args.extend(['-c', str(task['cpus'])])
+        if 'cpus' in task.directives:
+            args.extend(['-c', str(task.directives['cpus'])])
 
-        if task.get('mem'):
-            args.extend(['--mem', str(task['mem'])])
+        if 'mem' in task.directives:
+            args.extend(['--mem', str(task.directives['mem'])])
 
-        if task.get('walltime'):
-            args.extend(['-t', str(task['walltime'])])
+        if 'walltime' in task.directives:
+            args.extend(['-t', str(task.directives['walltime'])])
 
-        if task.get('slurm_args'):
-            args.extend(task['slurm_args'])
+        if 'sbatch_args' in task.directives:
+            args.extend(task.directives['sbatch_args'])
 
-        if task.get('stdin'):
-            formatted = 'echo \'{}\' | {}'.format(task['stdin'], task['cmd'])
+        if 'stdin' in task.directives:
+            formatted = 'echo \'{}\' | {}'.format(
+                task.directives['stdin'], task.directives['cmd'])
             final_cmd = shlex.quote(formatted)
         else:
-            final_cmd = shlex.quote(task['cmd'])
+            final_cmd = shlex.quote(task.directives['cmd'])
 
         args.extend(['--wrap', final_cmd])
 
