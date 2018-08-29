@@ -23,6 +23,21 @@ pip3 install --upgrade --user git+ssh://git@github.com/tgen/jetstream.git@master
 
 # Intro
 
+
+## Writing Workflows
+
+Workflows are generated from **workflow templates**: hybrid YAML-Jinja2 
+text files (.jst extension by convention). They are a sequence of 
+mappings, each task starts with `-` and then task directives are given as 
+`key: val` items. Jinja2 syntax is optional, and used for adding dynamic 
+elements to the template.
+
+Sublime text works well for writing these documents - configure the editor 
+to use the "Ansible" syntax highlighter for `.jst` extensions:
+
+`View -> Syntax -> Open all with current extension as ...`
+
+
 ## Workflow directives
 
 All directives are optional. It's possible (but maybe useless) to make tasks
@@ -48,10 +63,10 @@ directive order is irrelevant.
   output:
     - This task will satisfy a matching
     - input value requirement.
-  cmd: Shell command executed with /bin/bash
-  stdin: Data will be connected to stdin of cmd
-  stdout: cmd stdout will be connected to value
-  stderr: cmd stderr will be connected to value
+  cmd: Shell command executed with "/bin/bash"
+  stdin: cmd stdin will be connected to this value
+  stdout: cmd stdout will be connected to this value
+  stderr: cmd stderr will be connected to this value
   cpus: LocalBackend - Will reserve local cpus when 
     launching cmd
     (SlurmBackend) "-c" when requesting job
