@@ -125,7 +125,6 @@ class SlurmBackend(Backend):
         stdout, stderr = await p.communicate()
 
         res = self._parse_sacct(stdout.decode())
-
         return res
 
     def sacct_request(self, *job_ids):
@@ -139,11 +138,22 @@ class SlurmBackend(Backend):
             self.sacct_delimiter, job_args)
 
         log.verbose('Launching: {}'.format(cmd))
-        stdout = subprocess.check_output(cmd)
+        stdout = subprocess.check_output(cmd, shell=True)
 
         res = self._parse_sacct(stdout.decode())
 
         return res
+
+    def get_jobs(self, *job_ids):
+        jobs = []
+        job_data = self.sacct_request(*job_ids)
+
+        for jid, data in job_data:
+            job = SlurmBatchJob(jid)
+            job.update(data)
+            jobs.append(job)
+
+        return jobs
 
     def _parse_sacct(self, data):
         """Parse stdout from sacct to a dictionary of jobs and job_data. """
@@ -162,13 +172,17 @@ class SlurmBackend(Backend):
                 log.info('Unable to parse sacct line: {}'.format(line))
                 pass
 
+            # Slurm job ids are <jobid>[_<arrayid>][.<taskid>]. The goal here
+            # is to group all sub-jobs (tasks, array steps) under their
+            # corresponding job id.
             groups = match.groupdict()
             jobid = groups['jobid']
             taskid = groups['taskid']
 
             if taskid is '':
+                # No task id means it is a main job entry
                 if jobid in jobs:
-                    log.info('Duplicate record for job: {}'.format(jobid))
+                    log.warning('Duplicate record for job: {}'.format(jobid))
                 else:
                     row['_steps'] = list()
                     jobs[jobid] = row
