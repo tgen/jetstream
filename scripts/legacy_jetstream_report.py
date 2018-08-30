@@ -35,6 +35,10 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
+    logging.basicConfig(
+        level=logging.INFO
+    )
+
     projects = []
     for proj in args.project:
         try:

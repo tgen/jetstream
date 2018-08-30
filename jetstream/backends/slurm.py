@@ -1,5 +1,5 @@
+import os
 import re
-import shlex
 import time
 import json
 import subprocess
@@ -139,11 +139,22 @@ class SlurmBackend(Backend):
             self.sacct_delimiter, job_args)
 
         log.verbose('Launching: {}'.format(cmd))
-        stdout = subprocess.check_output(cmd)
+        stdout = subprocess.check_output(cmd, shell=True)
 
         res = self._parse_sacct(stdout.decode())
 
         return res
+
+    def get_jobs(self, *job_ids):
+        jobs = []
+        job_data = self.sacct_request(*job_ids)
+        
+        for jid, data in job_data.items():
+            job = SlurmBatchJob(jid)
+            job.update(data)
+            jobs.append(job)
+        
+        return jobs
 
     def _parse_sacct(self, data):
         """Parse stdout from sacct to a dictionary of jobs and job_data. """
@@ -279,13 +290,15 @@ class SlurmBackend(Backend):
             job = self.add_jid(jid)
             rc = await job.wait()
 
+            temp_path.close()
+
             if rc != 0:
                 log.info('Slurm job failed {}, '
                          'saving job script at: {}'.format(
                     jid, temp_path.name))
                 return task.fail(rc)
             else:
-                temp_path.cleanup()
+                os.remove(temp_path.name)
                 return task.complete(rc)
 
         except CancelledError:
