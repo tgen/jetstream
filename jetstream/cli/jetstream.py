@@ -80,8 +80,8 @@ def main(args=None):
     log = logs.start_logging(format=log_format, level=log_level)
 
     log.info('Version {}'.format(get_distribution('jetstream')))
+    log.info('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('Settings: {}'.format(settings))
-    log.debug('Cmd args: {}'.format(' '.join(sys.argv)))
     log.debug('{}: {}'.format(__name__, args))
 
     if args.subcommand is None:
