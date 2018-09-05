@@ -128,7 +128,7 @@ class SlurmBackend(BaseBackend):
         self.jobs[job] = asyncio.Event(loop=self.runner.loop)
         await self.jobs[job].wait()
 
-        return job.returncode()
+        return task.done(job.returncode())
 
 
 #TODO finish runner rework

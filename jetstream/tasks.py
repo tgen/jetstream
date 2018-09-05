@@ -131,6 +131,12 @@ class Task(object):
                 dep.set_state(dependency_failed=self.tid)
                 dep.fail(returncode=123)
 
+    def done(self, returncode):
+        if returncode != 0:
+            self.fail(returncode)
+        else:
+            self.complete(returncode)
+
     def set_state(self, **kwargs):
         """Add information to task state meta data"""
         log.info('{} set state: {}'.format(self, kwargs))

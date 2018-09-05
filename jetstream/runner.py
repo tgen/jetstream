@@ -117,6 +117,11 @@ class Runner:
 
         try:
             future.result()
+
+            if hasattr(future, 'workflow_task'):
+                if not future.workflow_task.is_done():
+                    raise ValueError('Backend failed to update task status')
+
         except Exception:
             err = 'Unhandled exception in:\n{}\n{}'.format(
                 future._coro, traceback.format_exc())
