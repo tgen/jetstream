@@ -131,10 +131,6 @@ class SlurmBackend(BaseBackend):
         return task.done(job.returncode())
 
 
-#TODO finish runner rework
-#Runner to use new functions for updating jobs states
-#The new functions can be used by other tools (server)
-
 class SlurmBatchJob(object):
     states = {
         'BOOT_FAIL': 'Job terminated due to launch failure, typically due to a '
