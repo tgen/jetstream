@@ -111,19 +111,16 @@ def main(args=None):
         sys.exit(0)
 
     if args.backend == 'slurm':
-        backend = SlurmBackend()
+        backend = SlurmBackend(max_concurrency=9002)
     else:
         backend = LocalBackend()
 
-    runner = jetstream.AsyncRunner(
+    runner = jetstream.Runner(
         backend=backend,
-        max_forks=args.max_forks,
         autosave=args.autosave
     )
 
     rc = runner.start(workflow=workflow)
-    runner.close()
-
     sys.exit(rc)
 
 

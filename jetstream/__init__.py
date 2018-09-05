@@ -29,7 +29,7 @@ try:
     from jetstream import utils
     from jetstream.utils import load_data_file, loadable_files
     from jetstream import backends
-    from jetstream.runner import AsyncRunner
+    from jetstream.runner import Runner
     from jetstream.projects import Project
     from jetstream.templates import (environment, render_template, load_template,
                                      render_templates, load_templates)

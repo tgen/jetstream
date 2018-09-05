@@ -1,34 +1,81 @@
+import asyncio
+from subprocess import CompletedProcess
+from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 from multiprocessing import cpu_count
-from asyncio import BoundedSemaphore
-from concurrent.futures import CancelledError
 from jetstream import log
-from jetstream.backends import Backend
+from jetstream.backends import BaseBackend
 
 
-def guess_local_cpus(default=4):
+def guess_local_cpus(default=1):
     return cpu_count() or default
 
 
-class LocalBackend(Backend):
+class LocalBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus')
 
-    def __init__(self, cpus=None):
+    def __init__(self, cpus=None, blocking_io_penalty=10, max_concurrency=100):
         """The LocalBackend executes tasks as processes on the local machine.
 
         :param cpus: If this is None, the number of available CPUs will be
             guessed.
         """
-        n_cpus = cpus or guess_local_cpus()
-        self._cpu_sem = BoundedSemaphore(n_cpus)
-        log.info('LocalBackend initialized with {} cpus'.format(n_cpus))
+        self.cpus = cpus or guess_local_cpus()
+        self.max_concurrency = max_concurrency
+        self.blocking_io_penaty = blocking_io_penalty
+
+    def start(self, runner):
+        super(LocalBackend, self).start(runner)
+        self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
+        log.info('LocalBackend initialized with {} cpus'.format(self.cpus))
+
+    async def create_subprocess_shell(self, cmd, **kwargs):
+        while 1:
+            try:
+                return await create_subprocess_shell(cmd, **kwargs)
+            except BlockingIOError as e:
+                log.warning('System refusing new processes: {}'.format(e))
+                log.warning('Retry in 10 seconds.')
+                await asyncio.sleep(self.blocking_io_penaty)
+
+    async def subprocess_run_sh(
+            self, args, *, stdin=None, input=None, stdout=None, stderr=None,
+            cwd=None, check=False, encoding=None, errors=None, env=None,
+            loop=None, executable='/bin/bash'):
+        """Asynchronous version of subprocess.run
+
+        This will always use a shell to launch the subprocess, and it prefers
+        /bin/bash (can be changed via arguments)"""
+        log.debug('subprocess_run_sh: {}'.format(args))
+
+        if stdin and input:
+            raise ValueError('Input and Stdin given to subprocess_run_sh.'
+                             'Choose only one.')
+        else:
+            if input:
+                stdin = asyncio.subprocess.PIPE
+            else:
+                stdin = None
+
+        p = await self.create_subprocess_shell(
+            args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
+            encoding=encoding, errors=errors, env=env,
+            loop=loop, executable=executable)
+
+        if input:
+            stdout, stderr = await p.communicate(input=input)
+        else:
+            stdout, stderr = await p.communicate()
+
+        if check and p.returncode != 0:
+            raise ChildProcessError(args)
+
+        return CompletedProcess(args, p.returncode, stdout, stderr)
 
     def status(self):
         return 'CPUs: {}'.format(self._cpu_sem)
 
     async def spawn(self, task):
         log.info('Spawn: {}'.format(task))
-        log.debug(self.status())
-
         cpus_reserved = 0
 
         try:

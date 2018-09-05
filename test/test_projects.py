@@ -49,10 +49,8 @@ class ProjectBasics(TimedTestCase):
         wf = jetstream.Workflow()
         wf.new_task(name='task', cmd='echo test_project_run ${JETSTREAM_RUN_ID}')
         p = jetstream.Project(new=True)
-        runner = jetstream.runner.AsyncRunner()
-        rc = runner.start(workflow=wf, project=p)
-        self.assertEqual(rc, 0)
-
+        runner = jetstream.runner.Runner()
+        runner.start(workflow=wf, project=p)
 
 
 
@@ -70,10 +68,10 @@ class RunnerBasics(TimedTestCase):
         self._temp_dir.cleanup()
 
     def test_runner(self):
-        runner = jetstream.AsyncRunner()
+        runner = jetstream.Runner()
         wf = jetstream.Workflow()
-        wf.new_task(cmd='hostname')
+        t = wf.new_task(cmd='hostname')
 
-        rc = runner.start(workflow=wf)
-        self.assertEqual(rc, 0)
+        runner.start(workflow=wf)
+        self.assertTrue(t.is_complete())
     
