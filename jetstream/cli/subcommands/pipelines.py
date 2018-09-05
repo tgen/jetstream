@@ -85,16 +85,16 @@ def main(args=None):
     else:
         backend = LocalBackend()
 
-    runner = jetstream.AsyncRunner(
+    runner = jetstream.Runner(
         backend=backend,
-        max_forks=args.max_forks,
+        max_concurrency=args.max_forks,
         autosave=args.autosave
     )
 
-    rc = runner.start(workflow=workflow, project=project)
-    runner.close()
-
+    runner.start(workflow=workflow, project=project)
     jetstream.save_workflow(workflow, project.workflow_file)
+
+    rc = shared.finalize_run(workflow)
     sys.exit(rc)
 
 

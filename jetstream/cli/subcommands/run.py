@@ -117,10 +117,13 @@ def main(args=None):
 
     runner = jetstream.Runner(
         backend=backend,
+        max_concurrency=args.max_forks,
         autosave=args.autosave
     )
 
-    rc = runner.start(workflow=workflow)
+    runner.start(workflow=workflow)
+
+    rc = shared.finalize_run(workflow)
     sys.exit(rc)
 
 

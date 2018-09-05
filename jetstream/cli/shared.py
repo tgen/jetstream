@@ -1,4 +1,3 @@
-import os
 import argparse
 import jetstream
 from jetstream import log
@@ -53,3 +52,15 @@ def parse_kvargs(args, type_separator=':', types=kvarg_types):
             parser.add_argument(arg, type=fn, dest=key)
 
     return parser.parse_args(args)
+
+
+def finalize_run(workflow):
+    fails = [t for t in workflow.tasks(objs=True) if t.status == 'failed']
+
+    if fails:
+        log.info('\u2620  Some tasks failed! {}'.format(fails))
+        rc = 1
+    else:
+        rc = 0
+
+    return rc
