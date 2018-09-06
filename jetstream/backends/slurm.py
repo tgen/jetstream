@@ -413,11 +413,12 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
         script = '#!/bin/bash\n{}'.format(cmd)
 
     temp = tempfile.NamedTemporaryFile()
-
     with open(temp.name, 'w') as fp:
         fp.write(script)
 
     args.append(temp.name)
+    args = [str(r) for r in args]
+
     p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
 
     jid = p.stdout.decode().strip()
