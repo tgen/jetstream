@@ -33,20 +33,22 @@ def arg_parser():
 def main(args=None):
     parser = arg_parser()
     args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
 
-    projects = []
     for proj in args.project:
         try:
             p = Project(proj)
-            if p.is_complete and not args.all:
-                log.info('Project complete {}'.format(proj))
-                continue
-            projects.append(p)
-        except FileNotFoundError as err:
-            log.info('Error loading project: {}'.format(err))
 
-    log.debug('Reporting on: {}'.format(str(projects)))
-    for p in projects:
-        print(p.report(fast=args.fast, all_jobs=args.all_jobs))
+            if p.is_complete:
+                log.critical('{} - complete'.format(proj))
+                if not (args.all or args.all_jobs):
+                    continue
+
+            print(p.report(fast=args.fast, all_jobs=args.all_jobs))
+
+        except FileNotFoundError as err:
+            log.critical('Error loading project: {}'.format(err))
+
+
+if __name__ == '__main__':
+    main()
 

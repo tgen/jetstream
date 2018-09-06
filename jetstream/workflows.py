@@ -106,7 +106,6 @@ import shutil
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
-import jetstream
 from threading import Lock
 from collections import Counter
 from pkg_resources import get_distribution
@@ -114,6 +113,11 @@ from jetstream import utils, log
 from jetstream.tasks import Task
 
 __version__ = get_distribution('jetstream').version
+
+
+class NotDagError(Exception):
+    """Raised when edges are added that would result in a graph that is not
+    a directed-acyclic graph"""
 
 
 class Workflow(object):
@@ -171,13 +175,13 @@ class Workflow(object):
         The "add_dependency" method is provided for adding dependencies to a
         workflow, and should be preferred over adding edges directly to the
         workflow graph. """
-        log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
+        log.verbose('Adding edge: {} -> {}'.format(from_node, to_node))
 
         self.graph.add_edge(from_node, to_node)
 
         if not nx.is_directed_acyclic_graph(self.graph):
             self.graph.remove_edge(from_node, to_node)
-            raise jetstream.NotDagError
+            raise NotDagError
 
     def _add_node(self, task):
         """Add a node to the graph.
@@ -212,14 +216,15 @@ class Workflow(object):
             task ---depends on---> target, ...
         """
         after = task.directives.get('after')
-        log.debug('"after" directive: {}'.format(after))
+        log.verbose('"after" directive: {}'.format(after))
 
         if after:
             after = utils.coerce_sequence(after)
-            log.debug('"after" directive after coercion: {}'.format(after))
+            log.verbose('"after" directive after coercion: {}'.format(after))
 
             for value in after:
                 matches = self.find(value)
+                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
                     raise ValueError(
@@ -236,14 +241,15 @@ class Workflow(object):
             task <---depends on--- target, ...
         """
         before = task.directives.get('before')
-        log.debug('"before" directive: {}'.format(before))
+        log.verbose('"before" directive: {}'.format(before))
 
         if before:
             before = utils.coerce_sequence(before)
-            log.debug('"before" directive after coercion: {}'.format(before))
+            log.verbose('"before" directive after coercion: {}'.format(before))
 
             for value in before:
                 matches = self.find(value)
+                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
                     raise ValueError(
@@ -260,14 +266,15 @@ class Workflow(object):
             task ---depends on---> target, ...
         Where target includes an "output" value matching the "input" value."""
         input = task.directives.get('input')
-        log.debug('"input" directive: {}'.format(input))
+        log.verbose('"input" directive: {}'.format(input))
 
         if input:
             input = utils.coerce_sequence(input)
-            log.debug('"input" directive after coercion: {}'.format(input))
+            log.verbose('"input" directive after coercion: {}'.format(input))
 
             for value in input:
                 matches = self.find_by_output(value)
+                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
                     raise ValueError(
@@ -361,7 +368,7 @@ class Workflow(object):
         gen = self.graph.nodes()
         matches = set(filter(fn, gen))
 
-        log.debug('Found matches: {}'.format(matches))
+        log.verbose('Found matches: {}'.format(matches))
 
         if matches:
             return matches
@@ -377,13 +384,18 @@ class Workflow(object):
         matches = set()
 
         for task_id, data in self.graph.nodes(True):
-            task = data['obj']
-            output = task.directives.get('output')
+            log.verbose('Checking {}'.format(task_id))
 
-            if output is None:
+            task = data['obj']
+
+            try:
+                output = task.directives.get('output')
+            except KeyError:
                 continue
 
             output = utils.coerce_sequence(output)
+
+            log.verbose('Output directive after coercion: {}'.format(output))
 
             for value in output:
                 if pat.match(value):
@@ -440,12 +452,14 @@ class Workflow(object):
 
     def resume(self):
         """Resets all "pending" tasks state."""
+        log.info('Resetting state for all pending tasks')
         for task in self.tasks(objs=True):
             if task.status == 'pending':
                 task.reset()
 
     def retry(self):
         """Resets all "pending" and "failed" tasks state."""
+        log.info('Resetting state for all pending and failed tasks')
         for task in self.tasks(objs=True):
             if task.status in ('pending', 'failed'):
                 task.reset()

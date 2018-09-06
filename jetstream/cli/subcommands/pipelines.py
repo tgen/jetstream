@@ -16,6 +16,7 @@ evaluated by the appropriate type function.
 
 """
 import sys
+from copy import deepcopy
 import jetstream
 from jetstream import log
 from jetstream.cli import shared
@@ -30,61 +31,61 @@ def arg_parser():
     return parser
 
 
-def generate_workflow(templates, data, search_path, render_only, build_only):
-    log.debug('Template render data: {}'.format(data))
-
-    templates = jetstream.render_templates(
-        *templates,
-        data=data,
-        search_path=search_path
-    )
-
-    if render_only:
-        for t in templates:
-            print(t)
-        sys.exit(0)
-
-    workflow = jetstream.build_workflow('\n'.join(templates))
-
-    if build_only:
-        print(workflow.to_yaml())
-        sys.exit(0)
-
-    return workflow
-
-
 def main(args=None):
     parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
     project = jetstream.Project()
-    workflow = project.workflow()
+
+    if args.workflow:
+        workflow = jetstream.load_workflow(args.workflow)
+    else:
+        workflow = project.workflow()
 
     log.info('Project: {} Workflow: {}'.format(project, workflow))
 
-    data = vars(shared.parse_kvargs(
+    data = deepcopy(project.config)
+    data['project'] = project
+
+    # Load existing project and workflow
+    kvarg_data = vars(shared.parse_kvargs(
         args=remaining,
         type_separator=args.kvarg_separator
     ))
 
-    if 'project' not in data:
-        data['project'] = project
+    data.update(kvarg_data)
 
+    log.debug('Final template render data:\n{}'.format(data))
 
-    new_workflow = generate_workflow(
-        templates=args.templates,
+    # Render the the new workflow template
+    templates = jetstream.render_templates(
+        *args.templates,
         data=data,
-        search_path=args.search_path,
-        render_only=args.render_only,
-        build_only=args.build_only
+        search_path=args.search_path
     )
 
+    final_render = '\n'.join(templates)
+
+    log.debug('Final rendered workflow:\n{}'.format(final_render))
+
+    # Combine the old workflow with the new tasks
     if workflow is None:
-        workflow = new_workflow
+        # If no workflow is present in the project, just build one
+        workflow = jetstream.build_workflow(final_render)
     else:
-        workflow.compose(new_workflow)
-    
+        # If a workflow is present, we may need to link dependencies in the
+        # new workflow to tasks in that workflow, so the build process is
+        # different.
+        tasks_data = jetstream.utils.yaml_loads(final_render)
+        tasks = [jetstream.Task(**data) for data in tasks_data]
+
+        with workflow:
+            for t in tasks:
+                if not t in workflow:
+                    workflow.add_task(t)
+
+    # Reset the workflow tasks according to method
     if args.method == 'retry':
         workflow.retry()
     else:
@@ -97,16 +98,16 @@ def main(args=None):
     else:
         backend = LocalBackend()
 
-    runner = jetstream.AsyncRunner(
+    runner = jetstream.Runner(
         backend=backend,
-        max_forks=args.max_forks,
+        max_concurrency=args.max_forks,
         autosave=args.autosave
     )
 
-    rc = runner.start(workflow=workflow, project=project)
-    runner.close()
-
+    runner.start(workflow=workflow, project=project)
     jetstream.save_workflow(workflow, project.workflow_file)
+
+    rc = shared.finalize_run(workflow)
     sys.exit(rc)
 
 

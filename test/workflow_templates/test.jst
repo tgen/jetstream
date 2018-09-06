@@ -36,8 +36,7 @@
     to jetstream, the id of this run is ${JETSTREAM_RUN_ID}')
 
 - name: test_log_capture
-  cmd: bash
-  stdin: |
+  cmd: |
     #!/bin/bash
 
     for i in $(seq 10); do
@@ -45,9 +44,8 @@
     done
 
 - name: test_failures
-  cmd: bash
   after: test_log_capture
-  stdin: |
+  cmd: |
     #!/bin/bash
     echo "This task should fail"
     exit 1

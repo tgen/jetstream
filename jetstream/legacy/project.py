@@ -59,7 +59,7 @@ class Project(object):
         # It's faster to batch them together in a single request
         jids = list(self._jids())
         if jids:
-            return SlurmBackend().sacct_request(*jids)
+            return SlurmBackend().get_jobs(*jids)
         else:
             return []
 
@@ -76,18 +76,6 @@ class Project(object):
             for jid in find_jids_in_log(l):
                 yield jid
         raise StopIteration
-
-    def active_jobs(self):
-        active_jobs = [j for j in self.get_jobs() if j.is_active]
-        return active_jobs
-
-    def complete_jobs(self):
-        complete_jobs = [j for j in self.get_jobs() if j.is_complete]
-        return complete_jobs
-
-    def failed_jobs(self):
-        failed_jobs = [j for j in self.get_jobs() if j.is_failed]
-        return failed_jobs
 
     def report(self, fast=False, all_jobs=False, col_size=20):
         if fast:
@@ -113,10 +101,13 @@ class Project(object):
             header_values = (h_id, h_name, h_state, h_start, h_end, h_elapsed)
             rep += " ".join(header_values) + '\n'
 
+
             for j in self.get_jobs():
                 if j.is_complete and not all_jobs:
                     continue
-                d = j.sacct  # Use the sacct data for each job
+
+                d = j.job_data  # Use the sacct data for each job
+
                 job_id = d['JobID'][:12].ljust(12)
                 job_name = d['JobName'][:col_size].ljust(col_size)
                 job_state = d['State'][:col_size].ljust(col_size)
@@ -125,6 +116,7 @@ class Project(object):
                 job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
                 values = (job_id, job_name, job_state, job_start, job_end,
                           job_elapsed)
+
                 rep += " ".join(values) + '\n'
 
         return rep

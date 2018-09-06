@@ -1,25 +1,31 @@
 import os
-import subprocess
 import asyncio
 import asyncio.subprocess
 from collections import defaultdict
-from asyncio import create_subprocess_shell
-from jetstream import log, settings
+from jetstream import settings
 
 
-class Backend(object):
-    """Backends should implement the coroutine method "spawn".
-
-    Backend.spawn will be called by the AsyncRunner when a task is ready
-    for execution. It should be asynchronous and return the task_id
-    and return code as a tuple: (task_id, returncode)
-
-    Backends should declare a set of task directives that are used when
-    executing a task: Backend.respects """
-    respects = set()
+class BaseBackend(object):
+    """To subclass a backend, just override the "spawn" method with a
+    coroutine. max_concurrency can be set to limit the number of jobs
+    that a backend will allow to spawn concurrently."""
     runner = None
+    max_concurrency = -1 # Set a Backend-specific limit on the concurrency
 
-    def get_output_paths(self, task):
+    def start(self, runner):
+        self.runner = runner
+        self.semaphore = asyncio.BoundedSemaphore(
+            value=self.max_concurrency,
+            loop=self.runner.loop
+        )
+
+    async def coro(self):
+        pass
+
+    async def spawn(self, task):
+        raise NotImplementedError
+
+    def get_fd_paths(self, task):
         """When working inside project, task outputs will be directed into
         log files inside project.logs_dir. But task.stdout/stderr should
         override this behavior. Backends should use this method to get the
@@ -49,47 +55,16 @@ class Backend(object):
             else:
                 stderr = None
 
-        return stdout, stderr
-
-
-    async def create_subprocess_shell(self, cmd, **kwargs):
-        while self.runner.run.is_set():
-            try:
-                return await create_subprocess_shell(cmd, **kwargs)
-            except BlockingIOError as e:
-                log.warning('Unable to start subprocess: {}'.format(e))
-                log.warning('Retry in 10 seconds.')
-                await asyncio.sleep(10)
-
-    async def subprocess_run_sh(
-            self, args, *, stdin=None, input=None, stdout=None, stderr=None,
-            cwd=None, check=False, encoding=None, errors=None, env=None,
-            loop=None, executable='/bin/bash'):
-        """Asynchronous version of subprocess.run
-
-        This will always use a shell to launch the subprocess, and it prefers
-        /bin/bash (can be changed via arguments)"""
-        log.debug('subprocess_run_sh: {}'.format(args))
-
-        if stdin:
-            pass
+        if 'stdin' in task.directives:
+            stdin = task.directives['stdin']
         else:
-            if input:
-                stdin = asyncio.subprocess.PIPE
-            else:
-                stdin = None
+            stdin = None
 
-        p = await self.create_subprocess_shell(
-            args, stdin=stdin, stdout=stdout, stderr=stderr, cwd=cwd,
-            encoding=encoding, errors=errors, env=env,
-            loop=loop, executable=executable)
+        return stdin, stdout, stderr
 
-        if input:
-            stdout, stderr = await p.communicate(input=input)
-        else:
-            stdout, stderr = await p.communicate()
-
-        if check and p.returncode != 0:
-            raise ChildProcessError(args)
-
-        return subprocess.CompletedProcess(args, p.returncode, stdout, stderr)
+    async def _spawn(self, task):
+        try:
+            await self.semaphore.acquire()
+            await self.spawn(task)
+        finally:
+            self.semaphore.release()

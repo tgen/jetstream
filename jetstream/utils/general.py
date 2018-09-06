@@ -5,6 +5,7 @@ import csv
 import fnmatch
 import gzip
 import json
+import subprocess
 import logging
 import time
 import jetstream
@@ -192,6 +193,16 @@ def test_csv_records():
             'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
         }
     ]
+
+
+def guess_max_forks(default=500):
+    try:
+        res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
+        return res
+    except FileNotFoundError as e:
+        log.exception(e)
+        return default
+
 
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
