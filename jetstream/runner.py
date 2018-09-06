@@ -69,7 +69,10 @@ class Runner:
                     await self.sleep(1)
                     continue
                 else:
-                    await self.spawn(task)
+                    if not task.directives.get('cmd'):
+                        task.complete()
+                    else:
+                        await self.spawn(task)
 
                 await self.sleep(0)
 

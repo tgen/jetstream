@@ -1,4 +1,4 @@
-"""Create or a new project or reinitialize an existing project.
+"""Create a new project or reinitialize an existing project.
 
 This command can be used to create a new Jetstrema project with the
 recommended project folders. If config files are included, they will

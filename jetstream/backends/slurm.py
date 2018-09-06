@@ -98,7 +98,7 @@ class SlurmBackend(BaseBackend):
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
-        if 'cmd' not in task.directives:
+        if not task.directives.get('cmd'):
             return 0
 
         time.sleep(.1) # sbatch breaks when called too frequently
