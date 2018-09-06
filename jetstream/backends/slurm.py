@@ -191,8 +191,22 @@ class SlurmBatchJob(object):
         except AttributeError:
             return other.jid == self.jid
 
+    def __repr__(self):
+        return '<SlurmBatchJob: {}>'.format(self.jid)
+
     def _update_state(self, job_data):
         self._job_data = job_data
+
+    def update(self):
+        data = launch_sacct(self.jid)
+
+        if not self.jid in data:
+            raise ValueError('No job data found for:  {}'.format(self.jid))
+        else:
+            self.job_data = data[self.jid]
+
+    def wait(self, *args, **kwargs):
+        return wait(self.jid, *args, **kwargs)
 
     @property
     def job_data(self):
@@ -305,7 +319,7 @@ def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
     for jid in job_ids:
         args.extend(['-j', str(jid)])
 
-    print('Launching: {}'.format(' '.join([shlex.quote(r) for r in args])))
+    log.verbose('Launching: {}'.format(' '.join([shlex.quote(r) for r in args])))
     p = subprocess.run(args, stdout=PIPE, check=True)
 
     if raw:
