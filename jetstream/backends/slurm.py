@@ -409,7 +409,7 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
     temp = tempfile.NamedTemporaryFile()
 
     with open(temp.name, 'w') as fp:
-        fp.write(script.encode())
+        fp.write(script)
 
     args.append(temp.name)
     p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
