@@ -114,7 +114,7 @@ class Task(object):
         log.info('{} is complete'.format(self))
         self._state.update(
             status='complete',
-            returncode=returncode,
+            returncode=int(returncode),
             end=datetime.now().isoformat(),
         )
 
@@ -122,7 +122,7 @@ class Task(object):
         log.info('{} has failed'.format(self))
         self._state.update(
             status='failed',
-            returncode=returncode,
+            returncode=int(returncode),
             end=datetime.now().isoformat()
         )
 
@@ -132,10 +132,11 @@ class Task(object):
                 dep.fail(returncode=123)
 
     def done(self, returncode):
-        if returncode != 0:
-            self.fail(returncode)
+        rc = int(returncode)
+        if rc != 0:
+            self.fail(rc)
         else:
-            self.complete(returncode)
+            self.complete(rc)
 
     def set_state(self, **kwargs):
         """Add information to task state meta data"""

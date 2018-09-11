@@ -59,24 +59,19 @@ class SlurmBackend(BaseBackend):
         """Request job data updates from sacct for each job in self.jobs."""
         log.verbose('Sacct request for {} jobs...'.format(len(self.jobs)))
 
-        sacct_data = sacct(list(self.jobs.keys()))
+        if not self.jobs:
+            return
 
-        for jid, job in self.jobs.items():
-            if jid in sacct_data:
-                log.debug('Updating: {}'.format(jid))
-                job.job_data =  sacct_data[jid]
+        sacct_data = sacct(*self.jobs, return_data=True)
 
-                if job.done():
+        for jid, data in sacct_data.items():
+            if jid in self.jobs:
+                job = self.jobs[jid]
+                job.job_data = data
+
+                if job.is_done():
+                    job.event.set()
                     self.jobs.pop(jid)
-            else:
-                # It may take several seconds for a Slurm job to get a
-                # record in the accounting database. So, this can't be
-                # treated as an error. It may become necessary to add
-                # some time window where this is acceptable, depending
-                # on the failure rate/delay of slurm jobs to propagate
-                # into the accounting database. Revisit this if jobs
-                # seem to get "lost" in the scheduler
-                log.warning('No sacct data found for {}'.format(jid))
 
     def slurm_job_name(self, task):
         count = next(self.count)
@@ -103,7 +98,7 @@ class SlurmBackend(BaseBackend):
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
-        if 'cmd' not in task.directives:
+        if not task.directives.get('cmd'):
             return 0
 
         time.sleep(.1) # sbatch breaks when called too frequently
@@ -125,8 +120,11 @@ class SlurmBackend(BaseBackend):
 
         task.set_state(slurm_job_id=job.jid, slurm_args=job.args)
 
-        self.jobs[job] = asyncio.Event(loop=self.runner.loop)
-        await self.jobs[job].wait()
+        event = asyncio.Event(loop=self.runner.loop)
+        job.event = event
+        self.jobs[job.jid] = job
+
+        await event.wait()
 
         return task.done(job.returncode())
 
@@ -181,13 +179,34 @@ class SlurmBatchJob(object):
 
         if data:
             if jid is None:
-                self.jid = data['JobID']
+                self.jid = str(data['JobID'])
             self._update_state(data)
         else:
             self.jid = str(jid)
 
+    def __eq__(self, other):
+        try:
+            if other == self.jid:
+                return True
+        except AttributeError:
+            return other.jid == self.jid
+
+    def __repr__(self):
+        return '<SlurmBatchJob: {}>'.format(self.jid)
+
     def _update_state(self, job_data):
         self._job_data = job_data
+
+    def update(self):
+        data = launch_sacct(self.jid)
+
+        if not self.jid in data:
+            raise ValueError('No job data found for:  {}'.format(self.jid))
+        else:
+            self.job_data = data[self.jid]
+
+    def wait(self, *args, **kwargs):
+        return wait(self.jid, *args, **kwargs)
 
     @property
     def job_data(self):
@@ -201,13 +220,13 @@ class SlurmBatchJob(object):
         """Attempts to returns a standard integer exit code based on Slurm
         "derived" exit code, but falls back to some dumb heuristics if the
         exit code isn't parsing."""
-        if not self.done():
+        if not self.is_done():
             raise ValueError('Job not done yet')
 
         try:
-            return self.job_data['ExitCode'].partition(':')[0]
+            return int(self.job_data['ExitCode'].partition(':')[0])
         except (KeyError, IndexError):
-            if self.ok():
+            if self.is_ok():
                 return 0
             else:
                 return 1
@@ -217,7 +236,7 @@ class SlurmBatchJob(object):
         cmd_args = ('scancel', self.jid)
         return subprocess.call(cmd_args)
 
-    def done(self):
+    def is_done(self):
         if self._job_data:
             state = self._job_data.get('State')
 
@@ -226,8 +245,8 @@ class SlurmBatchJob(object):
 
         return False
 
-    def ok(self):
-        if not self.done():
+    def is_ok(self):
+        if not self.is_done():
             raise ValueError('Job is not complete yet.')
 
         if self.job_data['State'] in self.passed_states:
@@ -235,24 +254,13 @@ class SlurmBatchJob(object):
         else:
             return False
 
-# self._callbacks = []
-# self._cb_results = None
-# def add_done_callback(self, fn):
-#     self._callbacks.append(fn)
-#
-# def get_callback_results(self):
-#     if not self._is_complete.is_set():
-#         raise ValueError('Job is not complete yet.')
-#
-#     return self._cb_results()
-
 
 def wait(*job_ids, update_frequency=10):
     """Wait for one or more slurm batch jobs to complete"""
     while 1:
         jobs = sacct(*job_ids)
 
-        if all([j.done() for j in jobs]):
+        if all([j.is_done() for j in jobs]):
             return
         else:
             time.sleep(update_frequency)
@@ -269,6 +277,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
     if not job_ids:
         raise ValueError('Missing required argument: job_ids')
 
+    job_ids = [str(jid) for jid in job_ids]
     jobs = [SlurmBatchJob(jid) for jid in job_ids]
 
     data = {}
@@ -305,25 +314,22 @@ def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
     :return: Dict or Bytes
     """
     log.verbose('Sacct request for {} jobs...'.format(len(job_ids)))
-    args = ['sacct', '-P', '--format', 'all', '--delimiter='.format(delimiter)]
+    args = ['sacct', '-P', '--format', 'all', '--delimiter={}'.format(delimiter)]
 
     for jid in job_ids:
-        args.extend(['-j', jid])
+        args.extend(['-j', str(jid)])
 
-    log.debug('Launching: {}'.format(' '.join(shlex.quote(x) for x in args)))
+    log.verbose('Launching: {}'.format(' '.join([shlex.quote(r) for r in args])))
     p = subprocess.run(args, stdout=PIPE, check=True)
 
     if raw:
-        return p.stdout
+        return p.stdout.decode()
 
-    return parse_sacct(p.stdout, delimiter=delimiter)
+    return parse_sacct(p.stdout.decode(), delimiter=delimiter)
 
 
 def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     """Parse stdout from sacct to a dictionary of job ids and data."""
-    if isinstance(data, bytes):
-        data = data.decode('utf8')
-
     jobs = dict()
     lines = iter(data.strip().splitlines())
     header = next(lines).strip().split(delimiter)
@@ -407,11 +413,12 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
         script = '#!/bin/bash\n{}'.format(cmd)
 
     temp = tempfile.NamedTemporaryFile()
-
     with open(temp.name, 'w') as fp:
         fp.write(script)
 
     args.append(temp.name)
+    args = [str(r) for r in args]
+
     p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
 
     jid = p.stdout.decode().strip()
