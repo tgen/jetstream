@@ -91,24 +91,32 @@ class LocalBackend(BaseBackend):
 
             stdin, stdout, stderr = self.get_fd_paths(task)
 
+            open_fps = list()
+
             if stdin:
                 stdin_fp = open(stdin, 'r')
+                open_fps.append(stdin_fp)
             else:
                 stdin_fp = None
 
             if stdout:
                 stdout_fp = open(stdout, 'w')
+                open_fps.append(stdout_fp)
             else:
                 stdout_fp = None
 
             if stderr:
                 stderr_fp = open(stderr, 'w')
+                open_fps.append(stderr_fp)
             else:
                 stderr_fp = None
 
             p = await self.subprocess_run_sh(
                 cmd, stdin=stdin_fp, stdout=stdout_fp, stderr=stderr_fp
             )
+
+            for fp in open_fps:
+                fp.close()
 
             if p.returncode != 0:
                 return task.fail(p.returncode)
