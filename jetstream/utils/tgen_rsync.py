@@ -6,6 +6,7 @@ settings['datamovers']
 """
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, urlunparse
 import jetstream
 from jetstream.utils import data_transfer
@@ -56,12 +57,20 @@ def rsync(src, dest, *args):
 def main(args=None):
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
-    parser.add_argument('src')
-    parser.add_argument('dest')
-    parser.add_argument('extra_args', nargs=argparse.REMAINDER,
-                        help='Additional arguments will be passed to rsync')
-    args = parser.parse_args(args)
+    parser.add_argument('--max-workers', type=int, default=1)
+    parser.add_argument('paths', nargs='+')
+    args, unknown = parser.parse_known_args(args)
 
+    if len(args.paths) < 2:
+       raise ValueError('No destination given')
+    else:
+        src_paths = args.paths[:-1]
+        dest_path = args.paths[-1]
 
-    return rsync(args.src, args.dest, *args.extra_args)
+    executor = ThreadPoolExecutor(max_workers=args.max_workers)
+
+    with executor:
+        for src in src_paths:
+            executor.submit(rsync, src, dest_path, *unknown)
+
 
