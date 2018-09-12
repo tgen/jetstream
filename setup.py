@@ -50,6 +50,7 @@ setup(
     entry_points={
         'console_scripts': [
             'jetstream=jetstream.cli.jetstream:main',
+            'tgen_rsync=jetstream.utils.tgen_rsync:main'
         ],
     }
 )
