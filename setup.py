@@ -30,6 +30,7 @@ setup(
         "Topic :: Utilities",
     ],
     install_requires=[
+        'paramiko',
         'networkx',
         'pyyaml',
         'ulid-py',
