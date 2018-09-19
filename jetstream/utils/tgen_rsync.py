@@ -24,7 +24,7 @@ def resolve_location(value):
     try:
         wrangler = data_transfer.RsyncLimitedWrangler(
             hosts=jetstream.settings['data_movers'],
-            max_rsyncs=jetstream.settings.get('max_rsyncs', 4)
+            max_rsyncs=jetstream.settings.get('max_rsyncs', 3)
         )
     except KeyError:
         log.warning('No data movers have been configured in settings profile.')
