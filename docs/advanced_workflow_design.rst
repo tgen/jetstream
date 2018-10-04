@@ -4,6 +4,22 @@ Advanced Workflow Design
 This page describes some of the more advanced features in Jinja2 that can
 be used to write workflow templates.
 
+Filter Magic
+-------------
+
+Filters are used for applying transformations to the context data. Here are some
+examples of filters that I've found really useful:
+
+selectattr
+
+Used inside of a ``{% set ... %}`` statement, this filter can be used to create
+subsets of data. This example filters the read_groups list for data that is only
+Genome or Exome:
+
+.. code-block:: yaml
+
+    {% set dna_rgs = rgs | selectattr("General Library Type", "in", ["Genome", "Exome]) %}
+
 
 Macros
 -------
