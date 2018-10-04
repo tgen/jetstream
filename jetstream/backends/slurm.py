@@ -128,7 +128,10 @@ class SlurmBackend(BaseBackend):
         self.jobs[job] = asyncio.Event(loop=self.runner.loop)
         await self.jobs[job].wait()
 
-        return task.done(job.returncode())
+        if job.ok():
+            return task.complete()
+        else:
+            return task.fail()
 
 
 class SlurmBatchJob(object):
