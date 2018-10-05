@@ -1,6 +1,7 @@
-from random import Random
-
+import os
+import tempfile
 import jetstream
+from random import Random
 from jetstream.tasks import Task
 from test import TimedTestCase
 
@@ -279,3 +280,41 @@ class WorkflowIteration(TimedTestCase):
         t.complete()
 
         self.assertRaises(StopIteration, next, i)
+
+
+class WorkflowSaving(TimedTestCase):
+    def setUp(self):
+        """ All of these tests take place in the context of a project
+        directory. So setUp creates a temp dir and chdir to it. """
+        super(WorkflowSaving, self).setUp()
+        self._original_dir = os.getcwd()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self._temp_dir.name)
+
+    def tearDown(self):
+        os.chdir(self._original_dir)
+        self._temp_dir.cleanup()
+
+    def test_workflow_save(self):
+        wf = jetstream.Workflow()
+
+        with wf:
+            for i in range(100):
+                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+
+        jetstream.save_workflow(wf, 'wf.yaml')
+
+    def test_workflow_load(self):
+        wf = jetstream.Workflow()
+        t1 = jetstream.Task(name='whatever')
+
+        with wf:
+            wf.add_task(t1)
+            for i in range(100):
+                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+
+        jetstream.save_workflow(wf, 'wf.yaml')
+
+        wf2 = jetstream.load_workflow('wf.yaml')
+
+        self.assertIn(t1, wf2)

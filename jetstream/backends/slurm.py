@@ -30,7 +30,6 @@ class SlurmBackend(BaseBackend):
 
         :param sacct_frequency: Frequency in seconds that job updates will
         be requested from sacct
-        :param chunk_size: Number of jobs that will be checked with each
         request to sacct
         """
         self.sacct_frequency = sacct_frequency
@@ -64,7 +63,7 @@ class SlurmBackend(BaseBackend):
         for jid, job in self.jobs.items():
             if jid in sacct_data:
                 log.debug('Updating: {}'.format(jid))
-                job.job_data =  sacct_data[jid]
+                job.job_data = sacct_data[jid]
 
                 if job.done():
                     self.jobs.pop(jid)
@@ -106,7 +105,7 @@ class SlurmBackend(BaseBackend):
         if 'cmd' not in task.directives:
             return 0
 
-        time.sleep(.1) # sbatch breaks when called too frequently
+        time.sleep(.1)  # sbatch breaks when called too frequently
 
         stdin, stdout, stderr = self.get_fd_paths(task)
 
@@ -123,7 +122,8 @@ class SlurmBackend(BaseBackend):
             additional_args=task.directives.get('sbatch_args')
         )
 
-        task.set_state(slurm_job_id=job.jid, slurm_args=job.args)
+        task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
+        log.info('{} - Slurm job id: {}'.format(task, job.jid))
 
         self.jobs[job] = asyncio.Event(loop=self.runner.loop)
         await self.jobs[job].wait()

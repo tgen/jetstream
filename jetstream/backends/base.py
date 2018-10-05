@@ -36,9 +36,14 @@ class BaseBackend(object):
             if 'stdout' in task.directives:
                 stdout = task.directives['stdout']
             else:
-                filename = settings['task_out_filename_template']
-                params = defaultdict(lambda: 'task', **task.serialize())
-                filename = filename.format_map(params)
+                name = task.directives.get('name')
+                tid = task.tid
+
+                if name:
+                    filename = '{}_{}.out'.format(name, tid)
+                else:
+                    filename = '{}.out'.format(tid)
+
                 stdout = os.path.join(self.runner.project.logs_dir, filename)
 
             if 'stderr' in task.directives:

@@ -1,149 +1,169 @@
 from datetime import datetime
 from hashlib import sha1
-from copy import deepcopy
 from jetstream import utils, log
 
 
 class Task(object):
-    state_values = ('status', 'returncode', 'start', 'end', 'meta')
     valid_status = ('new', 'pending', 'complete', 'failed')
 
-    def __init__(self, data=None, **kwargs):
-        """Tasks are the fundamental unit of a workflow
+    def __init__(self, *, from_data=None, **kwargs):
+        """Tasks are the fundamental units of a workflow.
 
-        Task.tid is deliberately not "Task.id" in order to prevent confusion.
-        The Python object identity "id(Task)" is not the same as "Task.tid".
-        Task.tid is the identity computed by sha1 hash the task directive
-        content. The raw data used to generate the hash can be viewed with
-        Task.identity, and the directives used to generate the data can be
-        viewed with Task.directives. But, these are just copied of the data
-        and modifying the actual data should be avoided.
+        Tasks are composed of directives. Directives are key-value pairs, given
+        as kwargs when instantiating a new task. Directives are used by:
 
-        Changes to task state should be handled through methods, and changing
-        task directives might have unpredictable consequences to their workflow.
+            Workflow - to build a graph of the task dependencies and ensure
+            that tasks are executed in the correct order.
 
-        :param data: Load task from pre-existing data
-        :param kwargs: New task with 
+            Backends - when executing tasks, directives control how the backend
+            will reserve resources, record outputs, execute the command, etc.
+
+        Tasks also have state attributes. Task.status is used by the workflow
+        to coordinate tasks, while Task.state is meant to store additional data
+        during or after the task is run.
+
+        Task identity is computed by sha1 hash of the task directives, it can
+        be accessed with Task.tid (note: this is not the same as the the object
+        identity "id(Task)"). Task directives are immutable. Upon instantiation
+        they are stored as a tuple, then json serialized and hashed to generate
+        an identity. The task directive tuple can be viewed with Task.identity.
+        But, task directives should not be modified after instantiation, and
+        attempting do so will have unpredictable effects on workflow execution.
+        The ID is used to unambiguously compare tasks when building and
+        executing workflows.
+
+        :param from_data: Rehydrate the task from existing data.
+        :param kwargs: Generate a new task with the given directives.
         """
-        self.workflow = None
-        self._directives = utils.JsonDict()
-        self._state = utils.JsonDict()
-        self._tid = ''
-        existing_tid = None
-        
-        if data:
-            log.debug('Rehydrating task from: {}'.format(data))
+        if from_data and kwargs:
+            raise ValueError('from_data and kwargs are mutually exclusive')
 
-            if 'status' in data and not data['status'] in Task.valid_status:
-                raise InvalidTaskStatus(data['status'])
-
-            for k, v in data.items():
-                if k == 'tid':
-                    # Consume the existing tid to check it against the new tid
-                    existing_tid = v
-                elif k == 'meta':
-                    self._state['meta'] = utils.JsonDict(v)
-                elif k in Task.state_values:
-                    log.debug('Set state key: "{}" value: "{}"'.format(k, v))
-                    self._state[k] = v
-                else:
-                    log.debug('Set directive key: "{}" value: "{}"'.format(k, v))
-                    self._directives[k] = v
+        if from_data:
+            self._tid = from_data['tid']
+            self._state = utils.JsonDict(from_data['state'])
+            self._directives = tuple(from_data['directives'].items())
+            self.status = from_data['status']
         else:
-            self._directives.update(kwargs)
-            self._init_state()
+            self._status = 'new'
+            self._state = utils.JsonDict()
+            self._directives = tuple(kwargs.items())
+            identity = utils.json_dumps(self._directives, sort_keys=True)
+            self._tid = sha1(identity.encode('utf-8')).digest().hex()
 
-        self._set_tid()
+        self.workflow = None
 
-        if existing_tid and existing_tid != self._tid:
-            msg = (
-                'Conflicting tid from rehydrated task!\n'
-                'tid from data: {}\n'
-                'self tid: {}\n'
-                'self identity: {}\n'
-                'self directives: {}\n'
-                'self state: {}\n'
-            )
-            raise ValueError(msg.format(
-                existing_tid,
-                self.tid,
-                self.identity,
-                self.directives,
-                self.state
-            ))
-
-    def __repr__(self):
-        return '<Task {}>'.format(self.tid[:8])
-
-    def __hash__(self):
-        return hash(self._tid)
+    def __dict__(self):
+        return {
+            'tid': self.tid,
+            'status': self.status,
+            'directives': self.directives,
+            'state': self.state.to_dict(),
+        }
 
     def __eq__(self, other):
-        if hasattr(other, 'tid'):
-            return self.tid == other.tid
+        if isinstance(other, Task):
+            return other.tid == self.tid
         else:
-            return False
+            return other == self.tid
 
-    def _set_tid(self):
-        self._tid = sha1(self.identity.encode()).digest().hex()
+    def __hash__(self):
+        return self.tid.__hash__()
 
-    def _init_state(self):
-        self._state.update(
-            status='new',
-            returncode=None,
-            start=None,
-            end=None,
-            meta=utils.JsonDict()
-        )
+    def __repr__(self):
+        name = self.directives.get('name')
 
-    def reset(self):
-        """Reset the state state of this task"""
-        log.info('{} is reset'.format(self))
-        self._init_state()
+        if name is not None:
+            return '<Task {}_{}>'.format(name, self.tid[:8])
+        else:
+            return '<Task {}>'.format(self.tid)
 
-    def start(self):
+    def serialize(self):
+        return self.__dict__()
+
+    def flat(self):
+        """Returns a flat dict representation of this task that
+        may be useful for graph libraries that don't support complex
+        node attributes."""
+        res = {'tid': self.tid, 'status': self.status}
+
+        for k, v in self.directives.items():
+            res['directive_' + k] = v
+
+        for k, v in self.state.items():
+            res['state_' + k] = v
+
+        return res
+
+    @property
+    def tid(self):
+        return self._tid
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, value):
+        """Must be in Task.valid_status."""
+        if value not in Task.valid_status:
+            raise InvalidTaskStatus(value)
+
+        self._status = value
+
+    @property
+    def directives(self):
+        return dict(self._directives)
+
+    @property
+    def identity(self):
+        return self._directives
+
+    @property
+    def state(self):
+        return self._state
+
+    def reset(self, quiet=False):
+        """Reset the state of this task"""
+        if not quiet:
+            log.info('Reset: {}'.format(self))
+
+        self.status = 'new'
+        self._state = utils.JsonDict()
+
+    def start(self, quiet=False):
         """Indicate that this task has been started"""
-        log.info('{} has started'.format(self))
-        self._state.update(
-            status='pending',
-            start=datetime.now().isoformat()
-        )
+        if not quiet:
+            log.info('Started: {}'.format(self))
 
-    def complete(self, returncode=0):
-        """Indicate that this task is complete"""
-        log.info('{} is complete'.format(self))
-        self._state.update(
-            status='complete',
-            returncode=returncode,
-            end=datetime.now().isoformat(),
-        )
+        self.status = 'pending'
+        self.state['start_at'] = datetime.now().isoformat()
 
-    def fail(self, returncode=1):
-        log.info('{} has failed'.format(self))
-        self._state.update(
-            status='failed',
-            returncode=returncode,
-            end=datetime.now().isoformat()
-        )
+    def fail(self, returncode=None, quiet=False):
+        """Indicate that this task has failed"""
+        if not quiet:
+            log.info('Failed: {}'.format(self))
+
+        self.status = 'failed'
+        self.state['done_at'] = datetime.now().isoformat()
+
+        if returncode is not None:
+            self.state.update(returncode=returncode)
 
         if self.workflow:
-            for dep in self.workflow.dependents(self):
-                dep.set_state(dependency_failed=self.tid)
-                dep.fail(returncode=123)
+            for dep in self.dependents():
+                dep.state.update(dependency_failed=self.tid)
+                dep.fail(quiet=True)
 
-    def done(self, returncode):
-        if returncode != 0:
-            self.fail(returncode)
-        else:
-            self.complete(returncode)
+    def complete(self, returncode=None, quiet=False):
+        """Indicate that this task is complete"""
+        if not quiet:
+            log.info('Complete: {}'.format(self))
 
-    def set_state(self, **kwargs):
-        """Add information to task state meta data"""
-        log.info('{} set state: {}'.format(self, kwargs))
-        if 'meta' not in self._state:
-            self._state['meta'] = utils.JsonDict()
+        self.status = 'complete'
+        self.state['done_at'] = datetime.now().isoformat()
 
-        self._state['meta'].update(**kwargs)
+        if returncode is not None:
+            self.state.update(returncode=returncode)
 
     def is_new(self):
         if self.status == 'new':
@@ -178,43 +198,11 @@ class Task(object):
     def is_ready(self):
         return self.workflow.is_ready(self)
 
-    @property
-    def directives(self):
-        return deepcopy(self._directives)
+    def dependents(self):
+        return self.workflow.dependents(self)
 
-    @property
-    def state(self):
-        return deepcopy(self._state)
-
-    @property
-    def identity(self):
-        return utils.json_dumps(self.directives, sort_keys=True)
- 
-    @property
-    def tid(self):
-        return self._tid
-
-    @property
-    def status(self):
-        return self._state.get('status', 'new')
-
-    @status.setter
-    def status(self, value):
-        if value not in Task.valid_status:
-            raise InvalidTaskStatus(value)
-
-        self._state['status'] = value
-
-    def serialize(self):
-        res = dict(tid=self.tid)
-        res.update(self.directives)
-
-        state = self.state
-        if 'meta' in state:
-            state['meta'] = state['meta'].to_dict()
-        res.update(state)
-
-        return res
+    def dependencies(self):
+        return self.workflow.dependencies(self)
 
 
 class TaskException(Exception):

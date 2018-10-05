@@ -103,6 +103,7 @@ internally.
 """
 import re
 import shutil
+import pickle
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -127,10 +128,7 @@ class Workflow(object):
         self._stack = list()
 
     def __contains__(self, item):
-        if isinstance(item, str):
-            return item in self.graph
-        else:
-            return item.tid in self.graph
+        return item in self.graph.nodes()
 
     def __enter__(self):
         """Workflows can be edited in a transaction using the context manager
@@ -543,11 +541,16 @@ def search_pattern(pat):
 
 
 def save_workflow(workflow, path):
+    """Save a workflow to the path
+    :param workflow: Workflow instance
+    :param path: where to save
+    :return: None
+    """
     start = datetime.now()
     lock_path = path + '.lock'
 
+    log.info('Saving workflow...'.format(lock_path))
     with open(lock_path, 'w') as fp:
-        log.info('Saving workflow...'.format(lock_path))
         fp.write(workflow.to_yaml())
 
     shutil.move(lock_path, path)
@@ -562,7 +565,7 @@ def from_node_link_data(data):
 
     with wf:
         for node_id, node_data in graph.nodes(data=True):
-            wf.new_task(node_data['obj'])
+            wf.new_task(from_data=node_data['obj'])
 
     return wf
 
@@ -615,7 +618,7 @@ def build_workflow(tasks):
 
     with wf:
         for task_mapping in tasks:
-            wf.add_task(Task(data=task_mapping))
+            wf.add_task(Task(from_data=task_mapping))
 
     log.info('Workflow ready: {}'.format(wf))
     return wf

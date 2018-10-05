@@ -15,15 +15,8 @@ from getpass import getuser
 from socket import gethostname
 from uuid import getnode
 from pkg_resources import get_distribution
-import yaml
+from jetstream.utils.yaml import yaml
 
-
-def represent_none(self, _):
-    """Configures the yaml engine to represent null values as blanks"""
-    return self.represent_scalar('tag:yaml.org,2002:null', '')
-
-
-yaml.add_representer(type(None), represent_none)
 sentinel = object()
 log = logging.getLogger(__name__)
 
@@ -320,12 +313,12 @@ def json_dump(obj, *args, **kwargs):
 def yaml_load(path):
     """Load a yaml file from `path`"""
     with open(path, 'r') as fp:
-        return yaml.load(fp)
+        return yaml.safe_load(fp)
 
 
 def yaml_loads(data):
     """Load yaml data"""
-    return yaml.load(data)
+    return yaml.safe_load(data)
 
 
 def yaml_dumps(obj):
