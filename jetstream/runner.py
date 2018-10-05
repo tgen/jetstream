@@ -48,6 +48,7 @@ class Runner:
         self._conc_sem = BoundedSemaphore(self.max_conc, loop=self.loop)
         self._main_future = self.loop.create_task(self.main(self.workflow))
         self._secondary_future = self.loop.create_task(self.backend.coro())
+        self._secondary_future.add_done_callback(self.handle_backend_coro)
 
         try:
             self.loop.run_until_complete(self._main_future)
@@ -68,7 +69,10 @@ class Runner:
                     await self.sleep(1)
                     continue
                 else:
-                    await self.spawn(task)
+                    if not task.directives.get('cmd'):
+                        task.complete()
+                    else:
+                        await self.spawn(task)
 
                 await self.sleep(0)
 
@@ -129,11 +133,22 @@ class Runner:
         finally:
             self._task_futures.remove(future)
 
+    def handle_backend_coro(self, future):
+        try:
+            future.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            err = 'Unhandled exception in:\n{}\n{}'.format(
+                future._coro, traceback.format_exc())
+            self.halt(err)
+
     def halt(self, err=None):
         if err is not None:
             self._errs.add(err)
 
         if self._main_future and not self._main_future.cancelled():
+            log.info('Halting run!')
             self._main_future.cancel()
 
     def shutdown(self):

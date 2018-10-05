@@ -16,6 +16,7 @@ evaluated by the appropriate type function.
 
 """
 import sys
+from copy import deepcopy
 import jetstream
 from jetstream import log
 from jetstream.cli import shared
@@ -35,36 +36,48 @@ def main(args=None):
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
+    project = jetstream.Project()
+
+    if args.workflow:
+        workflow = jetstream.load_workflow(args.workflow)
+    else:
+        workflow = project.workflow()
+
+    log.info('Project: {} Workflow: {}'.format(project, workflow))
+
+    data = deepcopy(project.config)
+    data['project'] = project
+
     # Load existing project and workflow
-    variable_data = vars(shared.parse_kvargs(
+    kvarg_data = vars(shared.parse_kvargs(
         args=remaining,
         type_separator=args.kvarg_separator
     ))
 
-    project = jetstream.Project()
-    workflow = project.workflow()
+    data.update(kvarg_data)
 
-    if 'project' not in variable_data:
-        variable_data['project'] = project
-
-    log.info('Project: {} Workflow: {}'.format(project, workflow))
+    log.debug('Final template render data:\n{}'.format(data))
 
     # Render the the new workflow template
     templates = jetstream.render_templates(
         *args.templates,
-        data=variable_data,
+        data=data,
         search_path=args.search_path
     )
+
+    final_render = '\n'.join(templates)
+
+    log.debug('Final rendered workflow:\n{}'.format(final_render))
 
     # Combine the old workflow with the new tasks
     if workflow is None:
         # If no workflow is present in the project, just build one
-        workflow = jetstream.build_workflow('\n'.join(templates))
+        workflow = jetstream.build_workflow(final_render)
     else:
         # If a workflow is present, we may need to link dependencies in the
         # new workflow to tasks in that workflow, so the build process is
         # different.
-        tasks_data = jetstream.utils.yaml_loads('\n'.join(templates))
+        tasks_data = jetstream.utils.yaml_loads(final_render)
         tasks = [jetstream.Task(**data) for data in tasks_data]
 
         with workflow:
@@ -85,16 +98,16 @@ def main(args=None):
     else:
         backend = LocalBackend()
 
-    runner = jetstream.AsyncRunner(
+    runner = jetstream.Runner(
         backend=backend,
-        max_forks=args.max_forks,
+        max_concurrency=args.max_forks,
         autosave=args.autosave
     )
 
-    rc = runner.start(workflow=workflow, project=project)
-    runner.close()
-
+    runner.start(workflow=workflow, project=project)
     jetstream.save_workflow(workflow, project.workflow_file)
+
+    rc = shared.finalize_run(workflow)
     sys.exit(rc)
 
 

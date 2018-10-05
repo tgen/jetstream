@@ -3,8 +3,7 @@ import logging
 import re
 from os import path, walk, listdir
 
-from jetstream.backends.slurm import SlurmBackend
-
+from jetstream.backends import slurm
 
 log = logging.getLogger(__name__)
 
@@ -44,11 +43,8 @@ class Project(object):
         status of a project """
         if path.exists(path.join(self.path, 'project.finished')):
             return 'complete'
-
-        elif find_failed_signals(self.path):
-            # This operation can take quite a while
+        elif find_failed_signals(self.path):   # This operation can take a while
             return 'failed'
-
         else:
             return 'incomplete'
 
@@ -59,7 +55,7 @@ class Project(object):
         # It's faster to batch them together in a single request
         jids = list(self._jids())
         if jids:
-            return SlurmBackend().get_jobs(*jids)
+            return slurm.sacct(*jids)
         else:
             return []
 
@@ -103,7 +99,7 @@ class Project(object):
 
 
             for j in self.get_jobs():
-                if j.is_complete and not all_jobs:
+                if not all_jobs and j.is_done() and j.is_ok():
                     continue
 
                 d = j.job_data  # Use the sacct data for each job
