@@ -11,17 +11,13 @@ results_dir = settings['project_results_dir']
 temp_dir = settings['project_temp_dir']
 extra_dirs = settings['project_extra_dirs']
 pid_file = os.path.join(index_dir, 'pid.yml')
+config_file = os.path.join(index_dir, 'config.yml')
 created_file = os.path.join(index_dir, 'created.yml')
 workflow_file = os.path.join(index_dir, 'workflow.yml')
 
 
 class NotAProject(Exception):
     """Raised when trying to load a project that is missing something"""
-    pass
-
-
-class NotDagError(Exception):
-    """ Raised when an action would result in a network that is not a DAG """
     pass
 
 
@@ -35,6 +31,14 @@ class Project:
     set up a best-practices directory structure:
 
     <project>
+        .
+        ├── jetstream
+        │   ├── config_files
+        │   ├── created.yml
+        │   └── history
+        ├── logs
+        ├── results
+        └── temp
 
     """
     def __init__(self, path=None, new=False):
@@ -47,6 +51,7 @@ class Project:
         self.path = path
         self.name = os.path.basename(self.path)
         self.index_dir = os.path.join(self.path, index_dir)
+        self.config_file = os.path.join(self.path, config_file)
         self.created_file = os.path.join(self.path, created_file)
         self.pid_file = os.path.join(self.path, pid_file)
         self.workflow_file = os.path.join(self.path, workflow_file)
@@ -121,13 +126,19 @@ class Project:
     def reload(self):
         """Loads all data files in  <project>/config/ as values in the
         project.config dictionary. """
-        data = dict()
+        if os.path.exists(self.config_file):
+            self.config = jetstream.utils.yaml_load(self.config_file)
+
+        config_files = dict()
 
         for path in jetstream.loadable_files(self.config_dir):
             name = os.path.splitext(os.path.basename(path))[0]
-            data[name] = jetstream.load_data_file(path)
+            config_files[name] = jetstream.load_data_file(path)
 
-        self.config.update(data)
+        self.config.update(config_files)
+
+        with open(self.config_file, 'w') as fp:
+            jetstream.utils.yaml_dump(self.config, fp)
 
     def workflow(self):
         """Load the total Workflow for this project. """

@@ -43,7 +43,7 @@ def main(args=None):
     else:
         workflow = project.workflow()
 
-    log.info('Project: {} Workflow: {}'.format(project, workflow))
+    log.info('Project: {} {}'.format(project, workflow))
 
     data = deepcopy(project.config)
     data['project'] = project
@@ -104,7 +104,7 @@ def main(args=None):
         autosave=args.autosave
     )
 
-    runner.start(workflow=workflow, project=project)
+    runner.start(workflow=workflow, project=project, run_id=args.run_id)
     jetstream.save_workflow(workflow, project.workflow_file)
 
     rc = shared.finalize_run(workflow)

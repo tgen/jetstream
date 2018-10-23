@@ -1,8 +1,5 @@
 import os
 import asyncio
-import asyncio.subprocess
-from collections import defaultdict
-from jetstream import settings
 
 
 class BaseBackend(object):
@@ -10,7 +7,8 @@ class BaseBackend(object):
     coroutine. max_concurrency can be set to limit the number of jobs
     that a backend will allow to spawn concurrently."""
     runner = None
-    max_concurrency = -1 # Set a Backend-specific limit on the concurrency
+    semaphore = None
+    max_concurrency = -1  # Set a Backend-specific limit on the concurrency
 
     def start(self, runner):
         self.runner = runner

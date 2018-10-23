@@ -443,20 +443,20 @@ class Workflow(object):
 
     def reset(self):
         """Resets all tasks state."""
-        log.critical('Resetting state for all tasks')
+        log.critical('Resetting state for all tasks...')
         for task in self.tasks(objs=True):
             task.reset()
 
     def resume(self):
         """Resets all "pending" tasks state."""
-        log.info('Resetting state for all pending tasks')
+        log.info('Resetting state for all pending tasks...')
         for task in self.tasks(objs=True):
             if task.status == 'pending':
                 task.reset()
 
     def retry(self):
         """Resets all "pending" and "failed" tasks state."""
-        log.info('Resetting state for all pending and failed tasks')
+        log.info('Resetting state for all pending and failed tasks...')
         for task in self.tasks(objs=True):
             if task.status in ('pending', 'failed'):
                 task.reset()

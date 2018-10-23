@@ -1,3 +1,4 @@
+import os
 import traceback
 from datetime import datetime
 import asyncio
@@ -9,14 +10,15 @@ from jetstream.backends import LocalBackend
 
 class Runner:
     def __init__(self, autosave=3600, backend=None, loop=None,
-                 max_concurrency=None, project=None, workflow=None,):
+                 max_concurrency=None, debug=False):
         self.autosave = autosave
         self.backend = backend or LocalBackend()
+        self.debug = debug
+        self.fingerprint = None
         self.loop = loop
-        self.max_conc = max_concurrency or utils.guess_max_forks()
-        self.project = project
-        self.workflow = workflow
-        self.fp = None
+        self.max_concurrency = max_concurrency or utils.guess_max_forks()
+        self.project = None
+        self.workflow = None
         self._backend = None
         self._conc_sem = None
         self._errs = set()
@@ -25,27 +27,53 @@ class Runner:
         self._secondary_future = None
         self._task_futures = set()
 
-    def start(self, workflow=None, project=None, debug=False, loop=None):
-        self.fp = utils.Fingerprint()
-        self.workflow = workflow or self.workflow
-        self.project = project or self.project
-        self.loop = loop or self.loop
-
-        if self.workflow is None:
-            raise ValueError('No workflow has been assigned')
+    def _run_preflight(self):
+        log.debug('Running preflight checks...')
+        if hasattr(self.backend, 'preflight'):
+            try:
+                getattr(self.backend, 'preflight')()
+            except Exception:
+                log.critical('Backend failed preflight checks!')
+                raise
 
         if asyncio._get_running_loop() is not None:
-            raise RuntimeError("Cannot start() from a running event loop")
+            raise RuntimeError("Cannot start from a running event loop")
 
         if self.loop is None:
             self.loop = asyncio.events.new_event_loop()
             asyncio.events.set_event_loop(self.loop)
-            self.loop.set_debug(debug)
+            self.loop.set_debug(self.debug)
 
-        log.info('Starting run: {}'.format(self.fp.id))
-
+        # Backends have a semaphore that controls the backend-specific
+        # concurrent task limit. So, this call needs to happen after the
+        # event loop is added to the runner.
         self.backend.start(self)
-        self._conc_sem = BoundedSemaphore(self.max_conc, loop=self.loop)
+
+        if self.project is not None:
+            history_file = os.path.join(
+                self.project.history_dir,
+                self.fingerprint.id
+            )
+
+            if os.path.exists(history_file):
+                err = 'The run_id already exists: {}'.format(history_file)
+                raise RuntimeError(err)
+
+            with open(history_file, 'w') as fp:
+                fp.write(self.fingerprint.to_yaml())
+
+    def start(self, workflow, project=None, debug=False,
+              loop=None, run_id=None):
+        log.debug('Configuring runner...')
+        self.fingerprint = utils.Fingerprint(id=run_id)
+        self.workflow = workflow
+        self.project = project or self.project
+        self.loop = loop or self.loop
+        self.debug = debug or self.debug
+        self._run_preflight()
+
+        log.info('Starting run: {}'.format(self.fingerprint.id))
+        self._conc_sem = BoundedSemaphore(self.max_concurrency, loop=self.loop)
         self._main_future = self.loop.create_task(self.main(self.workflow))
         self._secondary_future = self.loop.create_task(self.backend.coro())
         self._secondary_future.add_done_callback(self.handle_backend_coro)
@@ -54,13 +82,16 @@ class Runner:
             self.loop.run_until_complete(self._main_future)
         finally:
             self.shutdown()
+            run_id = self.fingerprint.id
+            self.fingerprint = None
 
             if self._errs:
                 for err in self._errs:
-                    print(err)
-                raise RuntimeError('Runner was halted unexpectedly!')
+                    log.critical(err)
+                raise RuntimeError('Runner halted unexpectedly!')
+            else:
+                log.warning('Run complete: {}'.format(run_id))
 
-            log.warning('Run complete: {}'.format(self.fp.id))
 
     async def main(self, tasks):
         try:
@@ -98,8 +129,8 @@ class Runner:
             if self.project:
                 path = self.project.workflow_file
             else:
-                # TODO move this to a config module
-                path = 'jetstream_workflow_{}.yaml'.format(self.fp.id)
+                # TODO move this to a config module?
+                path = 'jetstream_workflow_{}.yaml'.format(self.fingerprint.id)
 
             save_workflow(self.workflow, path=path)
 
@@ -121,17 +152,15 @@ class Runner:
 
         try:
             future.result()
-
             if hasattr(future, 'workflow_task'):
                 if not future.workflow_task.is_done():
-                    raise ValueError(
+                    raise RuntimeError(
                         'Backend failed to update task status! A task future '
                         'was completed without the task being marked as done. '
                         'This will eventually allow a task to be automatically '
                         'restarted, but is not supported yet. The backend must '
                         'complete/fail the task before returning.'
                     )
-
         except Exception:
             err = 'Unhandled exception in:\n{}\n{}'.format(
                 future._coro, traceback.format_exc())

@@ -6,8 +6,8 @@ variable type can be explicitly set with the syntax ``--<type>:<key> <value>``.
 Variables with no type declared will be loaded as strings.
 
 If the variable type is "file" the value will be passed to
-``jetstream.data_loaders``, handled to the extension. All other types will
-evaluated by the appropriate type function.
+``jetstream.data_loaders``, All other types will evaluated by their type
+function.
 
 """
 import sys
@@ -41,6 +41,10 @@ def arg_parser():
 
     parser.add_argument('-b', '--build-only', action='store_true',
                         help='Just build the workflow and print to stdout')
+
+    parser.add_argument('--run-id',
+                        help='Give this run a specific ID instead of randomly '
+                             'generating one.')
 
     parser.add_argument('--backend', choices=['local', 'slurm'],
                         default=jetstream.settings['backend'],
@@ -121,7 +125,7 @@ def main(args=None):
         autosave=args.autosave
     )
 
-    runner.start(workflow=workflow)
+    runner.start(workflow=workflow, run_id=args.run_id)
 
     rc = shared.finalize_run(workflow)
     sys.exit(rc)

@@ -1,6 +1,6 @@
+import sys
 import argparse
 import logging
-import sys
 import traceback
 from pkg_resources import get_distribution
 from jetstream import logs, settings
@@ -58,8 +58,13 @@ def main(args=None):
     parser = arg_parser()
     args, remainder = parser.parse_known_args(args)
 
+    if sys.stdout.isatty():
+        log_format = logs.color_format
+    else:
+        log_format = logs.basic_format
+
+    log_format = args.log_format or log_format
     log_level = get_loglevel(args.log_level or settings.get('log_level') or 20)
-    log_format = args.log_format or settings.get('log_format') or logs.color_format
     log_filename = args.log_filename or settings.get('log_filename')
     log_filemode = args.log_filemode or settings.get('log_filemode')
 
