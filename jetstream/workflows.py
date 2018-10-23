@@ -103,7 +103,6 @@ internally.
 """
 import re
 import shutil
-import pickle
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -159,7 +158,7 @@ class Workflow(object):
         return '<jetstream.Workflow {}>'.format(stats)
 
     def _add_edge(self, from_node, to_node):
-        """ Edges represent dependencies between tasks. Edges run FROM one node
+        """Edges represent dependencies between tasks. Edges run FROM one node
         TO another node that it depends upon. Nodes can have multiple edges,
         but not multiple instances of the same edge (multigraph).
 
@@ -575,7 +574,7 @@ def to_node_link_data(wf):
 
 
 def to_cytoscape_json_data(wf):
-    """ Export a workflow as a cytoscape JSON file
+    """Export a workflow as a cytoscape JSON file
 
     Cytoscape is good for vizualizing network graphs. It complains about node
     data that are not strings, so all node data are converted to strings on
@@ -591,7 +590,7 @@ def to_cytoscape_json_data(wf):
 
 
 def load_workflow(path):
-    """ Load a workflow from a file. """
+    """Load a workflow from a file. """
     graph = utils.yaml_load(path)
     return from_node_link_data(graph)
 
@@ -602,7 +601,7 @@ def build_workflow_from_string(tasks):
 
 
 def build_workflow(tasks):
-    """ Given a sequence of tasks (dictionaries with properties described in
+    """Given a sequence of tasks (dictionaries with properties described in
     the workflow specification), returns a workflow with nodes and edges
     already added """
     log.info('Building workflow...')
@@ -618,7 +617,7 @@ def build_workflow(tasks):
 
     with wf:
         for task_mapping in tasks:
-            wf.add_task(Task(from_data=task_mapping))
+            wf.add_task(Task(**task_mapping))
 
     log.info('Workflow ready: {}'.format(wf))
     return wf

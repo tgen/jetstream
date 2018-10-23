@@ -123,17 +123,9 @@ def tasks(args=None):
         for task_id in args.task_id:
             print(jetstream.utils.yaml_dumps(tasks[task_id].serialize()))
     else:
-        print('\t'.join((
-            'task_id',
-            'task_name'
-            'status',
-        )))
+        print('\t'.join(('task_id', 'label', 'status',)))
         for t in tasks.values():
-            print('\t'.join((
-                t.tid,
-                str(t.directives.get('name')),
-                t.state['status'],
-            )))
+            print('\t'.join((t.tid, t.label, t.status,)))
 
 
 def remove_task(args=None):

@@ -70,12 +70,7 @@ class Task(object):
         return self.tid.__hash__()
 
     def __repr__(self):
-        name = self.directives.get('name')
-
-        if name is not None:
-            return '<Task {}_{}>'.format(name, self.tid[:8])
-        else:
-            return '<Task {}>'.format(self.tid)
+        return '<Task {}>'.format(self.label)
 
     def serialize(self):
         return self.__dict__()
@@ -101,6 +96,15 @@ class Task(object):
     @property
     def status(self):
         return self._status
+
+    @property
+    def label(self):
+        name = self.directives.get('name')
+
+        if name is not None:
+            return name
+        else:
+            return self.tid
 
     @status.setter
     def status(self, value):
