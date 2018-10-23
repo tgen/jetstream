@@ -124,7 +124,13 @@ class Runner:
 
             if hasattr(future, 'workflow_task'):
                 if not future.workflow_task.is_done():
-                    raise ValueError('Backend failed to update task status')
+                    raise ValueError(
+                        'Backend failed to update task status! A task future '
+                        'was completed without the task being marked as done. '
+                        'This will eventually allow a task to be automatically '
+                        'restarted, but is not supported yet. The backend must '
+                        'complete/fail the task before returning.'
+                    )
 
         except Exception:
             err = 'Unhandled exception in:\n{}\n{}'.format(

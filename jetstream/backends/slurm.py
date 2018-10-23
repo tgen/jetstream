@@ -126,7 +126,10 @@ class SlurmBackend(BaseBackend):
 
         await event.wait()
 
-        return task.done(job.returncode())
+        if job.is_ok():
+            task.complete(job.returncode())
+        else:
+            task.fail(job.returncode())
 
 
 class SlurmBatchJob(object):
