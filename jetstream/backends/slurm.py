@@ -118,7 +118,7 @@ class SlurmBackend(BaseBackend):
             additional_args=task.directives.get('sbatch_args')
         )
 
-        task.set_state(slurm_job_id=job.jid, slurm_args=job.args)
+        task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
 
         event = asyncio.Event(loop=self.runner.loop)
         job.event = event

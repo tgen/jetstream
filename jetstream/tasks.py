@@ -116,14 +116,17 @@ class Task(object):
 
     @property
     def directives(self):
+        """Access the directives as a dictionary"""
         return dict(self._directives)
 
     @property
     def identity(self):
+        """Access the directives tuple"""
         return self._directives
 
     @property
     def state(self):
+        """Access the state JsonDict"""
         return self._state
 
     def reset(self, quiet=False):

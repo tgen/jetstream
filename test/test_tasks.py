@@ -107,9 +107,16 @@ class TaskBasics(TestCase):
         self.assertEqual(t1, t2)
         assert t1 is not t2
 
-    def test_task_change_state(self):
+    def test_task_change_status(self):
         t = Task(name='task')
         self.assertEqual(t.status, 'new')
+
+    def test_task_change_state(self):
+        t = Task(name='task')
+        t.state['foo'] = 'bar'
+        self.assertEqual(t.state['foo'], 'bar')
+        t.state.update(foo='baz')
+        self.assertEqual(t.state['foo'], 'baz')
 
     def test_complete_task(self):
         t = Task(name='task')
