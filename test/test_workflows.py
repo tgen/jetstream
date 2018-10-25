@@ -3,7 +3,7 @@ import tempfile
 import jetstream
 from random import Random
 from jetstream.tasks import Task
-from test import TimedTestCase
+from unittest import TestCase
 
 # Seed the rng because otherwise there's a small chance
 # of generating a negative control string that matches
@@ -11,7 +11,7 @@ from test import TimedTestCase
 random = Random(42)
 
 
-class WorkflowBasics(TimedTestCase):
+class WorkflowBasics(TestCase):
     def test_workflow_repr(self):
         wf = jetstream.Workflow()
         wf.__repr__()
@@ -154,7 +154,7 @@ class WorkflowBasics(TimedTestCase):
     # TODO Test duplicate task add during context manager
 
 
-class WorkflowDependencies(TimedTestCase):
+class WorkflowDependencies(TestCase):
     def test_neg_add_task_w_input(self):
         """Task dependencies are linked after every wf.new_task or wf.add_task
         unless context manager is used. Adding a task that requires inputs when
@@ -254,7 +254,7 @@ class WorkflowDependencies(TimedTestCase):
         self.assertEqual(t2.status, 'failed')
 
 
-class WorkflowIteration(TimedTestCase):
+class WorkflowIteration(TestCase):
     def test_workflow_iter(self):
         wf = jetstream.Workflow()
         status = jetstream.workflows.Task.valid_status
@@ -264,7 +264,7 @@ class WorkflowIteration(TimedTestCase):
 
         i = iter(wf)
 
-        self.assertEqual(type(i), jetstream.workflows.WorkflowIterator)
+        self.assertEqual(type(i), jetstream.workflows.Workflow)
 
     def test_workflow_iter_next1(self):
         wf = jetstream.Workflow()
@@ -282,7 +282,7 @@ class WorkflowIteration(TimedTestCase):
         self.assertRaises(StopIteration, next, i)
 
 
-class WorkflowSaving(TimedTestCase):
+class WorkflowSaving(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """

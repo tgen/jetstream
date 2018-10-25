@@ -29,45 +29,54 @@ def arg_parser():
 
     parser.add_argument('templates', help='Template path', nargs='+')
 
-    parser.add_argument('-t', '--search-path', action='append', default=None,
-                        help='Manually configure the template search. This '
-                             'argument can be used multiple times.')
-
-    parser.add_argument('--kvarg-separator', default=':',
-                        help='Specify an alternate separator for kvargs')
-
-    parser.add_argument('-r', '--render-only', action='store_true',
-                        help='Just render the template and print to stdout')
 
     parser.add_argument('-b', '--build-only', action='store_true',
                         help='Just build the workflow and print to stdout')
 
-    parser.add_argument('--run-id',
-                        help='Give this run a specific ID instead of randomly '
-                             'generating one.')
 
-    parser.add_argument('--backend', choices=['local', 'slurm'],
-                        default=jetstream.settings['backend'],
-                        help='Specify the runner backend (default: local)')
+    parser.add_argument('-r', '--render-only', action='store_true',
+                        help='Just render the template and print to stdout')
 
-    parser.add_argument('--autosave', type=int,
-                        default=jetstream.settings['autosave'],
-                        help='Automatically save the workflow during run.')
+
+    parser.add_argument('-t', '--search-path', action='append', default=None,
+                        help='Manually configure the template search. This '
+                             'argument can be used multiple times.')
+
 
     parser.add_argument('-w', '--workflow',
                         help='Run an existing workflow. Generally used for '
                              'retry/resume when a workflow run fails.')
 
+
+    parser.add_argument('--autosave', type=int,
+                        default=jetstream.settings['autosave'],
+                        help='Automatically save the workflow during run.')
+
+    parser.add_argument('--backend', choices=['local', 'slurm'],
+                        default=jetstream.settings['backend'],
+                        help='Specify the runner backend (default: local)')
+
+    parser.add_argument('--config',
+                        help='Load a single config file instead of building '
+                             'from args or project data.')
+
+    parser.add_argument('--kvarg-separator', default=':',
+                        help='Specify an alternate separator for kvargs')
+
     parser.add_argument('--method', choices=['retry', 'resume'], default='retry',
                         help='Method to use when restarting existing workflows')
+
+    parser.add_argument('--resume', dest='method', action='store_const',
+                        const='resume',
+                        help='Reset "pending" tasks before starting')
 
     parser.add_argument('--retry', dest='method', action='store_const',
                         const='retry',
                         help='Reset "failed" and "pending" tasks before starting')
 
-    parser.add_argument('--resume',  dest='method', action='store_const',
-                        const='resume',
-                        help='Reset "pending" tasks before starting')
+    parser.add_argument('--run-id',
+                        help='Give this run a specific ID instead of randomly '
+                             'generating one.')
 
     parser.add_argument('--max-forks', default=None, type=int,
                         help='Override the default fork limits of the task '
@@ -88,10 +97,13 @@ def main(args=None):
         else:
             workflow.resume()
     else:
-        data = vars(shared.parse_kvargs(
-            args=remaining,
-            type_separator=args.kvarg_separator
-        ))
+        if args.config:
+            data = jetstream.utils.yaml_load(args.config)
+        else:
+            data = vars(shared.parse_kvargs(
+                args=remaining,
+                type_separator=args.kvarg_separator
+            ))
 
         log.debug('Template render data: {}'.format(data))
 

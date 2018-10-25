@@ -45,18 +45,21 @@ def main(args=None):
 
     log.info('Project: {} {}'.format(project, workflow))
 
-    data = deepcopy(project.config)
-    data['project'] = project
+    if args.config:
+        data = jetstream.utils.yaml_load(args.config)
+    else:
+        data = deepcopy(project.config)
+        data['project'] = project
 
-    # Load existing project and workflow
-    kvarg_data = vars(shared.parse_kvargs(
-        args=remaining,
-        type_separator=args.kvarg_separator
-    ))
+        # Load existing project and workflow
+        kvarg_data = vars(shared.parse_kvargs(
+            args=remaining,
+            type_separator=args.kvarg_separator
+        ))
 
-    data.update(kvarg_data)
+        data.update(kvarg_data)
 
-    log.debug('Final template render data:\n{}'.format(data))
+        log.debug('Final template render data:\n{}'.format(data))
 
     # Render the the new workflow template
     templates = jetstream.render_templates(

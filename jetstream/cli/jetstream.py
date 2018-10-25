@@ -58,7 +58,7 @@ def main(args=None):
     parser = arg_parser()
     args, remainder = parser.parse_known_args(args)
 
-    if sys.stdout.isatty():
+    if sys.stderr.isatty():
         log_format = logs.color_format
     else:
         log_format = logs.basic_format

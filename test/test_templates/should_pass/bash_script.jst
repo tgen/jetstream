@@ -1,8 +1,8 @@
 # Just test an embedded bash script task
+
 - name: bash_script_test
-  cmd: bash
   cpus: 1
-  stdin: |
+  cmd: |
     #!/bin/bash
 
     echo hello world

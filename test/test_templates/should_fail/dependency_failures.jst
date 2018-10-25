@@ -1,0 +1,11 @@
+
+- name: test_failures
+  after: test_log_capture
+  cmd: |
+    #!/bin/bash
+    echo "This task should fail"
+    exit 1
+
+- name: test_dependency_failures
+  cmd: echo This command should fail due to dependency
+  after: test_failures

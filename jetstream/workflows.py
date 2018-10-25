@@ -125,6 +125,8 @@ class Workflow(object):
         self.graph = nx.DiGraph(jetstream_version=__version__)
         self._lock = Lock()
         self._stack = list()
+        self._iter_tasks = list()
+        self._iter_pending = list()
 
     def __contains__(self, item):
         return item in self.graph.nodes()
@@ -148,10 +150,62 @@ class Workflow(object):
         self._lock.release()
 
     def __iter__(self):
-        return WorkflowIterator(self)
+        """In order to reduce the search time for the next available task,
+        they are stored in separate lists, and then removed as they are
+        completed. When a change to the graph occurs during iteration, these
+        lists should be recalculated. """
+        log.verbose('Building workflow iterator...')
+
+        self._iter_tasks = list()
+        self._iter_pending = list()
+
+        for task in self.tasks():
+            if task.is_new():
+                self._iter_tasks.append(task)
+            elif task.is_pending():
+                self._iter_pending.append(task)
+            else:
+                pass
+
+        return self
 
     def __len__(self):
         return len(self.graph)
+
+    def __next__(self):
+        """Select the next available task for execution. If no task is ready,
+        this will return None."""
+        log.verbose('Request for next task')
+
+        if self.is_locked():
+            raise RuntimeError('Cannot get next while workflow is locked')
+
+        # Drop all pending tasks that have completed since the last call
+        self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
+        log.verbose('Pending: {}'.format(self._iter_pending))
+
+        if not self._iter_tasks and not self._iter_pending:
+            raise StopIteration
+
+        for i in reversed(range(len(self._iter_tasks))):
+            task = self._iter_tasks[i]
+            log.verbose('Considering: {}'.format(task))
+
+            if task.is_done():
+                log.verbose('{} done, removing from list'.format(task))
+                self._iter_tasks.pop(i)
+            elif task.is_pending():
+                log.verbose('{} pending, moving to pending'.format(task))
+                self._iter_tasks.pop(i)
+                self._iter_pending.append(task)
+            elif task.is_ready():
+                log.verbose('{} ready, moving to pending'.format(task))
+                self._iter_tasks.pop(i)
+                self._iter_pending.append(task)
+                task.start()
+                return task
+        else:
+            return None
 
     def __repr__(self):
         stats = Counter([t.status for t in self.tasks(objs=True)])
@@ -191,7 +245,7 @@ class Workflow(object):
         if task.tid in self.graph:
             raise ValueError('Duplicate task ID: {}'.format(task.tid))
 
-        log.debug('Adding task: {}'.format(task))
+        log.verbose('Adding task: {}'.format(task))
 
         task.workflow = self
         self.graph.add_node(task.tid, obj=task)
@@ -464,8 +518,10 @@ class Workflow(object):
     def serialize(self):
         """Convert the workflow to a node-link formatted object that can
         be easily dumped to JSON/YAML """
+        log.debug('Converting to node link data...')
         data = to_node_link_data(self)
 
+        log.debug('Serializing nodes...')
         for node in data['nodes']:
             node['obj'] = node['obj'].serialize()
 
@@ -487,59 +543,24 @@ class Workflow(object):
 
     def to_yaml(self):
         """Returns YAML string representation of this workflow"""
-        return utils.yaml_dumps(self.serialize())
+        s = self.serialize()
+        log.debug('Dumping to yaml...')
+        return utils.yaml_dumps(s)
 
     def update(self):
         """Recalculate the edges for this workflow"""
         for task in self.tasks(objs=True):
-            log.debug('Linking dependencies for: {}'.format(task))
+            log.verbose('Linking dependencies for: {}'.format(task))
             self._flow_after(task)
             self._flow_before(task)
             self._flow_input(task)
-
-
-class WorkflowIterator(object):
-    def __init__(self, workflow):
-        self.workflow = workflow
-        self.total = len(workflow)
-        self.tasks = workflow.list_tasks()
-        self.pending = list()
-
-    def __repr__(self):
-        msg = '{}/{} remaining'.format(
-            len(self.tasks) + len(self.pending), self.total)
-        return '<jetstream.WorkflowIterator: {}>'.format(msg)
-    
-    def __next__(self):
-        log.verbose('Request for next task')
-        
-        self.pending = [t for t in self.pending if not t.is_done()]
-        log.verbose('Pending: {}'.format(self.pending))
-        
-        if not self.tasks and not self.pending:
-            raise StopIteration
-        
-        for i in reversed(range(len(self.tasks))):
-            task = self.tasks[i]
-            log.verbose('Considering: {}'.format(task))
-            
-            if task.is_done():
-                t = self.tasks.pop(i)
-                log.verbose('{} is done, removing from workflow iterator'.format(t))
-            elif task.is_ready():
-                self.tasks.pop(i)
-                self.pending.append(task)
-                task.start()
-                return task
-        else:
-            return None
 
 
 def search_pattern(pat):
     return re.compile('^{}$'.format(pat))
 
 
-def save_workflow(workflow, path):
+def save_workflow(workflow, path, filetype='yaml'):
     """Save a workflow to the path
     :param workflow: Workflow instance
     :param path: where to save
@@ -548,9 +569,9 @@ def save_workflow(workflow, path):
     start = datetime.now()
     lock_path = path + '.lock'
 
-    log.info('Saving workflow...'.format(lock_path))
+    log.info('Saving workflow ({})...'.format(filetype, lock_path))
     with open(lock_path, 'w') as fp:
-        fp.write(workflow.to_yaml())
+        utils.yaml_dump(workflow.serialize(), fp)
 
     shutil.move(lock_path, path)
 
@@ -605,6 +626,7 @@ def build_workflow(tasks):
     the workflow specification), returns a workflow with nodes and edges
     already added """
     log.info('Building workflow...')
+    started = datetime.now()
 
     if isinstance(tasks, str):
         # If tasks are not parsed yet, do it automatically
@@ -619,5 +641,6 @@ def build_workflow(tasks):
         for task_mapping in tasks:
             wf.add_task(Task(**task_mapping))
 
-    log.info('Workflow ready: {}'.format(wf))
+    elapsed = datetime.now() - started
+    log.info('Workflow ready after {}'.format(elapsed))
     return wf

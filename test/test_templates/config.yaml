@@ -1,0 +1,3 @@
+# This same config file is used to fill in variables for all templates
+# in the test_templates/files/ directory
+tasks: 25

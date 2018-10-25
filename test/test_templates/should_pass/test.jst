@@ -1,0 +1,24 @@
+
+- name: start
+  cmd: sleep 1
+
+- name: echo_hello
+  cmd: echo Hello, world.
+
+
+{% for i in range(5) %}
+- name: test_range_{{ loop.index }}
+  after: start
+  cmd: echo {{ loop.index }}
+{% endfor %}
+
+
+- name: test_nested_run
+  after: echo_hello
+  cmd: >
+    jetstream run <(echo '- cmd: echo nested run') --run-id nested_run
+
+
+- name: check_nested_run
+  after: test_nested_run
+  cmd: rm nested_run.yaml

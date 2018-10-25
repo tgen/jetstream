@@ -98,7 +98,7 @@ def environment(search_path=None, strict=True, trim_blocks=True,
     env.filters['dirname'] = dirname
     env.filters['sha256'] = sha256
 
-    log.debug('Template loader search path: {}'.format(env.loader.searchpath))
+    log.info('Autoconfigured Jinja2 search path: {}'.format(env.loader.searchpath))
     return env
 
 
@@ -123,8 +123,6 @@ def load_template(path, search_path=None):
 
     if search_path is None:
         search_path = [os.getcwd(), os.path.dirname(path)]
-
-    log.debug('Autoconfigured Jinja2 search path: {}'.format(search_path))
 
     env = environment(search_path=search_path)
     return env.get_template_with_source(template_name)

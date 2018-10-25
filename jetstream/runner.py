@@ -65,6 +65,7 @@ class Runner:
     def start(self, workflow, project=None, debug=False,
               loop=None, run_id=None):
         log.debug('Configuring runner...')
+        started = datetime.now()
         self.fingerprint = utils.Fingerprint(id=run_id)
         self.workflow = workflow
         self.project = project or self.project
@@ -85,19 +86,27 @@ class Runner:
             run_id = self.fingerprint.id
             self.fingerprint = None
 
+            elapsed = datetime.now() - started
+            log.critical('Elapsed: {}'.format(elapsed))
+
             if self._errs:
                 for err in self._errs:
                     log.critical(err)
                 raise RuntimeError('Runner halted unexpectedly!')
             else:
-                log.warning('Run complete: {}'.format(run_id))
+                log.warning('Run {} complete'.format(run_id))
 
-
-    async def main(self, tasks):
+    async def main(self, workflow):
+        self._workflow_iterator = iter(workflow)
         try:
-            for task in tasks:
+            while 1:
+                try:
+                    task = next(self._workflow_iterator)
+                except StopIteration:
+                    break
+
                 if task is None:
-                    await self.sleep(1)
+                    await self.sleep()
                     continue
                 else:
                     if not task.directives.get('cmd'):
@@ -108,7 +117,7 @@ class Runner:
                 await self.sleep(0)
 
             while self._task_futures:
-                await self.sleep(1)
+                await self.sleep()
 
             await self.sleep(0)
         except asyncio.CancelledError:
@@ -116,7 +125,7 @@ class Runner:
         finally:
             log.debug('Runner.main stopped')
 
-    async def sleep(self, delay=0):
+    async def sleep(self, delay=0.1):
         log.verbose('Yield for {}s'.format(delay))
 
         now = datetime.now()
@@ -124,21 +133,38 @@ class Runner:
         elapsed = (now - last).seconds
 
         if self.autosave and elapsed > self.autosave:
-            self._last_save = datetime.now()
-
             if self.project:
                 path = self.project.workflow_file
             else:
                 # TODO move this to a config module?
-                path = 'jetstream_workflow_{}.yaml'.format(self.fingerprint.id)
+                path = '{}.yaml'.format(self.fingerprint.id)
 
             save_workflow(self.workflow, path=path)
+            self._last_save = datetime.now()
 
         await asyncio.sleep(delay)
 
     async def spawn(self, task):
         log.debug('Runner spawn: {}'.format(task))
         await self._conc_sem.acquire()
+
+        exec_directive = task.directives.get('exec')
+
+        if exec_directive:
+            log.debug('Exec directive:\n{}'.format(exec_directive))
+
+            try:
+                exec(exec_directive, None, {'runner': self, 'task': task})
+            except Exception:
+                tb = traceback.format_exc()
+                log.critical(
+                    'Unhandled exception in exec directive!\n{}'.format(tb)
+                )
+                task.state['exception'] = tb
+                task.fail()
+                self.halt()
+
+            self._workflow_iterator = iter(self.workflow)
 
         log.debug('Creating async task for: {}'.format(task))
         fut = self.loop.create_task(self.backend.spawn(task))

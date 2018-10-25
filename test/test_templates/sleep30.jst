@@ -1,8 +1,7 @@
-
 {% for i in range(tasks) %}
 
 - name: stress_sleep30_{{ i }}
-  cpus: 1
+  cpus: 0
   cmd: sleep 30
 
 {% endfor %}

@@ -7,6 +7,42 @@ from jetstream.cli.subcommands import init, run, pipelines, project
 from unittest import TestCase
 
 
+class TestCliExt(TestCase):
+    templates_dir = os.path.join('test', 'test_templates')
+    templates_config = os.path.join('test', 'test_templates', 'config.yaml')
+
+    def test_should_pass(self):
+        templates_dir = os.path.join(self.templates_dir, 'should_pass')
+        templates = os.listdir(templates_dir)
+
+        for f in templates:
+            template = os.path.join(templates_dir, f)
+
+            with self.subTest(msg=template):
+                with self.assertRaises(SystemExit) as cm:
+                    run.main([
+                        template,
+                        '--config', self.templates_config
+                    ])
+
+                self.assertEqual(cm.exception.code, 0)
+
+    def test_should_fail(self):
+        templates_dir = os.path.join(self.templates_dir, 'should_fail')
+        templates = os.listdir(templates_dir)
+
+        for f in templates:
+            template = os.path.join(templates_dir, f)
+
+            with self.subTest(msg=template):
+                with self.assertRaises(Exception) as cm:
+                    run.main([
+                        template,
+                        '--config', self.templates_config
+                    ])
+
+
+
 class TestCli(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
@@ -27,18 +63,20 @@ class TestCli(TestCase):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             run.main([
                 'testwf.jst',
                 '--backend',
                 'local'
             ])
 
+        self.assertEqual(cm.exception.code, 0)
+
     def test_run_w_vars(self):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: echo {{ name }}')
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             run.main([
                 'testwf.jst',
                 '--backend',
@@ -47,18 +85,22 @@ class TestCli(TestCase):
                 'Philip J. Fry'
             ])
 
+        self.assertEqual(cm.exception.code, 0)
+
     def test_pipelines(self):
         p = jetstream.Project(new=True)
 
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             pipelines.main([
                 'testwf.jst',
                 '--backend',
                 'local'
             ])
+
+        self.assertEqual(cm.exception.code, 0)
 
         print(p.workflow().to_yaml(), file=sys.stderr)
 
@@ -69,11 +111,13 @@ class TestCli(TestCase):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             pipelines.main([
                 'testwf.jst',
                 '--backend',
                 'local'
             ])
+
+        self.assertEqual(cm.exception.code, 0)
 
         project.main(['tasks'])

@@ -2,12 +2,12 @@ import os
 import tempfile
 import logging
 import jetstream
-from test import TimedTestCase
+from unittest import TestCase
 
 jetstream.logs.start_logging(level=logging.INFO)
 
 
-class ProjectBasics(TimedTestCase):
+class ProjectBasics(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
@@ -54,7 +54,7 @@ class ProjectBasics(TimedTestCase):
 
 
 
-class RunnerBasics(TimedTestCase):
+class RunnerBasics(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
