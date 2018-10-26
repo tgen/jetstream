@@ -1,10 +1,7 @@
 import os
 import tempfile
-import logging
 import jetstream
 from unittest import TestCase
-
-jetstream.logs.start_logging(level=logging.INFO)
 
 
 class ProjectBasics(TestCase):
@@ -53,7 +50,6 @@ class ProjectBasics(TestCase):
         runner.start(workflow=wf, project=p)
 
 
-
 class RunnerBasics(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
@@ -70,8 +66,8 @@ class RunnerBasics(TestCase):
     def test_runner(self):
         runner = jetstream.Runner()
         wf = jetstream.Workflow()
-        t = wf.new_task(cmd='hostname')
-
+        t = wf.new_task(cmd='hostname', stdout='/dev/null')
         runner.start(workflow=wf)
+
         self.assertTrue(t.is_complete())
     

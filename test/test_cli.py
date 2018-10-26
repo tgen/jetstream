@@ -8,6 +8,8 @@ from unittest import TestCase
 
 
 class TestCliExt(TestCase):
+    """Tests that run workflow templates stored externally in
+    test/test_templates """
     templates_dir = os.path.join('test', 'test_templates')
     templates_config = os.path.join('test', 'test_templates', 'config.yaml')
 
@@ -74,7 +76,7 @@ class TestCli(TestCase):
 
     def test_run_w_vars(self):
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: echo {{ name }}')
+            fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null')
 
         with self.assertRaises(SystemExit) as cm:
             run.main([
@@ -88,7 +90,7 @@ class TestCli(TestCase):
         self.assertEqual(cm.exception.code, 0)
 
     def test_pipelines(self):
-        p = jetstream.Project(new=True)
+        jetstream.Project(new=True)
 
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
@@ -101,9 +103,6 @@ class TestCli(TestCase):
             ])
 
         self.assertEqual(cm.exception.code, 0)
-
-        print(p.workflow().to_yaml(), file=sys.stderr)
-
 
     def test_project_tasks(self):
         p = jetstream.Project(new=True)

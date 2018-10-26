@@ -204,10 +204,12 @@ class WorkflowDependencies(TestCase):
         self.assertRaises(ValueError, wf.new_task, name='task', after='task1')
 
     def test_neg_self_dependency(self):
-        """Tasks cannot depend on themselves"""
+        """Tasks cannot depend on themselves. The current task will be removed
+        from the match results when searching for dependencies"""
         wf = jetstream.Workflow()
+        t = wf.new_task(name='task', after='task')
 
-        self.assertRaises(ValueError, wf.new_task, name='task', after='task')
+        self.assertEqual([], list(t.dependencies()))
 
     def test_add_task_w_after(self):
         wf = jetstream.Workflow()
@@ -255,13 +257,17 @@ class WorkflowDependencies(TestCase):
 
 
 class WorkflowIteration(TestCase):
+    def test_random_workflow_n(self):
+        wf = jetstream.random_workflow(n=25)
+
+    def test_random_workflow_timout(self):
+        wf = jetstream.random_workflow(None, timeout=1)
+
+    def test_random_workflow_n_and_timout(self):
+        wf = jetstream.random_workflow(250, timeout=1)
+
     def test_workflow_iter(self):
-        wf = jetstream.Workflow()
-        status = jetstream.workflows.Task.valid_status
-
-        for i in range(100):
-            wf.new_task(name=str(i), status=random.choice(status))
-
+        wf = jetstream.random_workflow(n=25, timeout=1)
         i = iter(wf)
 
         self.assertEqual(type(i), jetstream.workflows.Workflow)
