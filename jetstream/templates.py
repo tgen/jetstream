@@ -3,18 +3,9 @@ locations set by arguments or environment variables. """
 import os
 import json
 import hashlib
-from jinja2 import (Environment, FileSystemLoader, meta,
-                    StrictUndefined, Undefined, evalcontextfilter)
+from jinja2 import (Environment, FileSystemLoader, StrictUndefined, Undefined,
+                    evalcontextfilter)
 from jetstream import log
-
-
-class EnvironmentWithSource(Environment):
-    """Replacement for jinja2.Environment that allows lookup of templates with
-     source code attached."""
-    def get_template_with_source(self, template, *args, **kwargs):
-        t = self.get_template(template, *args, **kwargs)
-        t.source = get_source(self, template)
-        return t
 
 
 @evalcontextfilter
@@ -48,31 +39,6 @@ def fromjson(eval_ctx, value):
     return json.loads(value)
 
 
-def get_children(env, template):
-    """Generator function that yields all children in a template"""
-    source, filename, loader = env.loader.get_source(env, template)
-    parsed = env.parse(source)
-
-    children = meta.find_referenced_templates(parsed)
-
-    for c in children:
-        yield c
-
-        for d in get_children(env, c):
-            yield d
-
-
-def get_source(env, template):
-    """Get the source code for a template.
-    This also finds the sourcecode for all child templates"""
-    res = {template: env.loader.get_source(env, template)[:2]}
-
-    for c in get_children(env, template):
-        res[c] = env.loader.get_source(env, c)[:2]
-
-    return res
-
-
 def environment(search_path=None, strict=True, trim_blocks=True,
                 lstrip_blocks=True):
     """Start a Jinja2 Environment with the given template directories.
@@ -85,7 +51,10 @@ def environment(search_path=None, strict=True, trim_blocks=True,
     else:
         undefined_handler = Undefined
 
-    env = EnvironmentWithSource(
+    if search_path is None:
+        search_path = [os.getcwd(),]
+
+    env = Environment(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
         loader=FileSystemLoader(search_path),
@@ -125,7 +94,7 @@ def load_template(path, search_path=None):
         search_path = [os.getcwd(), os.path.dirname(path)]
 
     env = environment(search_path=search_path)
-    return env.get_template_with_source(template_name)
+    return env.get_template(template_name)
 
 
 def render_template(path, data=None, search_path=None):
