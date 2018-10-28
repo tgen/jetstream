@@ -43,7 +43,7 @@ try:
         return run_id_template.format(ulid.new().str)
 
 
-    def save_workflow(workflow, path):
+    def save_workflow(workflow, path, format=None):
         """Save a workflow to the path
 
         This helper function will try to choose the correct file format based
@@ -54,21 +54,30 @@ try:
         :param path: where to save
         :return: None
         """
-        format = workflow_extensions.get(os.path.splitext(path)[1], 'pickle')
+        if format is None:
+            ext = os.path.splitext(path)[1]
+            format = workflow_extensions.get(ext, 'pickle')
+
         start = datetime.now()
         workflow_savers[format](workflow, path)
         elapsed = datetime.now() - start
+
         log.info('Workflow saved (after {}): {}'.format(elapsed, path))
 
 
-    def load_workflow(path):
+    def load_workflow(path, format=None):
         """Load a workflow from a file.
 
         This helper function will try to choose the correct file format based
         on the extension of the path, but defaults to pickle for unrecognized
-        extensions."""
-        format = workflow_extensions.get(os.path.splitext(path)[1], 'pickle')
-        return workflow_loaders[format](path)
+        extensions. It also sets workflow.save_path to the path"""
+        if format is None:
+            ext = os.path.splitext(path)[1]
+            format = workflow_extensions.get(ext, 'pickle')
+
+        wf = workflow_loaders[format](path)
+        wf.save_path = os.path.abspath(path)
+        return wf
 
 
     from jetstream import workflows, templates, projects, runner, backends
@@ -81,10 +90,10 @@ try:
 
     workflow_extensions = {
         '': 'pickle',
-        'pickle': 'pickle',
-        'yaml': 'yaml',
-        'yml': 'yaml',
-        'json': 'json',
+        '.pickle': 'pickle',
+        '.yaml': 'yaml',
+        '.yml': 'yaml',
+        '.json': 'json',
     }
 
     workflow_loaders = {
