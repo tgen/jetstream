@@ -14,7 +14,7 @@ kvarg_types = {
 }
 
 
-def parse_kvargs(args, type_separator=':', types=kvarg_types):
+def parse_kvargs(args, separator=None, types=kvarg_types):
     """Reparses list of arbitrary arguments ``--<type>:<key> <value>``
 
     This works by building an argument parser configured specifically for the
@@ -35,12 +35,14 @@ def parse_kvargs(args, type_separator=':', types=kvarg_types):
     # or
     # --file-json:read_groups ./actually_json.txt
 
+    if separator is None:
+        separator = ':'
 
     for arg in args:
         if arg.startswith('--'):
 
-            if type_separator in arg:
-                argtype, _, key = arg.lstrip('-').partition(type_separator)
+            if separator in arg:
+                argtype, _, key = arg.lstrip('-').partition(separator)
             else:
                 argtype = 'default'
                 key = arg.lstrip('-')
@@ -54,13 +56,14 @@ def parse_kvargs(args, type_separator=':', types=kvarg_types):
     return parser.parse_args(args)
 
 
-def finalize_run(workflow):
-    fails = [t for t in workflow.tasks(objs=True) if t.status == 'failed']
+def check_workflow_status(workflow):
+    total = len(workflow)
+    complete = len([t for t in workflow.tasks(objs=True) if t.is_complete()])
+    fails = len([t for t in workflow.tasks(objs=True) if t.is_failed()])
 
     if fails:
-        log.info('\u2620  Some tasks failed! {}'.format(fails))
-        rc = 1
+        msg = f'\u2620 {fails} tasks failed! {complete}/{total} tasks complete!'
+        raise ValueError(msg)
     else:
-        rc = 0
+        log.info(f'\U0001f44d {complete}/{total} tasks complete!')
 
-    return rc

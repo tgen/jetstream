@@ -99,10 +99,13 @@ complete before starting.
       cmd: who
 
 """
+import os
 import re
+import sys
 import shutil
 import pickle
 import random
+import importlib
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -129,6 +132,7 @@ class Workflow(object):
             log.warning('This workflow was built with a different version')
 
         self.graph = nx.DiGraph(jetstream_version=__version__, **kwargs)
+        self.save_path = None
         self._lock = Lock()
         self._cm_stack = list()
         self._iter_tasks = list()
@@ -570,9 +574,14 @@ class Workflow(object):
 
         return wf
 
-    def save(self, *args, **kwargs):
+    def save(self, path=None, *args, **kwargs):
         """Shortcut to :func:`jetstream.save_workflow`"""
-        return save_workflow(self, *args, **kwargs)
+        path = path or self.save_path
+
+        if not path:
+            raise ValueError('No save path has been set')
+
+        return save_workflow(self, path, *args, **kwargs)
 
     @staticmethod
     def load(*args, **kwargs):
@@ -669,6 +678,32 @@ def random_workflow(n=25, timeout=None, connectedness=3):
             log.exception(e)
 
     return wf
+
+
+def load_mod(filepath):
+    dirn = os.path.dirname(filepath)
+    base = os.path.basename(filepath)
+    name, ext = os.path.splitext(base)
+    old_path = sys.path.copy()
+    old_modules = sys.modules.copy()
+
+    try:
+        sys.path.insert(1, dirn)
+        spec = importlib.util.spec_from_file_location(name, filepath)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path = old_path
+        sys.modules = old_modules
+
+    return mod
+
+
+def find_workflows(mod):
+    for k, v in mod.__dict__.items():
+        if isinstance(v, Workflow):
+            yield v
+
 
 
 def draw_workflow(wf, figsize=(12,12), cm=None, filename=None, **kwargs):

@@ -3,8 +3,7 @@ import traceback
 from datetime import datetime
 import asyncio
 from asyncio import BoundedSemaphore
-from jetstream.workflows import save_workflow
-from jetstream import utils, log
+from jetstream import utils, log, projects
 from jetstream.backends import LocalBackend
 
 
@@ -26,6 +25,11 @@ class Runner:
         self._main_future = None
         self._secondary_future = None
         self._task_futures = set()
+
+        try:
+            self.project = projects.Project()
+        except projects.NotAProject:
+            self.project = None
 
     def _run_preflight(self):
         log.debug('Running preflight checks...')
@@ -62,13 +66,11 @@ class Runner:
             with open(history_file, 'w') as fp:
                 fp.write(self.fingerprint.to_yaml())
 
-    def start(self, workflow, project=None, debug=False,
-              loop=None, run_id=None):
+    def start(self, workflow, run_id=None, debug=False, loop=None):
         log.debug('Configuring runner...')
         started = datetime.now()
         self.fingerprint = utils.Fingerprint(id=run_id)
         self.workflow = workflow
-        self.project = project or self.project
         self.loop = loop or self.loop
         self.debug = debug or self.debug
         self._run_preflight()
@@ -123,25 +125,28 @@ class Runner:
         except asyncio.CancelledError:
             log.warning('Runner.main was cancelled!')
         finally:
+            self._save_workflow()
             log.debug('Runner.main stopped')
 
-    async def sleep(self, delay=0.1):
-        log.verbose('Yield for {}s'.format(delay))
-
+    def _check_for_save(self):
         now = datetime.now()
         last = self._last_save
         elapsed = (now - last).seconds
 
         if self.autosave and elapsed > self.autosave:
-            if self.project:
-                path = self.project.workflow_file
-            else:
-                # TODO move this to a config module?
-                path = '{}.yaml'.format(self.fingerprint.id)
-
-            save_workflow(self.workflow, path=path)
+            self._save_workflow()
             self._last_save = datetime.now()
 
+    def _save_workflow(self):
+        if self.workflow.save_path:
+            self.workflow.save()
+        else:
+            path = '{}.pickle'.format(self.fingerprint.id)
+            self.workflow.save(path=path)
+
+    async def sleep(self, delay=0.1):
+        log.verbose('Yield for {}s'.format(delay))
+        self._check_for_save()
         await asyncio.sleep(delay)
 
     async def spawn(self, task):
@@ -230,7 +235,6 @@ class Runner:
         )
 
         log.debug('Wrapped up: {}'.format(to_cancel))
-
         log.debug('Closing event loop...')
         asyncio.events.set_event_loop(None)
         self.loop.close()
