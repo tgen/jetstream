@@ -5,6 +5,26 @@ and command line utility. It supports complex workflows modeled as directed-
 acyclic graphs (DAGs), and execution on batch schedulers (Slurm). This document 
 will introduce the core concepts of framework, and give some real examples.
 
+## Install
+
+> TGen users on Dback can load the latest version of Python with `module load python`.
+
+```shell
+pip3 install --upgrade --user git+https://github.com/tgen/jetstream.git@master
+```
+
+More install help can be found in the (installation)[#installation] section below
+
+## Contributing
+
+All contributions are welcome.
+Comments, suggestions, pull-requests, and issues can be submitted on [https://github.com/tgen/jetstream/issues]
+
+## Docs
+
+Full technical API documentation can be found here http://dback-login3.tgen.org:8082
+
+
 # Pipelines
 
 Pipelines are a set of computational tasks that need to be repeated for multiple sets 
@@ -361,7 +381,33 @@ resintalling. Here is an example command list:
    pip3 install -e jetstream/
 ```
 
-# Troubleshooting
+## Command not found after install
+
+Pip installs package scripts and executables automatically. In some
+cases you will need to update your `PATH`_ to include the directory where 
+these scripts are stored.
+
+- **MacOS**:
+
+    Changes should be added to ``~/.bash_profile``.
+
+    Installed system-wide: the bin directory will be ``/usr/local/bin/``
+
+    Installed with ``--user``: the bin directory will be
+    ``~/Library/Python/<pythonversion>/bin``
+
+- **Linux**:
+
+    Changes should be added to ``~/.bashrc``
+
+    Installed system wide: the bin directory will be ``/usr/bin/``
+
+    Installed with ``--user``: the bin directory will be ``~/.local/bin/``
+
+`See this post`_ if you need more help
+
+
+# Tips
 
 ## Syntax Highlighting
 
@@ -382,39 +428,15 @@ Documentation on Ansible (.jst extension) syntax can be found at
 https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
 
 
-## Command not found after install
-
-Pip installs package scripts and executables automatically. In some
-causes you will need to update your `PATH`_ to include the
-directory where these scripts and executables are stored.
-
-`See this post`_ if you need more help
-
-- **MacOS**:
-
-    Changes should be added to ``~/.bash_profile``.
-
-    Installed system-wide: the bin directory will be ``/usr/local/bin/``
-
-    Installed with ``--user``: the bin directory will be
-    ``~/Library/Python/<pythonversion>/bin``
-
-- **Linux**:
-
-    Changes should be added to ``~/.bashrc``
-
-    Installed system wide: the bin directory will be ``/usr/bin/``
-
-    Installed with ``--user``: the bin directory will be ``~/.local/bin/``
-
-## Trouble with YAML
+## Understanding YAML
 
 YAML is a spec that allows common data structures in to be stored as unambiguous 
-plain-text. When building templates, it's important to have a good grasp on the 
-YAML fundamentals. The full specification can be found [here](http://yaml.org),
-this section is just meant as a crash course introduction.
+plain-text. YAML is the foundation of the workflow template syntax, so it's 
+important to have a good grasp on the fundamentals. The full specification can 
+be found [here](http://yaml.org), this section is just meant as a crash course 
+introduction.
 
-### Scalars
+## Scalars
 
 Scalars are single values of a specific type: Strings, Integers, Floats,
 or Boolean. These basic types are present in almost every programming language
@@ -514,15 +536,88 @@ The same structure can be created in plain text with YAML:
   n_eyes: 1
 ```
 
+# Advanced Workflow Design
 
-# Contributing
+This page describes some of the more advanced features in Jinja2 that
+can be used to write workflow templates.
 
-All contributions are welcome.
-Comments, suggestions, pull-requests, and issues can be submitted on [https://github.com/tgen/jetstream/issues]
+## Filter Magic
 
-# Docs
+Filters are used for applying transformations to the context data. Here
+are some examples of filters that I've found really useful:
 
-Full API documentation can be found here http://dback-login3.tgen.org:8082
+selectattr
+
+Used inside of a `{% set ... %}` statement, this filter can be used to
+create subsets of data. This example filters the read\_groups list for
+data that is only Genome or
+Exome:
+
+``` sourceCode yaml
+{% set dna_rgs = rgs | selectattr("General Library Type", "in", ["Genome", "Exome]) %}
+```
+
+## Macros
+
+This is an example of how to develop workflow components that behave
+more like the functions you would find in a traditional programming
+language.
+
+First lets make a basic macro. It works just like a function, allowing
+for input arguments, and "returning" text to the template:
+
+The first line starts the declaration, "gatk\_whatver" is the name of
+the macro. "batch" is some iterable containing a set of intervals where
+GATK should operate. "sample\_name" is the name of the sample were
+running. When called, this macro will produce a GATK task that runs on
+all the intervals in the batch.
+
+``` sourceCode yaml
+{% macro gatk_whatever(batch, sample_name) %}
+- name: test_{{ sample_name }}
+  cmd: bash
+  stdin: |
+    gatk Whatever \
+    {% for i in batch %}
+      -L {{ i }} \
+    {% endfor %}
+      --out {{ sample_name }}.out
+{% endmacro %}
+```
+
+We can call the macro like this:
+
+``` sourceCode yaml
+{{ gatk_whatever(batch=[1,2,3], sample_name='foo') }}
+```
+
+## Macro-ception
+
+Next is an example of a nested macro: a macro that calls another macro.
+This is similar to a decorator in Python. This macro can be used to
+group one list into smaller lists and then call some other function for
+each batch. Arguments can be passed to the nested function, fn, by
+including positional args in a list, or key-word args in a
+dict.
+
+``` sourceCode yaml
+{% macro for_batch_n(intervals, fn, size=3, args=list(), kwargs=dict() ) %}
+
+{% set batches = intervals | batch(size) | list %}
+{% for batch in batches %}
+{{ fn(batch, *args, **kwargs) }}
+{% endfor %}
+
+{%- endmacro %}
+
+And here we call the batcher function, and tell it to call
+"gatk_whatever" for each batch it produces.
+```
+
+``` sourceCode yaml
+{{ for_batch_n(intervals, gatk_whatever, size=4, args=[sample_name,]) }}
+```
+
 
 [PATH]: http://www.linfo.org/path_env_var.html
 [cmd_not_found]: https://stackoverflow.com/questions/35898734/pip-installs-packages-successfully-but-executables-not-found-from-command-line
