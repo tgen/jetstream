@@ -37,6 +37,8 @@ to use the "Ansible" syntax highlighter for `.jst` extensions:
 
 `View -> Syntax -> Open all with current extension as ...`
 
+Documentation on Ansible (.jst extension) syntax can be found at 
+https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
 
 ## Workflow directives
 
