@@ -1,4 +1,8 @@
-"""Run Jetstream from a template, module, or workflow.
+"""Build workflow files.
+
+This command will build a finalized workflow and save it to the out path. This
+does not run the workflow. It can also be used for converting workflow files to
+different formats by setting ``--mode workflow``.
 
 --mode
 
@@ -8,29 +12,19 @@
     - module: build and run a workflow from a Python module
     - workflow: load a pre-existing workflow
 
-
---method
-
-    This option controls which tasks will be reset when the runner starts
-
-    - retry (default): all pending and failed tasks will be reset
-    - resume: all pending tasks will be reset
-    - reset: all tasks will be reset
-
 """
 import textwrap
 import logging
 import argparse
 import jetstream
 from jetstream.cli import shared
-from jetstream.backends import LocalBackend, SlurmBackend
 
 log = logging.getLogger(__name__)
 
 
 def arg_parser():
     parser = argparse.ArgumentParser(
-        prog='jetstream run',
+        prog='jetstream build',
         description=__doc__.replace('``', '"'),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -41,12 +35,17 @@ def arg_parser():
     )
 
     parser.add_argument(
+        'out',
+        help='Path to save the workflow file'
+    )
+
+    parser.add_argument(
         '--project',
         default='',
         type=shared.set_project,
-        help='If the cwd is a project, it will be loaded automatically. '
-             'Otherwise, a path to a project can be specified, and the run '
-             'will start in that project directory.'
+        help='If the cwd is a project, it will always be loaded. Otherwise,'
+             'a path to a project can be specified, and the run will start'
+             'in that project directory.'
     )
 
     parser.add_argument(
@@ -56,16 +55,6 @@ def arg_parser():
         help='Run modes, see the descriptions below.'
     )
 
-    parser.add_argument(
-        '--no-check',
-        action='store_false',
-        default=True,
-        dest='check_workflow',
-        help='Ignore failed tasks after run. Runtime errors (problems '
-             'launching tasks, or runner errors) will still cause a non-zero '
-             'exit status. '
-    )
-
     template = parser.add_argument_group(
         title='Template Mode',
         description=textwrap.dedent("""\
@@ -73,12 +62,12 @@ def arg_parser():
         variables from four places. The precedence for duplicate variables is
         last-value-wins. Project variables will only be loaded when working
         inside a project: 
-        
+
         1) Current project config file: ``<project>/jetstream/config.yaml``
         2) Any files in: ``<project>/config/`` 
         3) Variables in Json/Yaml file loaded from ``--variables``
         4) Config variables given by ``--<type>:<key> <value>`` arguments
-        
+
         """)
     )
 
@@ -93,7 +82,7 @@ def arg_parser():
 
     template.add_argument(
         '--kvarg-separator',
-        help='Set an alternate separator for kvargs variables'
+        help='Set an alternate separator for kvargs'
     )
 
     mod = parser.add_argument_group(
@@ -114,45 +103,6 @@ def arg_parser():
         default=None,
         help='Set the workflow file format instead of using the file '
              'extension.'
-    )
-
-    runner = parser.add_argument_group(
-        title='Runner Configuration'
-    )
-
-    runner.add_argument(
-        '--save-interval',
-        type=int,
-        default=3600,
-        help='Frequency, in seconds, that the workflow file will be saved to '
-             'disk. (Default: 3600)')
-
-    runner.add_argument(
-        '--backend',
-        choices=['local', 'slurm'],
-        default='local',
-        help='Specify the runner backend (Default: local)'
-    )
-
-    runner.add_argument(
-        '--run-id',
-        help='Give this run a specific ID instead of randomly generating one.'
-    )
-
-    runner.add_argument(
-        '--max-forks',
-        default=None,
-        type=int,
-        help='Override the default fork limits of the runner. By default, '
-             'this will be set to a conservative fraction of the total thread '
-             'limit on runner host.')
-
-    runner.add_argument(
-        '--method',
-        choices=['retry', 'resume', 'reset'],
-        default='retry',
-        help='Method to use when running existing workflows. This parameter '
-             'will determine which tasks are reset prior to starting the run.'
     )
 
     return parser
@@ -189,30 +139,7 @@ def main(args=None):
         wf.compose(workflow)
         workflow = wf
 
-    if args.method == 'retry':
-        workflow.retry()
-    elif args.method == 'resume':
-        workflow.resume()
-    elif args.method == 'reset':
-        workflow.reset()
-
-    if args.backend == 'slurm':
-        backend = SlurmBackend()
-    else:
-        backend = LocalBackend()
-
-    runner = jetstream.Runner(
-        backend=backend,
-        max_forks=args.max_forks,
-        autosave=args.save_interval,
-    )
-
-    runner.start(
-        workflow=workflow,
-        project=args.project,
-        run_id=args.run_id,
-        check_workflow=args.check_workflow,
-    )
+    workflow.save(path=args.out)
 
 
 if __name__ == '__main__':

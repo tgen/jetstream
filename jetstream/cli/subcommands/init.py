@@ -10,7 +10,7 @@ import jetstream
 from jetstream import log
 
 
-def init_arg_parser():
+def arg_parser():
     """Argument parser for the init action"""
     parser = argparse.ArgumentParser(
         prog='jetstream project init',
@@ -27,7 +27,7 @@ def init_arg_parser():
 
 
 def main(args=None):
-    parser = init_arg_parser()
+    parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
@@ -37,3 +37,5 @@ def main(args=None):
     for file in args.config:
         log.info('Copying: {} -> {}'.format(file, p.config_dir))
         shutil.copy(file, p.config_dir)
+
+    log.info('Done')

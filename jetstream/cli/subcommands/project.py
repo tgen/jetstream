@@ -1,213 +1,304 @@
-"""Interact with jetstream projects. View tasks, run history, or config data."""
+"""Interact with jetstream projects. View tasks, run history, or project data.
+This option requires a subcommand.
+"""
 import sys
 import argparse
 import logging
 import jetstream
+import textwrap
+from jetstream.cli import shared
 
 log = logging.getLogger(__name__)
 
 
-def arg_parser(actions=None):
+def arg_parser():
+    parent = argparse.ArgumentParser(add_help=False)
+
+    parent.add_argument(
+        '--project',
+        default='',
+        type=shared.set_project,
+        help='If the cwd is a project, it will be loaded automatically. '
+             'Otherwise, a path to a project can be specified.'
+    )
+
     parser = argparse.ArgumentParser(
         prog='jetstream project',
-        description=__doc__
+        add_help=False,
+        description=__doc__,
+        parents=[parent,]
     )
 
-    parser.add_argument('action', choices=actions,
-                        help='action name')
-
-    parser.add_argument('args', nargs=argparse.REMAINDER,
-                        help='remaining args are passed to the chosen action')
-
-    return parser
-
-
-def config_arg_parser():
-    """Argument parser for the config action"""
-    parser = argparse.ArgumentParser(
-        prog='jetstream project config',
-        description='Summarize project configuration data'
+    parser.add_argument(
+        '-h',
+        '--help',
+        dest='subcommand',
+        action='store_const',
+        const='help'
     )
 
-    parser.add_argument('path', nargs='?', default='.',
-                        help='Path to a Jetstream project')
+    subparsers = parser.add_subparsers(
+        title='subcommands',
+        dest='subcommand',
+        help=argparse.SUPPRESS
+    )
 
-    parser.add_argument('--format', choices=['yaml', 'json'], default='yaml')
+    subparsers.add_parser(
+        name='help',
+        description='Show detailed help for the project command',
+    )
 
-    parser.add_argument('--json', dest='format',
-                        action='store_const', const='json',
-                        help='Output JSON')
+    variables = subparsers.add_parser(
+        name='variables',
+        description='Show project config variables',
+        parents=[parent,]
+    )
 
-    parser.add_argument('--yaml', dest='format',
-                        action='store_const', const='yaml',
-                        help='Output YAML')
+    variables.add_argument(
+        '--format',
+        choices=['yaml', 'json'],
+        default='yaml')
 
-    parser.add_argument('--parsable', action='store_true', default=False,
-                        help='Parsable output')
+    variables.add_argument(
+        '--json',
+        dest='format',
+        action='store_const',
+        const='json',
+        help='Output JSON')
 
-    return parser
+    variables.add_argument(
+        '--yaml',
+        dest='format',
+        action='store_const',
+        const='yaml',
+        help='Output YAML'
+    )
 
+    variables.add_argument(
+        '--minified',
+        action='store_true',
+        default=False,
+        help='Minified output instead of human-friendly'
+    )
 
-def tasks_arg_parser():
-    """Argument parser for the data action"""
-    parser = argparse.ArgumentParser(
-        prog='jetstream project tasks',
+    tasks = subparsers.add_parser(
+        name='tasks',
         description='Summarize project tasks. If `task_id` is not given, all '
-                    'task ids will be listed.'
+                    'tasks will be listed.',
+        parents = [parent, ]
     )
 
-    parser.add_argument('task_id', nargs='*',
-                        help='Task ID to summarize')
-
-    parser.add_argument('--path', default='.',
-                        help='Jetstream project path')
-
-    return parser
-
-
-def history_arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream project history',
-        description='Records are saved for every workflow that has been run on'
-                    'a project. This command lists the run ids in a project.'
+    tasks.add_argument(
+        'task_name',
+        nargs='*',
+        help='Task name(s) to summarize'
     )
 
-    parser.add_argument('path', nargs='?', default='.',
-                        help='Path to a Jetstream project')
-
-    return parser
-
-
-def task_action_arg_parser(action=None):
-    parser = argparse.ArgumentParser(
-        prog='jetstream project {}-task'.format(action),
+    task_remove = subparsers.add_parser(
+        name='remove_tasks',
         description='Warning - Experimental feature! '
-                    '{} a task in the current project'.format(action)
+                    'Remove tasks from the current project workflow',
+        parents = [parent, ]
     )
 
-    parser.add_argument('task_id', nargs='+',
-                        help='Task ID to {}'.format(action))
+    task_remove.add_argument(
+        'task_name',
+        nargs='+',
+        help='Task name(s) to remove. This will search for tasks with a '
+             'name matching the pattern and remove them from the workflow.'
+    )
 
-    parser.add_argument('--path', default='.',
-                        help='Jetstream project path')
+    task_remove_id = subparsers.add_parser(
+        name='remove_task_ids',
+        description='Warning - Experimental feature! '
+                    'Remove tasks from the current project workflow by ID. '
+                    'This will NOT check the workflow before removing the '
+                    'task, and may leave broken dependencies in the graph.',
+        parents=[parent, ]
+    )
+
+    task_remove_id.add_argument(
+        'task_id',
+        nargs='+',
+        help='Task ID(s) to remove.'
+    )
+
+    task_reset = subparsers.add_parser(
+        name='reset_tasks',
+        description='Warning - Experimental feature! '
+                    'Reset tasks in the current project workflow',
+        parents=[parent, ]
+    )
+
+    task_reset.add_argument(
+        'task_id',
+        nargs='+',
+        help='Task ID(s) to reset'
+    )
+
+    task_complete = subparsers.add_parser(
+        name='complete_tasks',
+        description='Warning - Experimental feature! '
+                    'Complete tasks in the current project workflow',
+        parents = [parent, ]
+    )
+
+    task_complete.add_argument(
+        'task_id',
+        nargs='+',
+        help='Task ID(s) to complete'
+    )
+
+    task_fail = subparsers.add_parser(
+        name='complete_tasks',
+        description='Warning - Experimental feature! '
+                    'Fail tasks in the current project workflow',
+        parents=[parent, ]
+    )
+
+    task_fail.add_argument(
+        'task_id',
+        nargs='+',
+        help='Task ID(s) to complete'
+    )
+
+    history = subparsers.add_parser(
+        name='history',
+        description='Records are saved for every run that has been started on'
+                    'a project. This command lists the run ids in a project.',
+        parents=[parent, ]
+    )
+
+    history.add_argument(
+        'run_id',
+        nargs='*',
+        help='Run ID to summarize'
+    )
 
     return parser
 
+class Subcommands:
+    @staticmethod
+    def variables(args):
+        p = args.project
 
-def config(args=None):
-    parser =config_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
+        if args.format == 'json':
+            if args.minified:
+                print(jetstream.utils.json_dumps(p.config))
+            else:
+                print(jetstream.utils.json_dumps(p.config, indent=4))
+        elif args.format == 'yaml':
+            jetstream.utils.yaml_dump(p.config, stream=sys.stdout)
 
-    p = jetstream.Project(args.path)
+    @staticmethod
+    def tasks(args=None):
+        p = args.project
+        wf = p.workflow()
 
-    if args.format == 'json':
-        if args.parsable:
-            print(jetstream.utils.json_dumps(p.config))
+        if args.task_name:
+            for task_name in args.task_name:
+                tids = wf.find(task_name)
+                for tid in tids:
+                    task = wf.get_task(tid)
+                    print(jetstream.utils.yaml_dumps(task.serialize()))
         else:
-            print(jetstream.utils.json_dumps(p.config, indent=4))
-    elif args.format == 'yaml':
-        jetstream.utils.yaml_dump(p.config, stream=sys.stdout)
+            tasks = {t.tid: t for t in wf.tasks(objs=True)}
 
+            print('\t'.join(('task_id', 'label', 'status',)))
+            for t in tasks.values():
+                print('\t'.join((t.tid, t.label, t.status,)))
 
-def tasks(args=None):
-    parser = tasks_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
+    @staticmethod
+    def remove_tasks(args=None):
+        p = args.project
+        wf = p.workflow()
 
-    p = jetstream.Project(args.path)
-    wf = p.workflow()
-    tasks = {t.tid: t for t in wf.tasks(objs=True)}
+        for name in args.task_name:
+            wf.remove_task(name)
 
-    if args.task_id:
-        for task_id in args.task_id:
-            print(jetstream.utils.yaml_dumps(tasks[task_id].serialize()))
-    else:
-        print('\t'.join(('task_id', 'label', 'status',)))
-        for t in tasks.values():
-            print('\t'.join((t.tid, t.label, t.status,)))
+        wf.save()
 
+    @staticmethod
+    def remove_task_ids(args=None):
+        p = args.project
+        wf = p.workflow()
 
-def remove_task(args=None):
-    parser = task_action_arg_parser('remove')
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
+        for tid in args.task_id:
+            wf.remove_task_id(tid)
 
-    p = jetstream.Project(args.path)
-    wf = p.workflow()
+    @staticmethod
+    def reset_tasks(args=None):
+        p = args.project
+        wf = p.workflow()
 
-    for tid in args.task_id:
-        wf.remove_task(tid)
+        for name in args.task_name:
+            task_ids = wf.find(name)
+            for tid in task_ids:
+                wf.get_task(tid).reset()
 
-    jetstream.save_workflow(wf, path=p.workflow_file)
+        wf.save()
 
+    @staticmethod
+    def complete_tasks(args=None):
+        p = args.project
+        wf = p.workflow()
 
-def reset_task(args=None):
-    parser = task_action_arg_parser('reset')
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
+        for name in args.task_name:
+            task_ids = wf.find(name)
+            for tid in task_ids:
+                wf.get_task(tid).complete()
 
-    p = jetstream.Project(args.path)
-    wf = p.workflow()
+        wf.save()
 
-    for tid in args.task_id:
-        wf.get_task(tid).reset()
+    @staticmethod
+    def fail_tasks(args=None):
+        p = args.project
+        wf = p.workflow()
 
-    jetstream.save_workflow(wf, path=p.workflow_file)
+        for name in args.task_name:
+            task_ids = wf.find(name)
+            for tid in task_ids:
+                wf.get_task(tid).fail()
 
+        wf.save()
 
-def complete_task(args=None):
-    parser = task_action_arg_parser('complete')
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
+    @staticmethod
+    def history(args=None):
+        p = args.project
 
-    p = jetstream.Project(args.path)
-    wf = p.workflow()
+        for r in p.history(paths=True):
+            r = jetstream.utils.yaml_load(r)
+            print(r['id'], r['datetime'])
 
-    for tid in args.task_id:
-        wf.get_task(tid).complete()
-
-    jetstream.save_workflow(wf, path=p.workflow_file)
-
-
-def fail_task(args=None):
-    parser = task_action_arg_parser('fail')
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    p = jetstream.Project(args.path)
-    wf = p.workflow()
-
-    for tid in args.task_id:
-        wf.get_task(tid).fail()
-
-    jetstream.save_workflow(wf, path=p.workflow_file)
-
-
-def history(args=None):
-    parser = history_arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    p = jetstream.Project(args.path)
-
-    for r in p.history(paths=True):
-        r = jetstream.utils.yaml_load(r)
-        print(r['id'], r['datetime'])
+    @staticmethod
+    def help(parser):
+        subparsers = [action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)]
+        print(parser.format_help())
+        print('Available subcommands:\n')
+        for s in subparsers:
+            for choice, subparser in s.choices.items():
+                if choice == 'help':
+                    continue
+                else:
+                    desc = textwrap.wrap(subparser.description, width=70)
+                    desc = '\n'.join(desc)
+                    text = f'{choice}:\n\n{textwrap.indent(desc, "  ")}\n'
+                    print(textwrap.indent(text, "  "))
 
 
 def main(args=None):
-    actions = {
-        'config': config,
-        'tasks': tasks,
-        'history': history,
-        'remove-task': remove_task,
-        'reset-task': reset_task,
-        'complete-task': complete_task,
-        'fail-task': fail_task
-    }
-
-    parser = arg_parser(actions=list(actions.keys()))
+    parser = arg_parser()
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
-    actions[args.action](args.args)
+
+
+    if args.project is None:
+        raise ValueError('This command requires a jetstream project. Run '
+                         'inside a jetstream project or use -p/--project')
+    else:
+        if args.subcommand == 'help':
+            Subcommands.help(parser)
+        else:
+            getattr(Subcommands, args.subcommand)(args)
+

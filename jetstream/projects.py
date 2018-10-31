@@ -9,10 +9,10 @@ logs_dir = settings['project_logs_dir']
 results_dir = settings['project_results_dir']
 temp_dir = settings['project_temp_dir']
 config_dir = settings['project_config_dir']
-pid_file = os.path.join(index_dir, 'pid')
-config_file = os.path.join(index_dir, 'config')
-created_file = os.path.join(index_dir, 'created')
-workflow_file = os.path.join(index_dir, 'workflow')
+pid_file = os.path.join(index_dir, 'pid.yaml')
+config_file = os.path.join(index_dir, 'config.yaml')
+created_file = os.path.join(index_dir, 'created.yaml')
+workflow_file = os.path.join(index_dir, 'workflow.pickle')
 
 
 class NotAProject(Exception):
@@ -67,7 +67,7 @@ class Project:
         self.validate()
         self.reload()
 
-        log.info('Loaded project: {}'.format(self.path))
+        log.debug('Loaded project: {}'.format(self.path))
 
     def __repr__(self):
         return '<Project path={}>'.format(self.path)
@@ -123,7 +123,7 @@ class Project:
         """Loads all data files in  <project>/config/ as values in the
         project.config dictionary. """
         if os.path.exists(self.config_file):
-            self.config = jetstream.utils.yaml_load(self.config_file)
+             self.config = jetstream.utils.yaml_load(self.config_file)
 
         if os.path.isdir(self.config_dir):
             config_files = dict()
@@ -134,6 +134,7 @@ class Project:
 
             self.config.update(config_files)
 
+    def save_config(self):
         with open(self.config_file, 'w') as fp:
             jetstream.utils.yaml_dump(self.config, fp)
 
@@ -142,7 +143,7 @@ class Project:
         if os.path.exists(self.workflow_file):
             return jetstream.workflows.load_workflow(self.workflow_file)
         else:
-            log.critical('No existing workflow found in this project!')
+            log.warning('No existing workflow found in this project!')
             return jetstream.Workflow()
 
     def history(self, paths=False):

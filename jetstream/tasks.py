@@ -137,6 +137,10 @@ class Task(object):
         self.status = 'new'
         self._state = utils.JsonDict()
 
+        if self.workflow:
+            for dep in self.dependents():
+                dep.reset(quiet=True)
+
     def start(self, quiet=False):
         """Indicate that this task has been started"""
         if not quiet:

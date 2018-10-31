@@ -9,27 +9,21 @@ from jetstream.backends import LocalBackend
 
 class Runner:
     def __init__(self, autosave=3600, backend=None, loop=None,
-                 max_concurrency=None, debug=False):
+                 max_forks=None, debug=False):
         self.autosave = autosave
         self.backend = backend or LocalBackend()
         self.debug = debug
         self.fingerprint = None
         self.loop = loop
-        self.max_concurrency = max_concurrency or utils.guess_max_forks()
+        self.max_forks = max_forks or utils.guess_max_forks()
         self.project = None
         self.workflow = None
-        self._backend = None
         self._conc_sem = None
         self._errs = set()
         self._last_save = datetime.now()
         self._main_future = None
         self._secondary_future = None
         self._task_futures = set()
-
-        try:
-            self.project = projects.Project()
-        except projects.NotAProject:
-            self.project = None
 
     def _run_preflight(self):
         log.debug('Running preflight checks...')
@@ -49,8 +43,8 @@ class Runner:
             self.loop.set_debug(self.debug)
 
         # Backends have a semaphore that controls the backend-specific
-        # concurrent task limit. So, this call needs to happen after the
-        # event loop is added to the runner.
+        # concurrent task limit. So, the call to backend.start() needs to
+        # happen after the event loop is added to the runner.
         self.backend.start(self)
 
         if self.project is not None:
@@ -66,68 +60,6 @@ class Runner:
             with open(history_file, 'w') as fp:
                 fp.write(self.fingerprint.to_yaml())
 
-    def start(self, workflow, run_id=None, debug=False, loop=None):
-        log.debug('Configuring runner...')
-        started = datetime.now()
-        self.fingerprint = utils.Fingerprint(id=run_id)
-        self.workflow = workflow
-        self.loop = loop or self.loop
-        self.debug = debug or self.debug
-        self._run_preflight()
-
-        log.info('Starting run: {}'.format(self.fingerprint.id))
-        self._conc_sem = BoundedSemaphore(self.max_concurrency, loop=self.loop)
-        self._main_future = self.loop.create_task(self.main(self.workflow))
-        self._secondary_future = self.loop.create_task(self.backend.coro())
-        self._secondary_future.add_done_callback(self.handle_backend_coro)
-
-        try:
-            self.loop.run_until_complete(self._main_future)
-        finally:
-            self.shutdown()
-            run_id = self.fingerprint.id
-            self.fingerprint = None
-
-            elapsed = datetime.now() - started
-            log.critical('Elapsed: {}'.format(elapsed))
-
-            if self._errs:
-                for err in self._errs:
-                    log.critical(err)
-                raise RuntimeError('Runner halted unexpectedly!')
-            else:
-                log.warning('Run {} complete'.format(run_id))
-
-    async def main(self, workflow):
-        self._workflow_iterator = iter(workflow)
-        try:
-            while 1:
-                try:
-                    task = next(self._workflow_iterator)
-                except StopIteration:
-                    break
-
-                if task is None:
-                    await self.sleep()
-                    continue
-                else:
-                    if not task.directives.get('cmd'):
-                        task.complete()
-                    else:
-                        await self.spawn(task)
-
-                await self.sleep(0)
-
-            while self._task_futures:
-                await self.sleep()
-
-            await self.sleep(0)
-        except asyncio.CancelledError:
-            log.warning('Runner.main was cancelled!')
-        finally:
-            self._save_workflow()
-            log.debug('Runner.main stopped')
-
     def _check_for_save(self):
         now = datetime.now()
         last = self._last_save
@@ -140,14 +72,51 @@ class Runner:
     def _save_workflow(self):
         if self.workflow.save_path:
             self.workflow.save()
+        elif self.project:
+            self.workflow.save(self.project.workflow_file)
         else:
             path = '{}.pickle'.format(self.fingerprint.id)
             self.workflow.save(path=path)
 
-    async def sleep(self, delay=0.1):
+    async def _yield(self, delay=0.1):
         log.verbose('Yield for {}s'.format(delay))
         self._check_for_save()
         await asyncio.sleep(delay)
+
+    def close(self):
+        """Close the event loop. This runner will not be able to start again."""
+        if self.loop:
+            self.loop.close()
+
+    async def main(self, workflow):
+        self._workflow_iterator = iter(workflow)
+        try:
+            while 1:
+                try:
+                    task = next(self._workflow_iterator)
+                except StopIteration:
+                    break
+
+                if task is None:
+                    await self._yield()
+                    continue
+                else:
+                    if not task.directives.get('cmd'):
+                        task.complete()
+                    else:
+                        await self.spawn(task)
+
+                await self._yield(0)
+
+            while self._task_futures:
+                await self._yield()
+
+            await self._yield(0)
+        except asyncio.CancelledError:
+            log.warning('Runner.main was cancelled!')
+        finally:
+            self._save_workflow()
+            log.debug('Runner.main stopped')
 
     async def spawn(self, task):
         log.debug('Runner spawn: {}'.format(task))
@@ -176,6 +145,14 @@ class Runner:
         fut.add_done_callback(self.handle)
         fut.workflow_task = task
         self._task_futures.add(fut)
+
+    def halt(self, err=None):
+        if err is not None:
+            self._errs.add(err)
+
+        if self._main_future and not self._main_future.cancelled():
+            log.info('Halting run!')
+            self._main_future.cancel()
 
     def handle(self, future):
         log.debug('Handle: {}'.format(future))
@@ -209,15 +186,41 @@ class Runner:
                 future._coro, traceback.format_exc())
             self.halt(err)
 
-    def halt(self, err=None):
-        if err is not None:
-            self._errs.add(err)
+    def start(self, workflow, project=None, run_id=None, debug=False,
+              check_workflow=True, loop=None):
+        log.debug('Configuring runner...')
+        started = datetime.now()
 
-        if self._main_future and not self._main_future.cancelled():
-            log.info('Halting run!')
-            self._main_future.cancel()
+        self.workflow = workflow
+        self.project = project
+        self.fingerprint = utils.Fingerprint(id=run_id)
+        self.loop = loop or self.loop
+        self.debug = debug or self.debug
+        self._run_preflight()
 
-    def shutdown(self):
+        log.info('Starting run: {}'.format(self.fingerprint.id))
+        self._conc_sem = BoundedSemaphore(self.max_forks, loop=self.loop)
+        self._main_future = self.loop.create_task(self.main(self.workflow))
+        self._secondary_future = self.loop.create_task(self.backend.coro())
+        self._secondary_future.add_done_callback(self.handle_backend_coro)
+
+        try:
+            self.loop.run_until_complete(self._main_future)
+        finally:
+            self.shutdown(check_workflow=check_workflow)
+            self.fingerprint = None
+            self.project = None
+            self.workflow = None
+
+            elapsed = datetime.now() - started
+            log.critical('Elapsed: {}'.format(elapsed))
+
+            if self._errs:
+                for err in self._errs:
+                    log.critical(err)
+                raise RuntimeError('Runner halted unexpectedly!')
+
+    def shutdown(self, check_workflow=True):
         log.info('Shutting down runner...')
         if not self._secondary_future.done():
             self._secondary_future.cancel()
@@ -237,4 +240,22 @@ class Runner:
         log.debug('Wrapped up: {}'.format(to_cancel))
         log.debug('Closing event loop...')
         asyncio.events.set_event_loop(None)
-        self.loop.close()
+
+        if check_workflow:
+            total = len(self.workflow)
+            complete = 0
+            failed = 0
+
+            for t in self.workflow.tasks(objs=True):
+                if t.is_complete():
+                    complete += 1
+                elif t.is_failed():
+                    failed += 1
+
+            if failed:
+                msg = f'\u2620  {failed} tasks failed! ' \
+                      f'{complete}/{total} complete!'
+                raise RuntimeError(msg)
+            else:
+                log.info(f'\U0001f44d {complete}/{total} tasks complete!')
+

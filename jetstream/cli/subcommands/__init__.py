@@ -38,14 +38,9 @@ def import_submodules(package_name):
     """
     # Thanks to kolypto https://stackoverflow.com/a/25083161/3924113
     package = sys.modules[package_name]
-    return {
-        name: importlib.import_module(package_name + '.' + name)
-        for loader, name, is_pkg in pkgutil.walk_packages(package.__path__)
-    }
 
-
-cmds = import_submodules(__name__)
-__all__ = list(cmds.keys())
+    for loader, name, is_pkg in pkgutil.walk_packages(package.__path__):
+        yield (name, importlib.import_module(package_name + '.' + name))
 
 
 def descriptions():
@@ -91,3 +86,7 @@ def _build_summary(width=70):
 
 def summary():
     return '\n'.join([l for l in _build_summary()])
+
+
+cmds = dict(import_submodules(__name__))
+__all__ = list(cmds.keys())

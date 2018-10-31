@@ -17,102 +17,20 @@ dynamic elements via the templating syntax. Data used to render the templates
 can be saved in files located in the config directory of project, or given as
 arguments to template.
 
-
-Building a Workflow
---------------------
-
-Workflows can be built by creating tasks via the workflow methods:
-
-.. code-block:: python
-
-    wf = jetstream.Workflow()
-    wf.new_task(name='task1', cmd='hostname')
-    wf.new_task(name='task2', after='task1', cmd='date')
-
-
-Workflows can be also be built by rendering templates. Templates are a set of
-tasks described in YAML text format.
-
-..
-
-    Template + Data --Render--> Workflow
-
-Here is an example Yaml document that creates a workflow just like the Python
-example above:
-
-.. code-block:: yaml
-
-   - name: task1
-     cmd: hostname
-
-   - name: task2
-     after: task1
-     cmd: date
-
-
-Dependencies can be specified in a task with "before", "after", or "input".
-
-.. code-block:: yaml
-
-  - name: task1
-    cmd: hostname
-
-  - name: task2
-    after: task1
-    cmd: date
-
-
-or, equivalently:
-
-.. code-block:: yaml
-
-  - name: task1
-    before: task2
-    cmd: hostname
-
-  - name: task2
-    cmd: date
-
-Finally, Jinja2 templating can be used to add dynamic elements. This example
-sets up the three independent copies of the workflow above, for a total of 6
-tasks added to the workflow. Each "task2" will wait for its corresponding
-"task1" to complete. Also notice, "task3" has a regex pattern for its "after"
-directive. This will set up dependencies for every task matching the pattern.
-So, "task3" will wait for all "task2_A", "task2_B", and "task2_C" to
-complete before starting.
-
-.. code-block:: yaml
-
-    {% for i in [A, B, C] %}
-
-    - name: task1_{{ i }}
-      cmd: hostname
-
-    - name: task2_{{ i }}
-      after: task1_{{ i }}
-      cmd: date
-
-    {% endfor %}
-
-    - name: task3
-      after: task2_.*
-      cmd: who
-
 """
 import os
 import re
-import sys
 import shutil
 import pickle
 import random
-import importlib
 from datetime import datetime
 import networkx as nx
 from networkx.readwrite import json_graph
 from threading import Lock
 from collections import Counter
 from pkg_resources import get_distribution
-from jetstream import utils, log, save_workflow, load_workflow
+import jetstream
+from jetstream import utils, log
 from jetstream.tasks import Task
 
 __version__ = get_distribution('jetstream').version
@@ -418,6 +336,8 @@ class Workflow(object):
         if matches:
             return matches
         elif fallback is utils.sentinel:
+            if pattern == '.*':
+                return set()
             raise ValueError('No task names match value: {}'.format(pattern))
         else:
             return fallback
@@ -618,7 +538,6 @@ class Workflow(object):
             self._make_edges_input(task)
 
 
-
 def random_workflow(n=25, timeout=None, connectedness=3):
     """Random workflow generator. The time to generate a random task for a
      workflow scales exponentially, so this can take a very long time for
@@ -680,33 +599,7 @@ def random_workflow(n=25, timeout=None, connectedness=3):
     return wf
 
 
-def load_mod(filepath):
-    dirn = os.path.dirname(filepath)
-    base = os.path.basename(filepath)
-    name, ext = os.path.splitext(base)
-    old_path = sys.path.copy()
-    old_modules = sys.modules.copy()
-
-    try:
-        sys.path.insert(1, dirn)
-        spec = importlib.util.spec_from_file_location(name, filepath)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    finally:
-        sys.path = old_path
-        sys.modules = old_modules
-
-    return mod
-
-
-def find_workflows(mod):
-    for k, v in mod.__dict__.items():
-        if isinstance(v, Workflow):
-            yield v
-
-
-
-def draw_workflow(wf, figsize=(12,12), cm=None, filename=None, **kwargs):
+def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
     """This requires matplotlib setup and graphviz installed. It is not
     very simple to get these dependencies setup, so they're loaded as needed
     and not required for package install."""
@@ -743,6 +636,43 @@ def draw_workflow(wf, figsize=(12,12), cm=None, filename=None, **kwargs):
         f.savefig(filename)
 
 
+def save_workflow(workflow, path, format=None):
+    """Save a workflow to the path
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions.
+
+    :param workflow: Workflow instance
+    :param path: where to save
+    :return: None
+    """
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = jetstream.workflow_extensions.get(ext, 'pickle')
+
+    start = datetime.now()
+    jetstream.workflow_savers[format](workflow, path)
+    elapsed = datetime.now() - start
+
+    log.info('Workflow saved (after {}): {}'.format(elapsed, path))
+
+
+def load_workflow(path, format=None):
+    """Load a workflow from a file.
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions. It also sets workflow.save_path to the path"""
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = jetstream.workflow_extensions.get(ext, 'pickle')
+
+    wf = jetstream.workflow_loaders[format](path)
+    wf.save_path = os.path.abspath(path)
+    return wf
+
+
 def load_workflow_yaml(path):
     data = utils.yaml_load(path)
     return Workflow.deserialize(data)
@@ -760,7 +690,7 @@ def load_workflow_pickle(path):
 
 
 def save_workflow_yaml(workflow, path):
-    log.info('Saving workflow (yaml): {}...'.format(format, path))
+    log.info('Saving workflow (yaml): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
@@ -770,7 +700,7 @@ def save_workflow_yaml(workflow, path):
 
 
 def save_workflow_json(workflow, path):
-    log.info('Saving workflow (json): {}...'.format(format, path))
+    log.info('Saving workflow (json): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
@@ -780,7 +710,7 @@ def save_workflow_json(workflow, path):
 
 
 def save_workflow_pickle(workflow, path):
-    log.info('Saving workflow (pickle): {}...'.format(format, path))
+    log.info('Saving workflow (pickle): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'wb') as fp:
@@ -804,27 +734,3 @@ def to_cytoscape_json_data(wf):
 
     return data
 
-
-def build_workflow(tasks):
-    """Given a sequence of tasks (dictionaries with properties described in
-    the workflow specification), returns a workflow with nodes and edges
-    already added """
-    log.info('Building workflow...')
-    started = datetime.now()
-
-    if isinstance(tasks, str):
-        # If tasks are not parsed yet, do it automatically
-        tasks = utils.yaml_loads(tasks)
-
-    if not tasks:
-        raise ValueError('No tasks were found in the data!')
-
-    wf = Workflow()
-
-    with wf:
-        for task_mapping in tasks:
-            wf.add_task(Task(**task_mapping))
-
-    elapsed = datetime.now() - started
-    log.info('Workflow ready after {}'.format(elapsed))
-    return wf

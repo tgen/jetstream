@@ -3,12 +3,25 @@ import os
 import re
 import ulid
 import traceback
-from datetime import datetime
 from jetstream import profile, logs
 from jetstream.profile import load_profile, dumps_profile, profile_path
 
-log = logs.logging.getLogger('jetstream')
+__name__ = 'jetstream'
+log = logs.logging.getLogger(__name__)
 settings = None
+_current_project = None
+
+
+def run_id(value=None):
+    if value is not None:
+        value = str(value)
+
+        if value.isidentifier():
+            return value
+        else:
+            raise ValueError('{} is not a valid identifier'.format(value))
+
+    return run_id_template.format(ulid.new().str)
 
 
 try:
@@ -29,64 +42,14 @@ try:
 
     from jetstream import utils
     from jetstream.utils import load_data_file, loadable_files
-
-
-    def run_id(value=None):
-        if value is not None:
-            value = str(value)
-
-            if value.isidentifier():
-                return value
-            else:
-                raise ValueError('{} is not a valid identifier'.format(value))
-
-        return run_id_template.format(ulid.new().str)
-
-
-    def save_workflow(workflow, path, format=None):
-        """Save a workflow to the path
-
-        This helper function will try to choose the correct file format based
-        on the extension of the path, but defaults to pickle for unrecognized
-        extensions.
-
-        :param workflow: Workflow instance
-        :param path: where to save
-        :return: None
-        """
-        if format is None:
-            ext = os.path.splitext(path)[1]
-            format = workflow_extensions.get(ext, 'pickle')
-
-        start = datetime.now()
-        workflow_savers[format](workflow, path)
-        elapsed = datetime.now() - start
-
-        log.info('Workflow saved (after {}): {}'.format(elapsed, path))
-
-
-    def load_workflow(path, format=None):
-        """Load a workflow from a file.
-
-        This helper function will try to choose the correct file format based
-        on the extension of the path, but defaults to pickle for unrecognized
-        extensions. It also sets workflow.save_path to the path"""
-        if format is None:
-            ext = os.path.splitext(path)[1]
-            format = workflow_extensions.get(ext, 'pickle')
-
-        wf = workflow_loaders[format](path)
-        wf.save_path = os.path.abspath(path)
-        return wf
-
-
     from jetstream import workflows, templates, projects, runner, backends
     from jetstream.runner import Runner
-    from jetstream.projects import Project
-    from jetstream.templates import (environment, render_template, load_template,
-                                     render_templates, load_templates)
-    from jetstream.workflows import (build_workflow, random_workflow, Workflow,
-                                     Task)
+    from jetstream.projects import Project, NotAProject
+    from jetstream.pipelines import Pipeline, pipeline_module
+    from jetstream.workflows import (Workflow, Task, load_workflow,
+                                     save_workflow,
+                                     random_workflow,)
+    from jetstream.templates import environment, render_template
 
     workflow_extensions = {
         '': 'pickle',

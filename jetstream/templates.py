@@ -3,9 +3,16 @@ locations set by arguments or environment variables. """
 import os
 import json
 import hashlib
-from jinja2 import (Environment, FileSystemLoader, StrictUndefined, Undefined,
-                    evalcontextfilter)
-from jetstream import log
+from datetime import datetime
+from jinja2 import (
+    Environment,
+    StrictUndefined,
+    Undefined,
+    evalcontextfilter,
+    FileSystemLoader
+)
+from jetstream import log, utils
+from jetstream.workflows import Workflow
 
 
 @evalcontextfilter
@@ -23,6 +30,7 @@ def basename(eval_ctx, path):
 @evalcontextfilter
 def dirname(eval_ctx, path):
     """Allow "dirname(<path>)" to be used in templates"""
+    # TODO Make this work on sequences of paths
     return os.path.dirname(path)
 
 
@@ -39,8 +47,8 @@ def fromjson(eval_ctx, value):
     return json.loads(value)
 
 
-def environment(search_path=None, strict=True, trim_blocks=True,
-                lstrip_blocks=True):
+def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
+                searchpath=None):
     """Start a Jinja2 Environment with the given template directories.
 
     Templates are loaded by a Jinja2 FilesystemLoader that includes built-in
@@ -51,14 +59,14 @@ def environment(search_path=None, strict=True, trim_blocks=True,
     else:
         undefined_handler = Undefined
 
-    if search_path is None:
-        search_path = [os.getcwd(),]
+    if searchpath is None:
+        searchpath = [os.getcwd(),]
 
     env = Environment(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
-        loader=FileSystemLoader(search_path),
-        undefined=undefined_handler
+        undefined=undefined_handler,
+        loader=FileSystemLoader(searchpath=searchpath)
     )
 
     env.globals['raise'] = raise_helper
@@ -66,59 +74,61 @@ def environment(search_path=None, strict=True, trim_blocks=True,
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
     env.filters['sha256'] = sha256
-
-    log.info('Autoconfigured Jinja2 search path: {}'.format(env.loader.searchpath))
     return env
 
 
-def load_template(path, search_path=None):
-    """Load a template from a file path
-
-    This will automatically configure a FileSystemLoader to search in the
-    current directory and template directory.
-
-    :param path: path to a template file
-    :param search_path: a list of paths to add to search path
-    :return: jinja2.Template
-    """
-    log.debug('Load template from: {}'.format(path))
-
-    if os.path.isfile(path):
-        log.debug('Template is a file')
-    elif os.path.exists(path):
-        log.debug('Template is non-file path that exists')
-
-    template_name = os.path.basename(path)
-
-    if search_path is None:
-        search_path = [os.getcwd(), os.path.dirname(path)]
-
-    env = environment(search_path=search_path)
-    return env.get_template(template_name)
-
-
-def render_template(path, data=None, search_path=None):
+def render_template(path, variables=None, env=None):
     """Load and render a template.
 
-    :param data: Mapping of data used to render template
-    :param args: Passed to load_template
-    :param kwargs: Passed to load_template
+    :param variables: Mapping of data used to render template
+    :param env: A preconfigured Jinja Environment
     :return: Rendered template string
     """
-    if data is None:
-        data = dict()
+    log.info('Building workflow...')
+    started = datetime.now()
 
-    template = load_template(path, search_path=search_path)
-    return template.render(**data)
+    if variables is None:
+        variables = dict()
 
+    if env is None:
+        env = environment(searchpath=[os.getcwd(), os.path.dirname(path)])
 
-def load_templates(*paths, search_path=None):
-    """Load several templates, see load_template"""
-    return [load_template(p, search_path=search_path) for p in paths]
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
 
+    if os.path.isdir(path):
+        raise FileNotFoundError(f'{path} is a directory!')
 
-def render_templates(*paths, data=None, search_path=None):
-    """Load and render several templates, see render_template"""
-    return [render_template(p, data=data, search_path=search_path)
-            for p in paths]
+    with open(path, 'r') as fp:
+        data = fp.read()
 
+    template = env.from_string(data)
+    render = template.render(**variables)
+
+    log.debug(f'Rendered Template:\n{render}')
+
+    parsed_tasks = utils.yaml_loads(render)
+
+    if not isinstance(parsed_tasks, list):
+        raise ValueError(
+            f'The template was rendered and parsed successfully, but the '
+            f'resulting data structure was a {type(parsed_tasks)} . Templates '
+            f'should always produce a list of tasks.'
+        )
+
+    workflow = Workflow()
+
+    with workflow:
+        for task in parsed_tasks:
+            if not isinstance(task, dict):
+                raise ValueError(
+                    f'The template was rendered and parsed successfully, but '
+                    f'encountered a task that was not a mapping type:\n'
+                    f'{task}'
+                )
+
+            workflow.new_task(**task)
+
+    elapsed = datetime.now() - started
+    log.info('Workflow ready after {}'.format(elapsed))
+    return workflow

@@ -12,7 +12,7 @@ def default():
         'project_temp_dir': 'temp',
         'project_logs_dir': 'logs',
         'project_results_dir': 'results',
-        'project_extra_dirs': [],
+        'project_config_dir': 'config',
         'log_level': None,
         'log_format': None,
         'openblas_num_threads': '2',

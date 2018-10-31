@@ -5,6 +5,7 @@ import csv
 import fnmatch
 import gzip
 import json
+import argparse
 import subprocess
 import logging
 import time
@@ -369,6 +370,17 @@ def table_to_records(path):
             r.append(dict(row))
     return r
 
+
+def to_bool(value):
+    if value.lower() in ('yes', 'true',):
+        return True
+    elif value.lower() in ('no', 'false',):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(
+            f'Value "{value}" cannot be interpreted as bool, use true/false or '
+            'yes/no'
+        )
 
 def records_to_csv(records, outpath):
     """Writes records (list of dictionaries) out to a csv file"""
