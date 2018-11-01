@@ -287,13 +287,18 @@ class Workflow(object):
         :return: None
         """
         log.info('Composing {} with {}'.format(self, workflow))
-
+        added = []
         with self:
             for task in workflow.tasks(objs=True):
                 if not task in self:
-                    self.add_task(task)
+                    t = self.new_task(**task.directives)
+                    added.append(t)
                 else:
                     log.debug('Skipping {}, already in workflow'.format(task))
+
+        for t in added:
+            for d in t.dependents():
+                d.reset()
 
     def dependencies(self, task):
         """Returns a generator that yields the dependencies of a given task"""

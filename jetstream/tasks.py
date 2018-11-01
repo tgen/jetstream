@@ -50,7 +50,7 @@ class Task(object):
             identity = utils.json_dumps(self._directives, sort_keys=True)
             self._tid = sha1(identity.encode('utf-8')).digest().hex()
 
-        self.workflow = None
+        self._workflow = None
 
     def __dict__(self):
         return {
@@ -128,6 +128,19 @@ class Task(object):
     def state(self):
         """Access the state JsonDict"""
         return self._state
+
+    @property
+    def workflow(self):
+        return self._workflow
+
+    @workflow.setter
+    def workflow(self, value):
+        if self._workflow is not None:
+            raise AttributeError(
+                f'{self} is already assigned to a workflow: {self._workflow}'
+            )
+        else:
+            self._workflow = value
 
     def reset(self, quiet=False):
         """Reset the state of this task"""

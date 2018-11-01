@@ -123,7 +123,7 @@ class Project:
         """Loads all data files in  <project>/config/ as values in the
         project.config dictionary. """
         if os.path.exists(self.config_file):
-             self.config = jetstream.utils.yaml_load(self.config_file)
+            self.config = jetstream.utils.yaml_load(self.config_file)
 
         if os.path.isdir(self.config_dir):
             config_files = dict()
