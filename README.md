@@ -9,6 +9,8 @@ will introduce the core concepts of framework, and give some real examples.
 
 > TGen users on Dback can load the latest version of Python with `module load python`.
 
+The easiest way to install Jetstream is with Pip:
+
 ```shell
 pip3 install --upgrade --user git+https://github.com/tgen/jetstream.git@master
 ```
