@@ -393,9 +393,7 @@ Here is a list of the current task directives and how they're used:
 
 # Installation
 
-## Install Python3 and Pip
-
-## Recommended install with Pip
+## Recommended: Install with Pip
 
 > TGen users on Dback can load the latest version of Python with `module load python`.
 
@@ -434,7 +432,7 @@ resintalling. Here is an example command list:
 ## Command not found after install
 
 Pip installs package scripts and executables automatically. In some
-cases you will need to update your `PATH`_ to include the directory where 
+cases you will need to update your [`PATH`][PATH] to include the directory where 
 these scripts are stored.
 
 - **MacOS**:
@@ -454,7 +452,7 @@ these scripts are stored.
 
     Installed with ``--user``: the bin directory will be ``~/.local/bin/``
 
-`See this post`_ if you need more help
+[`See this post`][path_help] for more information.
 
 
 # Tips
@@ -474,7 +472,8 @@ Then, configure the editor to use the "Ansible" syntax highlighter for `.jst` ex
 
 `View -> Syntax -> Open all with current extension as ...`
 
-Documentation on Ansible (.jst extension) syntax can be found at 
+Ansible is a system management utility that uses YAML/Jinja documents very similar to workflow 
+templates. Documentation from Ansible covering the YAML template syntax can be found at: 
 https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html
 
 
@@ -670,7 +669,6 @@ And here we call the batcher function, and tell it to call
 
 
 [PATH]: http://www.linfo.org/path_env_var.html
-[cmd_not_found]: https://stackoverflow.com/questions/35898734/pip-installs-packages-successfully-but-executables-not-found-from-command-line
 [install_help]: http://docs.python-guide.org/en/latest/starting/installation/
 [path_help]: https://stackoverflow.com/questions/35898734/pip-installs-packages-successfully-but-executables-not-found-from-command-line
 
