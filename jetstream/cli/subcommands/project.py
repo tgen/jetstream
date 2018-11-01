@@ -224,7 +224,9 @@ class Subcommands:
         wf = p.workflow()
 
         for tid in args.task_id:
-            wf.remove_task_id(tid)
+            wf.remove_task_id(tid, force=True)
+
+        wf.save()
 
     @staticmethod
     def reset_tasks(args=None):

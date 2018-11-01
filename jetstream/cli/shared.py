@@ -57,6 +57,8 @@ def parse_kvargs(args, separator=None):
 
 
 def set_project(path=None):
+    """If path is set, chdir to the given project and load the object.
+    Otherwise check if the cwd is a project and return or return None."""
     if path:
         os.chdir(path)
         project = jetstream.Project()
@@ -67,3 +69,12 @@ def set_project(path=None):
             project = None
 
     return project
+
+
+def load_variables(path):
+    """Most variables files should load with the yaml parser, but tabs in
+    a json file might raise an error, so both are tried."""
+    try:
+        return jetstream.utils.yaml_load(path)
+    except jetstream.utils.yaml.YAMLError:
+        return jetstream.utils.json_load(path)

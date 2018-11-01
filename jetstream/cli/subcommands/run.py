@@ -84,7 +84,7 @@ def arg_parser():
 
     template.add_argument(
         '--variables',
-        type=jetstream.utils.yaml_load,
+        type=shared.load_variables,
         default={},
         help='Load a several variables from a file (json or yaml). Variables '
              'can be loaded individually with arguments in the form: '
