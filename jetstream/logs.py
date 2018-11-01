@@ -1,3 +1,4 @@
+import sys
 import logging
 
 
@@ -13,13 +14,21 @@ log = logging.getLogger('jetstream')
 log.addHandler(logging.NullHandler())
 log.setLevel(1)
 
-basic_format = "{asctime}: {message}"
-color_format = "[\033[4m\033[92m\U0001F335 {module:>10}\033[0m] " + basic_format
+base = "{asctime}: {message}"
+color_format = "[\033[4m\033[92m\U0001F335 {module:>10}\033[0m] " + base
+basic_format = "[{module:>12}] " + base
 debug_format = "{levelname} {module}:{lineno} " + basic_format
 
 
-def start_logging(*, format=basic_format, level=1):
+def start_logging(*, format=None, level=logging.INFO):
     global log
+
+    if format is None:
+        if sys.stderr.isatty():
+            format = color_format
+        else:
+            format = basic_format
+
     h = logging.StreamHandler()
     h.setFormatter(logging.Formatter(
         format,

@@ -51,7 +51,9 @@ setup(
     entry_points={
         'console_scripts': [
             'jetstream=jetstream.cli.jetstream:main',
-            'tgen_rsync=jetstream.utils.tgen_rsync:main'
+            'rsync_to_isilon=jetstream.utils.transfer:to_isilon',
+            'rsync_from_isilon=jetstream.utils.transfer:from_isilon',
+            'rsync_bulk=jetstream.utils.transfer:bulk'
         ],
     }
 )

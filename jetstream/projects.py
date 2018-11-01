@@ -4,24 +4,19 @@ from jetstream import log, settings
 
 # Project index dir configuration
 index_dir = settings['project_index_dir']
-config_dir = os.path.join(index_dir, 'config')
 history_dir = os.path.join(index_dir, 'history')
 logs_dir = settings['project_logs_dir']
 results_dir = settings['project_results_dir']
 temp_dir = settings['project_temp_dir']
-extra_dirs = settings['project_extra_dirs']
-pid_file = os.path.join(index_dir, 'pid.yml')
-created_file = os.path.join(index_dir, 'created.yml')
-workflow_file = os.path.join(index_dir, 'workflow.yml')
+config_dir = settings['project_config_dir']
+pid_file = os.path.join(index_dir, 'pid.yaml')
+config_file = os.path.join(index_dir, 'config.yaml')
+created_file = os.path.join(index_dir, 'created.yaml')
+workflow_file = os.path.join(index_dir, 'workflow.pickle')
 
 
 class NotAProject(Exception):
     """Raised when trying to load a project that is missing something"""
-    pass
-
-
-class NotDagError(Exception):
-    """ Raised when an action would result in a network that is not a DAG """
     pass
 
 
@@ -35,6 +30,15 @@ class Project:
     set up a best-practices directory structure:
 
     <project>
+        .
+        ├── jetstream
+        │   ├── config
+        │   ├── created
+        │   ├── workflow
+        │   └── history
+        ├── logs
+        ├── results
+        └── temp
 
     """
     def __init__(self, path=None, new=False):
@@ -47,6 +51,7 @@ class Project:
         self.path = path
         self.name = os.path.basename(self.path)
         self.index_dir = os.path.join(self.path, index_dir)
+        self.config_file = os.path.join(self.path, config_file)
         self.created_file = os.path.join(self.path, created_file)
         self.pid_file = os.path.join(self.path, pid_file)
         self.workflow_file = os.path.join(self.path, workflow_file)
@@ -55,7 +60,6 @@ class Project:
         self.logs_dir = os.path.join(self.path, logs_dir)
         self.results_dir = os.path.join(self.path, results_dir)
         self.temp_dir = os.path.join(self.path, temp_dir)
-        self.extra_dirs = [os.path.join(self.path, d) for d in extra_dirs]
 
         if new:
             self.init()
@@ -63,7 +67,7 @@ class Project:
         self.validate()
         self.reload()
 
-        log.info('Loaded project: {}'.format(self.path))
+        log.debug('Loaded project: {}'.format(self.path))
 
     def __repr__(self):
         return '<Project path={}>'.format(self.path)
@@ -76,16 +80,13 @@ class Project:
         os.makedirs(self.results_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        for d in self.extra_dirs:
-            os.makedirs(d, exist_ok=True)
-
-        if not os.path.exists(self.created_file):
+        if os.path.exists(self.created_file):
+            log.info('Reinitialized project: {}'.format(self.path))
+        else:
             with open(self.created_file, 'w') as fp:
                 info = jetstream.utils.Fingerprint()
                 jetstream.utils.yaml_dump(info.serialize(), stream=fp)
             log.info('Initialized project: {}'.format(self.path))
-        else:
-            log.info('Reinitialized project: {}'.format(self.path))
 
     def validate(self):
         if not os.path.exists(self.path):
@@ -121,20 +122,29 @@ class Project:
     def reload(self):
         """Loads all data files in  <project>/config/ as values in the
         project.config dictionary. """
-        data = dict()
+        if os.path.exists(self.config_file):
+             self.config = jetstream.utils.yaml_load(self.config_file)
 
-        for path in jetstream.loadable_files(self.config_dir):
-            name = os.path.splitext(os.path.basename(path))[0]
-            data[name] = jetstream.load_data_file(path)
+        if os.path.isdir(self.config_dir):
+            config_files = dict()
 
-        self.config.update(data)
+            for path in jetstream.loadable_files(self.config_dir):
+                name = os.path.splitext(os.path.basename(path))[0]
+                config_files[name] = jetstream.load_data_file(path)
+
+            self.config.update(config_files)
+
+    def save_config(self):
+        with open(self.config_file, 'w') as fp:
+            jetstream.utils.yaml_dump(self.config, fp)
 
     def workflow(self):
-        """Load the total Workflow for this project. """
+        """Load the existing workflow for this project."""
         if os.path.exists(self.workflow_file):
             return jetstream.workflows.load_workflow(self.workflow_file)
         else:
-            return None
+            log.warning('No existing workflow found in this project!')
+            return jetstream.Workflow()
 
     def history(self, paths=False):
         """Find all run ids in this project"""

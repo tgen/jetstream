@@ -75,7 +75,7 @@ class LocalBackend(BaseBackend):
         return 'CPUs: {}'.format(self._cpu_sem)
 
     async def spawn(self, task):
-        log.info('Spawn: {}'.format(task))
+        log.debug('Spawn: {}'.format(task))
         cpus_reserved = 0
 
         try:
@@ -127,7 +127,7 @@ class LocalBackend(BaseBackend):
             return task.fail(-15)
 
         finally:
-            log.info('Done: {}'.format(task))
+            log.debug('Done: {}'.format(task))
 
             for i in range(cpus_reserved):
                 self._cpu_sem.release()

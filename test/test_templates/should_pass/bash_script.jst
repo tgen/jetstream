@@ -1,0 +1,10 @@
+# Just test an embedded bash script task
+
+- name: bash_script_test
+  stdout: /dev/null
+  cpus: 1
+  cmd: |
+    #!/bin/bash
+
+    echo hello world
+    hostname

@@ -1,8 +1,0 @@
-- cmd: hostname
-  sbatch_args: [-p, compute-16core]
-  description: this task should work fine
-
-- cmd: hostname
-  sbatch_args: null 
-  description: Not sure about this one
-

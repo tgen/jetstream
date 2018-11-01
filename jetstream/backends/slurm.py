@@ -5,6 +5,7 @@ import json
 import subprocess
 import itertools
 import tempfile
+import shutil
 import asyncio
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
@@ -25,7 +26,7 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, max_concurrency=9001, sacct_frequency=10):
+    def __init__(self, max_concurrency=9001, sacct_frequency=10, sbatch=None):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -33,10 +34,17 @@ class SlurmBackend(BaseBackend):
         :param chunk_size: Number of jobs that will be checked with each
         request to sacct
         """
+        self.sbatch = sbatch
         self.sacct_frequency = sacct_frequency
         self.max_concurrency = max_concurrency
         self.jobs = dict()
-        log.info('SlurmBackend with {} max jobs'.format(max_concurrency))
+
+    def preflight(self):
+        if self.sbatch is None:
+            self.sbatch = shutil.which('shutil')
+
+        subprocess.run(['sbatch', '--version'], check=True)
+        log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))
 
     def status(self):
         return 'Slurm jobs: {}'.format(self.semaphore)
@@ -118,7 +126,7 @@ class SlurmBackend(BaseBackend):
             additional_args=task.directives.get('sbatch_args')
         )
 
-        task.set_state(slurm_job_id=job.jid, slurm_args=job.args)
+        task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
 
         event = asyncio.Event(loop=self.runner.loop)
         job.event = event
@@ -126,7 +134,10 @@ class SlurmBackend(BaseBackend):
 
         await event.wait()
 
-        return task.done(job.returncode())
+        if job.is_ok():
+            task.complete(job.returncode())
+        else:
+            task.fail(job.returncode())
 
 
 class SlurmBatchJob(object):

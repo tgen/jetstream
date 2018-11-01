@@ -22,6 +22,7 @@ Submodules
 .. toctree::
 
    jetstream.logs
+   jetstream.pipelines
    jetstream.profile
    jetstream.projects
    jetstream.runner

@@ -1,0 +1,20 @@
+
+- name: start
+  stdout: /dev/null
+  cmd: date
+
+
+- name: add_some_tasks
+  stdout: /dev/null
+  after: start
+  exec: |
+
+    with runner.workflow:
+        for i in range(10):
+            runner.workflow.new_task(cmd='true', name='new_task_{}'.format(i))
+
+
+- name: finalize
+  stdout: /dev/null
+  after: add_some_tasks
+  cmd: date

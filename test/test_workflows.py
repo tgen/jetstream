@@ -1,8 +1,9 @@
-from random import Random
-
+import os
+import tempfile
 import jetstream
+from random import Random
 from jetstream.tasks import Task
-from test import TimedTestCase
+from unittest import TestCase
 
 # Seed the rng because otherwise there's a small chance
 # of generating a negative control string that matches
@@ -10,7 +11,7 @@ from test import TimedTestCase
 random = Random(42)
 
 
-class WorkflowBasics(TimedTestCase):
+class WorkflowBasics(TestCase):
     def test_workflow_repr(self):
         wf = jetstream.Workflow()
         wf.__repr__()
@@ -153,7 +154,7 @@ class WorkflowBasics(TimedTestCase):
     # TODO Test duplicate task add during context manager
 
 
-class WorkflowDependencies(TimedTestCase):
+class WorkflowDependencies(TestCase):
     def test_neg_add_task_w_input(self):
         """Task dependencies are linked after every wf.new_task or wf.add_task
         unless context manager is used. Adding a task that requires inputs when
@@ -203,10 +204,12 @@ class WorkflowDependencies(TimedTestCase):
         self.assertRaises(ValueError, wf.new_task, name='task', after='task1')
 
     def test_neg_self_dependency(self):
-        """Tasks cannot depend on themselves"""
+        """Tasks cannot depend on themselves. The current task will be removed
+        from the match results when searching for dependencies"""
         wf = jetstream.Workflow()
+        t = wf.new_task(name='task', after='task')
 
-        self.assertRaises(ValueError, wf.new_task, name='task', after='task')
+        self.assertEqual([], list(t.dependencies()))
 
     def test_add_task_w_after(self):
         wf = jetstream.Workflow()
@@ -253,17 +256,21 @@ class WorkflowDependencies(TimedTestCase):
         self.assertEqual(t2.status, 'failed')
 
 
-class WorkflowIteration(TimedTestCase):
+class WorkflowIteration(TestCase):
+    def test_random_workflow_n(self):
+        wf = jetstream.random_workflow(n=25)
+
+    def test_random_workflow_timout(self):
+        wf = jetstream.random_workflow(None, timeout=1)
+
+    def test_random_workflow_n_and_timout(self):
+        wf = jetstream.random_workflow(250, timeout=1)
+
     def test_workflow_iter(self):
-        wf = jetstream.Workflow()
-        status = jetstream.workflows.Task.valid_status
-
-        for i in range(100):
-            wf.new_task(name=str(i), status=random.choice(status))
-
+        wf = jetstream.random_workflow(n=25, timeout=1)
         i = iter(wf)
 
-        self.assertEqual(type(i), jetstream.workflows.WorkflowIterator)
+        self.assertEqual(type(i), jetstream.workflows.Workflow)
 
     def test_workflow_iter_next1(self):
         wf = jetstream.Workflow()
@@ -279,3 +286,41 @@ class WorkflowIteration(TimedTestCase):
         t.complete()
 
         self.assertRaises(StopIteration, next, i)
+
+
+class WorkflowSaving(TestCase):
+    def setUp(self):
+        """ All of these tests take place in the context of a project
+        directory. So setUp creates a temp dir and chdir to it. """
+        super(WorkflowSaving, self).setUp()
+        self._original_dir = os.getcwd()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self._temp_dir.name)
+
+    def tearDown(self):
+        os.chdir(self._original_dir)
+        self._temp_dir.cleanup()
+
+    def test_workflow_save(self):
+        wf = jetstream.Workflow()
+
+        with wf:
+            for i in range(100):
+                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+
+        jetstream.save_workflow(wf, 'wf.yaml')
+
+    def test_workflow_load(self):
+        wf = jetstream.Workflow()
+        t1 = jetstream.Task(name='whatever')
+
+        with wf:
+            wf.add_task(t1)
+            for i in range(100):
+                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+
+        jetstream.save_workflow(wf, 'wf.yaml')
+
+        wf2 = jetstream.load_workflow('wf.yaml')
+
+        self.assertIn(t1, wf2)

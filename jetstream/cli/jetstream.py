@@ -1,15 +1,15 @@
+import sys
 import argparse
 import logging
-import sys
-import traceback
 from pkg_resources import get_distribution
-from jetstream import logs, settings
+from jetstream import log, logs, settings
 from jetstream.cli import subcommands
 
 description = """Run a Jetstream command.
 Available commands are:
 {}
 """.format(subcommands.summary)
+
 
 def get_loglevel(value):
     """Determine logging level numeric value from int or level name"""
@@ -58,8 +58,8 @@ def main(args=None):
     parser = arg_parser()
     args, remainder = parser.parse_known_args(args)
 
+    log_format = args.log_format
     log_level = get_loglevel(args.log_level or settings.get('log_level') or 20)
-    log_format = args.log_format or settings.get('log_format') or logs.color_format
     log_filename = args.log_filename or settings.get('log_filename')
     log_filemode = args.log_filemode or settings.get('log_filemode')
 
@@ -77,30 +77,16 @@ def main(args=None):
         log_level = 1
         log_format = logs.debug_format
 
-    log = logs.start_logging(format=log_format, level=log_level)
-
-    log.info('Version {}'.format(get_distribution('jetstream')))
-    log.info('Cmd args: {}'.format(' '.join(sys.argv)))
-    log.debug('Settings: {}'.format(settings))
-    log.debug('{}: {}'.format(__name__, args))
+    logs.start_logging(format=log_format, level=log_level)
+    log.info(f'Version {get_distribution("jetstream")}')
+    log.info(f'Cmd args: {" ".join(sys.argv)}')
+    log.debug(f'{__name__}: {args}')
 
     if args.subcommand is None:
         parser.print_help()
-        sys.exit(1)
+        raise ValueError('No subcommand given!')
     else:
-        try:
-            mod = getattr(subcommands, args.subcommand)
+        mod = getattr(subcommands, args.subcommand)
+        mod.main(remainder)
 
-            log.debug('Launch {} args: {}'.format(
-                mod.__name__, ' '.join(remainder)))
 
-            mod.main(remainder)
-
-        except ModuleNotFoundError:
-            log.critical(traceback.format_exc())
-            parser.print_help()
-
-            if args.subcommand != 'help':
-                print('Error loading subcommand: {}'.format(args.subcommand))
-
-            sys.exit(1)

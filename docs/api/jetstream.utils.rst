@@ -12,4 +12,6 @@ Submodules
 .. toctree::
 
    jetstream.utils.general
+   jetstream.utils.transfer
+   jetstream.utils.yaml
 

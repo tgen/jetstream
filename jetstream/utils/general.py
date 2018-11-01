@@ -5,6 +5,7 @@ import csv
 import fnmatch
 import gzip
 import json
+import argparse
 import subprocess
 import logging
 import time
@@ -15,23 +16,16 @@ from getpass import getuser
 from socket import gethostname
 from uuid import getnode
 from pkg_resources import get_distribution
-import yaml
+from jetstream.utils.yaml import yaml
 
-
-def represent_none(self, _):
-    """Configures the yaml engine to represent null values as blanks"""
-    return self.represent_scalar('tag:yaml.org,2002:null', '')
-
-
-yaml.add_representer(type(None), represent_none)
 sentinel = object()
 log = logging.getLogger(__name__)
 
 
 class Fingerprint(object):
     """Generate a new run ID with a snapshot of the system info."""
-    def __init__(self):
-        self.id = jetstream.run_id()
+    def __init__(self, id=None):
+        self.id = jetstream.run_id(id)
         self.datetime = str(datetime.now())
         self.user = str(getuser())
         self.version = str(get_distribution("jetstream"))
@@ -320,12 +314,12 @@ def json_dump(obj, *args, **kwargs):
 def yaml_load(path):
     """Load a yaml file from `path`"""
     with open(path, 'r') as fp:
-        return yaml.load(fp)
+        return yaml.safe_load(fp)
 
 
 def yaml_loads(data):
     """Load yaml data"""
-    return yaml.load(data)
+    return yaml.safe_load(data)
 
 
 def yaml_dumps(obj):
@@ -376,6 +370,17 @@ def table_to_records(path):
             r.append(dict(row))
     return r
 
+
+def to_bool(value):
+    if value.lower() in ('yes', 'true',):
+        return True
+    elif value.lower() in ('no', 'false',):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(
+            f'Value "{value}" cannot be interpreted as bool, use true/false or '
+            'yes/no'
+        )
 
 def records_to_csv(records, outpath):
     """Writes records (list of dictionaries) out to a csv file"""
