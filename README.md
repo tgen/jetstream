@@ -1,4 +1,4 @@
-# Intro
+# Jetstream
 
 Jetstream is a pipeline development framework written as a pure Python package 
 and command line utility. It supports complex workflows modeled as directed-
@@ -15,17 +15,66 @@ pip3 install --upgrade --user git+https://github.com/tgen/jetstream.git@master
 
 More install help can be found in the (installation)[#installation] section below
 
+## Command-line
+
+After installing with Pip, the command line help can be accessed with the
+`-h/--help` options. If the command is not found, see the detailed
+(installation)[#installation] section below for more help.
+
+```shell
+$ jetstream -h
+usage: jetstream [-v] [--log-debug] [--log-verbose] [--log-format LOG_FORMAT]
+                 [--log-filename LOG_FILENAME] [--log-filemode LOG_FILEMODE]
+                 [--log-level LOG_LEVEL]
+
+Available commands are:
+
+    build
+        Build workflow files.
+
+    draw
+        Draw the network graph for a workflow.
+
+    init
+        Create a new project or reinitialize an existing project.
+
+    project
+        Interact with jetstream projects. View tasks, run history, or
+        project data. This option requires a subcommand.
+
+    run
+        Run Jetstream from a template, module, or workflow.
+
+optional arguments:
+  -v, --version         show program's version number and exit
+  --log-debug           Alias for debug log settings
+  --log-verbose         Alias for lowest-level log settings
+  --log-format LOG_FORMAT
+  --log-filename LOG_FILENAME
+  --log-filemode LOG_FILEMODE
+  --log-level LOG_LEVEL
+```
+
+## Python package
+
+```python
+>>> import jetstream
+>>> wf = jetstream.Workflow()
+>>> wf.new_task(name='task1')
+<Task task1>
+>>> wf.save(path='mywf.yaml')
+```
+
+Full package documentation can be found here:
+http://dback-login3.tgen.org:8082
+
 ## Contributing
 
 All contributions are welcome.
 Comments, suggestions, pull-requests, and issues can be submitted on [https://github.com/tgen/jetstream/issues]
 
-## Docs
 
-Full technical API documentation can be found here http://dback-login3.tgen.org:8082
-
-
-# Pipelines
+# Introduction
 
 Pipelines are a set of computational tasks that need to be repeated for multiple sets 
 of input data. Jetstream models pipelines as _Tasks_ and _Workflows_:
