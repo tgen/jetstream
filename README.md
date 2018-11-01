@@ -13,13 +13,14 @@ will introduce the core concepts of framework, and give some real examples.
 pip3 install --upgrade --user git+https://github.com/tgen/jetstream.git@master
 ```
 
-More install help can be found in the (installation)[#installation] section below
+More install help can be found in the [installation](#installation) section below
 
 ## Command-line
 
-After installing with Pip, the command line help can be accessed with the
-`-h/--help` options. If the command is not found, see the detailed
-(installation)[#installation] section below for more help.
+After installing with Pip, the command line utility can be launched with
+`jetstream`, and help can be accessed with the `-h/--help` options. If 
+the command is not found, see the detailed [installation](#installation) 
+help below.
 
 ```shell
 $ jetstream -h
