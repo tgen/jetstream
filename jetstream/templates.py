@@ -3,6 +3,7 @@ locations set by arguments or environment variables. """
 import os
 import json
 import hashlib
+import traceback
 from datetime import datetime
 from jinja2 import (
     Environment,
@@ -66,7 +67,8 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
         undefined=undefined_handler,
-        loader=FileSystemLoader(searchpath=searchpath)
+        loader=FileSystemLoader(searchpath=searchpath),
+        extensions=['jinja2.ext.do']
     )
 
     env.globals['raise'] = raise_helper
@@ -107,25 +109,38 @@ def render_template(path, variables=None, env=None):
 
     log.debug(f'Rendered Template:\n{render}')
 
-    parsed_tasks = utils.yaml_loads(render)
+    try:
+        parsed_tasks = utils.yaml_loads(render)
+    except utils.yaml.YAMLError:
+        log.critical(f'Error parsing rendered template:\n{render}')
+        tb = traceback.format_exc()
+        log.critical(f'Parser Traceback:\n{tb}\n')
+        msg = (
+            f'The template was rendered successfully, but failed to parse with'
+            f'the YAML loader. See the parser traceback above for more details.'
+        )
+        raise ValueError(msg) from None
 
     if not isinstance(parsed_tasks, list):
-        raise ValueError(
+        log.warning(f'Error loading rendered template:\n{render}')
+        msg = (
             f'The template was rendered and parsed successfully, but the '
             f'resulting data structure was a {type(parsed_tasks)} . Templates '
             f'should always produce a list of tasks.'
         )
+        raise ValueError(msg)
 
     workflow = Workflow()
 
     with workflow:
         for task in parsed_tasks:
             if not isinstance(task, dict):
-                raise ValueError(
+                log.critical(f'Error with task:\n{task}')
+                msg = (
                     f'The template was rendered and parsed successfully, but '
-                    f'encountered a task that was not a mapping type:\n'
-                    f'{task}'
+                    f'encountered a task that was not a mapping type.'
                 )
+                raise ValueError(msg)
 
             workflow.new_task(**task)
 
