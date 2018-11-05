@@ -79,14 +79,14 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-def render_template(path, variables=None, env=None):
+def render_template(path, variables=None, project=None, env=None):
     """Load and render a template.
 
     :param variables: Mapping of data used to render template
     :param env: A preconfigured Jinja Environment
     :return: Rendered template string
     """
-    log.info('Building workflow...')
+    log.info('Rendering template...')
     started = datetime.now()
 
     if variables is None:
@@ -104,10 +104,19 @@ def render_template(path, variables=None, env=None):
     with open(path, 'r') as fp:
         data = fp.read()
 
+    if project:
+        project.config.update(variables)
+        project.save_config()  # TODO Do we always want to save the updates?
+        variables = {'project': project}
+        variables.update(project.config)
+        variables.update(project=project)
+
+    log.debug(f'Template variables:\n{variables}')
     template = env.from_string(data)
     render = template.render(**variables)
 
     log.debug(f'Rendered Template:\n{render}')
+    log.info('Building workflow...')
 
     try:
         parsed_tasks = utils.yaml_loads(render)
