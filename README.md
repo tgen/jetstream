@@ -57,6 +57,13 @@ optional arguments:
   --log-filemode LOG_FILEMODE
   --log-level LOG_LEVEL
 ```
+To run a workflow template with a command line argument use the commands shown in the following example.
+ ```
+ jetstream run commandLine.jst --str:input inputFilename.txt
+```
+The command line argument `--str:input inputFilename.txt` follows the format `--<type>:key value`.
+The `input` variable name corresponding to `key` is referenced in the `commandLine.jst` template 
+within double-nested braces `{{input}}`, as described in the [***Variables in templates***](#variables-in-templates) section.
 
 ## Python package
 
