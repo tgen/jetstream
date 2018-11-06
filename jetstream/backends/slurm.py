@@ -83,11 +83,11 @@ class SlurmBackend(BaseBackend):
 
     def slurm_job_name(self, task):
         count = next(self.count)
-        run_id = self.runner.fp.id
+        run_id = self.runner.fingerprint.id
         return '{}.{}'.format(run_id, count)
 
     def slurm_job_comment(self, task):
-        run = self.runner.fp.serialize()
+        run = self.runner.fingerprint.serialize()
         tags = task.directives.get('tags', [])
 
         if isinstance(tags, str):
