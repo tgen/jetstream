@@ -641,28 +641,6 @@ def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
         f.savefig(filename)
 
 
-def save_workflow(workflow, path, format=None):
-    """Save a workflow to the path
-
-    This helper function will try to choose the correct file format based
-    on the extension of the path, but defaults to pickle for unrecognized
-    extensions.
-
-    :param workflow: Workflow instance
-    :param path: where to save
-    :return: None
-    """
-    if format is None:
-        ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
-
-    start = datetime.now()
-    jetstream.workflow_savers[format](workflow, path)
-    elapsed = datetime.now() - start
-
-    log.info('Workflow saved (after {}): {}'.format(elapsed, path))
-
-
 def load_workflow(path, format=None):
     """Load a workflow from a file.
 
@@ -692,6 +670,28 @@ def load_workflow_pickle(path):
     with open(path, 'rb') as fp:
         data = pickle.load(fp)
     return Workflow.deserialize(data)
+
+
+def save_workflow(workflow, path, format=None):
+    """Save a workflow to the path
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions.
+
+    :param workflow: Workflow instance
+    :param path: where to save
+    :return: None
+    """
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = jetstream.workflow_extensions.get(ext, 'pickle')
+
+    start = datetime.now()
+    jetstream.workflow_savers[format](workflow, path)
+    elapsed = datetime.now() - start
+
+    log.info('Workflow saved (after {}): {}'.format(elapsed, path))
 
 
 def save_workflow_yaml(workflow, path):

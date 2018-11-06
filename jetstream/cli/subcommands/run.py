@@ -158,18 +158,6 @@ def arg_parser():
     return parser
 
 
-def render_template(path, variables, project):
-    """Load the template, render with variables (including project) and
-    return the workflow."""
-    if project:
-        project.config.update(variables)
-        project.save_config()  # TODO Do we always want to save the updates?
-        wf = jetstream.render_template(path, project.config)
-    else:
-        wf = jetstream.render_template(path, variables)
-    return wf
-
-
 def main(args=None):
     parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
@@ -178,13 +166,18 @@ def main(args=None):
     log.debug(args)
 
     if args.mode == 'template':
-        workflow = render_template(args.path, args.variables, args.project)
+        workflow = jetstream.render_template(
+            path=args.path,
+            variables=args.variables,
+            project=args.project
+        )
     elif args.mode == 'module':
         raise NotImplementedError
     else:
         workflow = jetstream.load_workflow(args.path, args.workflow_format)
 
     if args.project:
+        args.variables.update(project=args.project)
         wf = args.project.workflow()
         wf.compose(workflow)
         workflow = wf
