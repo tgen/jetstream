@@ -8,7 +8,7 @@ is an example:
 Note that you may want to handle the asyncio.CancelledError in these coroutines
 otherwise an error will be reported when the runner exits early. 
 
-.. code_block:: python
+.. code-block:: python
 
     async def anothercoro():
         print('BAHHHHH')
@@ -48,7 +48,7 @@ Problem:
 
 Workflow produces a task that fails:
 
-.. code_block:: python
+.. code-block:: python
 
     >>> t1 = jetstream.Task(cmd='echo hello world && exit 1')
     >>> t1
@@ -57,7 +57,7 @@ Workflow produces a task that fails:
 
 I run the workflow in my project:
 
-.. code_block:: yaml
+.. code-block:: yaml
 
     directed: true
     graph:
@@ -78,7 +78,7 @@ I run the workflow in my project:
 
 Uh oh, it failed.. I edit the task, run the workflow again:
 
-.. code_block:: python
+.. code-block:: python
 
     >>> t2 = jetstream.Task(cmd='echo hello world && exit 0')
     >>> t2
@@ -88,7 +88,7 @@ Uh oh, it failed.. I edit the task, run the workflow again:
 
 My new project workflow:
 
-.. code_block:: yaml
+.. code-block:: yaml
 
     directed: true
     graph:
