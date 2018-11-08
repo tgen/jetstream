@@ -154,5 +154,5 @@ def render_template(path, variables=None, project=None, env=None):
             workflow.new_task(**task)
 
     elapsed = datetime.now() - started
-    log.info('Workflow ready after {}'.format(elapsed))
+    log.info(f'Workflow ready (after {elapsed}): {workflow}')
     return workflow

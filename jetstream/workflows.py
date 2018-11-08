@@ -323,16 +323,17 @@ class Workflow(object):
 
     def find(self, pattern, fallback=utils.sentinel):
         """Find searches for tasks by "name" with a regex pattern."""
-        log.debug('Find: {}'.format(pattern))
+        log.verbose('Find: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
         matches = set()
 
         for task_id, data in self.graph.nodes(True):
             task = data['obj']
-            name = task.directives.get('name')
 
-            if name is None:
+            try:
+                name = task.directives['name']
+            except KeyError:
                 continue
 
             if pat.match(name):
@@ -348,7 +349,7 @@ class Workflow(object):
             return fallback
 
     def find_by_id(self, pattern, fallback=utils.sentinel):
-        log.debug('Find by id pattern: {}'.format(pattern))
+        log.verbose('Find by id pattern: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
         fn = lambda task_id: pat.match(task_id)
@@ -365,18 +366,17 @@ class Workflow(object):
             return fallback
 
     def find_by_output(self, pattern, fallback=utils.sentinel):
-        log.debug('Find by output: {}'.format(pattern))
+        log.verbose('Find by output: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
         matches = set()
 
         for task_id, data in self.graph.nodes(True):
             log.verbose('Checking {}'.format(task_id))
-
             task = data['obj']
 
             try:
-                output = task.directives.get('output')
+                output = task.directives['output']
             except KeyError:
                 continue
 
@@ -537,7 +537,7 @@ class Workflow(object):
     def update(self):
         """Recalculate the edges for this workflow"""
         for task in self.tasks(objs=True):
-            log.verbose('Linking dependencies for: {}'.format(task))
+            log.debug('Linking dependencies for: {}'.format(task))
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
