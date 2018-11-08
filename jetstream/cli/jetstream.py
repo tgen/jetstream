@@ -84,7 +84,10 @@ def main(args=None):
 
     if args.subcommand is None:
         parser.print_help()
-        raise ValueError('No subcommand given!')
+        if '-h' in sys.argv or '--help' in sys.argv:
+            return
+        else:
+            raise ValueError('No subcommand given!')
     else:
         mod = getattr(subcommands, args.subcommand)
         mod.main(remainder)
