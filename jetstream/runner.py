@@ -18,6 +18,7 @@ class Runner:
         self.max_forks = max_forks or utils.guess_max_forks()
         self.project = None
         self.workflow = None
+        self._delay = None
         self._conc_sem = None
         self._errs = set()
         self._last_save = datetime.now()
@@ -78,7 +79,9 @@ class Runner:
             path = '{}.pickle'.format(self.fingerprint.id)
             self.workflow.save(path=path)
 
-    async def _yield(self, delay=0.1):
+    async def _yield(self, delay=None):
+        if delay is None:
+            delay = self._delay
         log.verbose('Yield for {}s'.format(delay))
         self._check_for_save()
         await asyncio.sleep(delay)
@@ -199,6 +202,7 @@ class Runner:
         self._run_preflight()
 
         log.info('Starting run: {}'.format(self.fingerprint.id))
+        self._delay = self._delay or (len(self.workflow) * 0.001)
         self._conc_sem = BoundedSemaphore(self.max_forks, loop=self.loop)
         self._main_future = self.loop.create_task(self.main(self.workflow))
         self._secondary_future = self.loop.create_task(self.backend.coro())
