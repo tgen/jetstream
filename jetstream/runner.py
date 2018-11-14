@@ -118,7 +118,6 @@ class Runner:
         except asyncio.CancelledError:
             log.warning('Runner.main was cancelled!')
         finally:
-            self._save_workflow()
             log.debug('Runner.main stopped')
 
     async def spawn(self, task):
@@ -207,6 +206,7 @@ class Runner:
         self._main_future = self.loop.create_task(self.main(self.workflow))
         self._secondary_future = self.loop.create_task(self.backend.coro())
         self._secondary_future.add_done_callback(self.handle_backend_coro)
+        self._save_workflow()
 
         try:
             self.loop.run_until_complete(self._main_future)
@@ -244,6 +244,7 @@ class Runner:
         log.debug('Wrapped up: {}'.format(to_cancel))
         log.debug('Closing event loop...')
         asyncio.events.set_event_loop(None)
+        self._save_workflow()
 
         if check_workflow:
             total = len(self.workflow)
