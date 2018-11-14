@@ -131,35 +131,35 @@ def arg_parser():
     )
 
     task_reset.add_argument(
-        'task_id',
+        'task_name',
         nargs='+',
-        help='Task ID(s) to reset'
+        help='Task name(s) to reset'
     )
 
     task_complete = subparsers.add_parser(
         name='complete_tasks',
         description='Warning - Experimental feature! '
                     'Complete tasks in the current project workflow',
-        parents = [parent, ]
+        parents=[parent, ]
     )
 
     task_complete.add_argument(
-        'task_id',
+        'task_name',
         nargs='+',
-        help='Task ID(s) to complete'
+        help='Task name(s) to complete'
     )
 
     task_fail = subparsers.add_parser(
-        name='complete_tasks',
+        name='fail_tasks',
         description='Warning - Experimental feature! '
                     'Fail tasks in the current project workflow',
         parents=[parent, ]
     )
 
     task_fail.add_argument(
-        'task_id',
+        'task_name',
         nargs='+',
-        help='Task ID(s) to complete'
+        help='Task name(s) to fail'
     )
 
     history = subparsers.add_parser(
