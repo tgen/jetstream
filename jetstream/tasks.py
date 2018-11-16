@@ -154,10 +154,10 @@ class Task(object):
             for dep in self.dependents():
                 dep.reset(quiet=True)
 
-    def start(self, quiet=False):
-        """Indicate that this task has been started"""
+    def pending(self, quiet=False):
+        """Indicate that this task has been passed to the runner"""
         if not quiet:
-            log.info('Started: {}'.format(self))
+            log.info('Pending: {}'.format(self))
 
         self.status = 'pending'
         self.state['start_at'] = datetime.now().isoformat()

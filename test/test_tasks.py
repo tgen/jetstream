@@ -130,7 +130,7 @@ class TaskBasics(TestCase):
 
     def test_pending_task(self):
         t = Task(name='task')
-        t.start()
+        t.pending()
         self.assertEqual(t.status, 'pending')
         self.assertTrue(t.is_pending())
         self.assertFalse(t.is_done())

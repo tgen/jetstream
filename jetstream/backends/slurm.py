@@ -26,14 +26,14 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, max_concurrency=9001, sacct_frequency=10, sbatch=None):
+    def __init__(self, runner, max_concurrency=9001, sacct_frequency=10,
+                 sbatch=None):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
         be requested from sacct
-        :param chunk_size: Number of jobs that will be checked with each
-        request to sacct
         """
+        super(SlurmBackend, self).__init__(runner)
         self.sbatch = sbatch
         self.sacct_frequency = sacct_frequency
         self.max_concurrency = max_concurrency
@@ -126,6 +126,7 @@ class SlurmBackend(BaseBackend):
             additional_args=task.directives.get('sbatch_args')
         )
 
+        log.info(f'Submitted({job.jid}): {task}')
         task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
 
         event = asyncio.Event(loop=self.runner.loop)

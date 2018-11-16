@@ -130,8 +130,22 @@ def arg_parser():
     runner.add_argument(
         '--backend',
         choices=['local', 'slurm'],
-        default='local',
+        default='slurm',
         help='Specify the runner backend (Default: local)'
+    )
+
+    runner.add_argument(
+        '--local',
+        dest='backend',
+        action='store_const',
+        const='local'
+    )
+
+    runner.add_argument(
+        '--slurm',
+        dest='backend',
+        action='store_const',
+        const='slurm'
     )
 
     runner.add_argument(
@@ -190,9 +204,9 @@ def main(args=None):
         workflow.reset()
 
     if args.backend == 'slurm':
-        backend = SlurmBackend()
+        backend = SlurmBackend
     else:
-        backend = LocalBackend()
+        backend = LocalBackend
 
     runner = jetstream.Runner(
         backend=backend,

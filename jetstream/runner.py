@@ -3,18 +3,16 @@ import traceback
 from datetime import datetime
 import asyncio
 from asyncio import BoundedSemaphore
-from jetstream import utils, log, projects
+from jetstream import utils, log
 from jetstream.backends import LocalBackend
 
 
 class Runner:
-    def __init__(self, autosave=3600, backend=None, loop=None,
-                 max_forks=None, debug=False):
+    def __init__(self, autosave=3600, backend=None, max_forks=None,
+                 debug=False, *args, **kwargs):
         self.autosave = autosave
-        self.backend = backend or LocalBackend()
         self.debug = debug
         self.fingerprint = None
-        self.loop = loop
         self.max_forks = max_forks or utils.guess_max_forks()
         self.project = None
         self.workflow = None
@@ -26,6 +24,20 @@ class Runner:
         self._secondary_future = None
         self._task_futures = set()
 
+        if asyncio._get_running_loop() is not None:
+            raise RuntimeError("Cannot start from a running event loop")
+
+        self.loop = asyncio.events.new_event_loop()
+        self.loop.set_debug(self.debug)
+        asyncio.events.set_event_loop(self.loop)
+
+        log.info(f'Runner initialized with {self.max_forks} max forks')
+
+        if backend:
+            self.backend = backend(self, *args, **kwargs)
+        else:
+            self.backend = LocalBackend(self, *args, **kwargs)
+
     def _run_preflight(self):
         log.debug('Running preflight checks...')
         if hasattr(self.backend, 'preflight'):
@@ -34,19 +46,6 @@ class Runner:
             except Exception:
                 log.critical('Backend failed preflight checks!')
                 raise
-
-        if asyncio._get_running_loop() is not None:
-            raise RuntimeError("Cannot start from a running event loop")
-
-        if self.loop is None:
-            self.loop = asyncio.events.new_event_loop()
-            asyncio.events.set_event_loop(self.loop)
-            self.loop.set_debug(self.debug)
-
-        # Backends have a semaphore that controls the backend-specific
-        # concurrent task limit. So, the call to backend.start() needs to
-        # happen after the event loop is added to the runner.
-        self.backend.start(self)
 
         if self.project is not None:
             history_file = os.path.join(
@@ -60,6 +59,13 @@ class Runner:
 
             with open(history_file, 'w') as fp:
                 fp.write(self.fingerprint.to_yaml())
+
+        # Startup the async tasks
+        self._delay = self._delay or (len(self.workflow) * 0.001)
+        self._conc_sem = BoundedSemaphore(self.max_forks, loop=self.loop)
+        self._main_future = self.loop.create_task(self.main(self.workflow))
+        self._secondary_future = self.loop.create_task(self.backend.coro())
+        self._secondary_future.add_done_callback(self.handle_backend_coro)
 
     def _check_for_save(self):
         now = datetime.now()
@@ -79,9 +85,7 @@ class Runner:
             path = '{}.pickle'.format(self.fingerprint.id)
             self.workflow.save(path=path)
 
-    async def _yield(self, delay=None):
-        if delay is None:
-            delay = self._delay
+    async def _yield(self, delay=0.1):
         log.verbose('Yield for {}s'.format(delay))
         self._check_for_save()
         await asyncio.sleep(delay)
@@ -101,7 +105,7 @@ class Runner:
                     break
 
                 if task is None:
-                    await self._yield()
+                    await self._yield(self._delay)
                     continue
                 else:
                     if not task.directives.get('cmd'):
@@ -198,14 +202,9 @@ class Runner:
         self.fingerprint = utils.Fingerprint(id=run_id)
         self.loop = loop or self.loop
         self.debug = debug or self.debug
-        self._run_preflight()
 
-        log.info('Starting run: {}'.format(self.fingerprint.id))
-        self._delay = self._delay or (len(self.workflow) * 0.001)
-        self._conc_sem = BoundedSemaphore(self.max_forks, loop=self.loop)
-        self._main_future = self.loop.create_task(self.main(self.workflow))
-        self._secondary_future = self.loop.create_task(self.backend.coro())
-        self._secondary_future.add_done_callback(self.handle_backend_coro)
+        log.info(f'Starting run: {self.fingerprint.id}')
+        self._run_preflight()
         self._save_workflow()
 
         try:
@@ -217,7 +216,7 @@ class Runner:
             self.workflow = None
 
             elapsed = datetime.now() - started
-            log.critical('Elapsed: {}'.format(elapsed))
+            log.critical(f'Elapsed: {elapsed}')
 
             if self._errs:
                 for err in self._errs:
@@ -225,7 +224,7 @@ class Runner:
                 raise RuntimeError('Runner halted unexpectedly!')
 
     def shutdown(self, check_workflow=True):
-        log.info('Shutting down runner...')
+        log.info('Runner shutting down...')
         if not self._secondary_future.done():
             self._secondary_future.cancel()
 

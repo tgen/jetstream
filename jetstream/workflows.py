@@ -116,7 +116,7 @@ class Workflow(object):
 
         # Drop all pending tasks that have completed since the last call
         self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
-        log.verbose('Pending: {}'.format(self._iter_pending))
+        log.verbose('Pending tasks: {}'.format(self._iter_pending))
 
         if not self._iter_tasks and not self._iter_pending:
             raise StopIteration
@@ -136,7 +136,7 @@ class Workflow(object):
                 log.verbose('{} ready, moving to pending'.format(task))
                 self._iter_tasks.pop(i)
                 self._iter_pending.append(task)
-                task.start()
+                task.pending(quiet=True)
                 return task
         else:
             return None

@@ -37,7 +37,8 @@ class TestCliExt(TestCase):
                 run.main([
                     t,
                     '--variables', self.variables,
-                    '--backend', 'local'])
+                    '--backend', 'local'
+                ])
 
 
     # def test_should_fail(self):
