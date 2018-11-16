@@ -79,7 +79,7 @@ def main(args=None):
 
     logs.start_logging(format=log_format, level=log_level)
     log.info(f'Version {get_distribution("jetstream")}')
-    log.info(f'Cmd args: {" ".join(sys.argv)}')
+    log.debug(f'Cmd args: {" ".join(sys.argv)}')
     log.debug(f'{__name__}: {args}')
 
     if args.subcommand is None:
