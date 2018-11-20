@@ -1,10 +1,30 @@
 import os
 import traceback
 from datetime import datetime
+import signal
+from contextlib import contextmanager
 import asyncio
 from asyncio import BoundedSemaphore
 from jetstream import utils, log
 from jetstream.backends import LocalBackend
+
+
+def signal_handler(signum, frame):
+    raise KeyboardInterrupt
+
+
+@contextmanager
+def sigterm_ignored():
+    """Context manager that enables a temporary hook on SIGTERM, and raises
+    a KeyboardInterrupt instead."""
+    original_sigint_handler = signal.getsignal(signal.SIGTERM)
+    signal.signal(signal.SIGTERM, signal_handler)
+    try:
+        log.debug('Graceful shutdown enabled!')
+        yield
+    finally:
+        log.debug('Returning control to default signal handler')
+        signal.signal(signal.SIGTERM, original_sigint_handler)
 
 
 class Runner:
@@ -208,7 +228,8 @@ class Runner:
         self._save_workflow()
 
         try:
-            self.loop.run_until_complete(self._main_future)
+            with sigterm_ignored():
+                self.loop.run_until_complete(self._main_future)
         finally:
             self.shutdown(check_workflow=check_workflow)
             self.fingerprint = None

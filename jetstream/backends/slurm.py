@@ -133,12 +133,15 @@ class SlurmBackend(BaseBackend):
         job.event = event
         self.jobs[job.jid] = job
 
-        await event.wait()
+        try:
+            await event.wait()
 
-        if job.is_ok():
-            task.complete(job.returncode())
-        else:
-            task.fail(job.returncode())
+            if job.is_ok():
+                task.complete(job.returncode())
+            else:
+                task.fail(job.returncode())
+        except asyncio.CancelledError:
+            task.fail()
 
 
 class SlurmBatchJob(object):
