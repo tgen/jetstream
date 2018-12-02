@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
+IN_PROGRESS_FILENAME = 'transfer_in_progress...'
 
 
 class Wrangler(object):
@@ -121,6 +122,8 @@ def check_rsyncs(host):
     rsync_lines = stdout.read().decode('utf8').splitlines()
     n_rsyncs = max(len(rsync_lines) - 2, 0)  # Adjust for the current grep and ssh
 
+    ssh.close()
+
     log.info(f'{n_rsyncs} rsyncs on {host}!')
     return n_rsyncs
 
@@ -155,7 +158,7 @@ def rsync_project_to_isilon(src_list, dest, wrangler, *args):
         ssh.connect(host)
 
         log.info('Making progress file...')
-        cmd = f'mkdir -p {target} && touch {target}/rsync_in_progress...'
+        cmd = f'mkdir -p $(dirname {target}) && touch {target}/{IN_PROGRESS_FILENAME}'
         stdin, stdout, stderr = ssh.exec_command(cmd)
         stdout.channel.recv_exit_status()
 
@@ -163,7 +166,7 @@ def rsync_project_to_isilon(src_list, dest, wrangler, *args):
             rsync(src, '{}:{}'.format(host, dest), '-avu', *args)
         finally:
             log.info('Removing progress file...')
-            stdin, stdout, stderr = ssh.exec_command(f'rm {target}/rsync_in_progress...')
+            stdin, stdout, stderr = ssh.exec_command(f'rm {target}/{IN_PROGRESS_FILENAME}')
             stdout.channel.recv_exit_status()
             ssh.close()
 
@@ -186,15 +189,19 @@ def rsync_project_from_isilon(src_list, dest, wrangler, *args):
         host = wrangler.next()
 
         log.info('Making progress file...')
-        os.makedirs(target, exist_ok=True)
-        with open(f'{target}/rsync_in_progress...', 'w'):
+        target_dir = os.path.dirname(target)
+        os.makedirs(target_dir, exist_ok=True)
+        with open(f'{target_dir}/{IN_PROGRESS_FILENAME}', 'w'):
             pass
 
         try:
             rsync('{}:{}'.format(host, src), dest, '-avu', *args)
         finally:
             log.info('Removing progress file...')
-            os.remove(f'{target}/rsync_in_progress...')
+            try:
+                os.remove(f'{target_dir}/{IN_PROGRESS_FILENAME}')
+            except FileNotFoundError:
+                pass
 
 
 def rsync_bulk_with_uris(src_list, dest, wrangler, max_workers=3, *args):
