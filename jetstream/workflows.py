@@ -109,31 +109,24 @@ class Workflow(object):
     def __next__(self):
         """Select the next available task for execution. If no task is ready,
         this will return None."""
-        log.verbose('Request for next task')
-
         if self.is_locked():
             raise RuntimeError('Cannot get next while workflow is locked')
 
         # Drop all pending tasks that have completed since the last call
         self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
-        log.verbose('Pending tasks: {}'.format(self._iter_pending))
 
         if not self._iter_tasks and not self._iter_pending:
             raise StopIteration
 
         for i in reversed(range(len(self._iter_tasks))):
             task = self._iter_tasks[i]
-            log.verbose('Considering: {}'.format(task))
 
             if task.is_done():
-                log.verbose('{} done, removing from list'.format(task))
                 self._iter_tasks.pop(i)
             elif task.is_pending():
-                log.verbose('{} pending, moving to pending'.format(task))
                 self._iter_tasks.pop(i)
                 self._iter_pending.append(task)
             elif task.is_ready():
-                log.verbose('{} ready, moving to pending'.format(task))
                 self._iter_tasks.pop(i)
                 self._iter_pending.append(task)
                 task.pending(quiet=True)
@@ -156,8 +149,6 @@ class Workflow(object):
         This means that the in-degree of a node represents the number of
         dependencies it has. A node with zero in-edges is a "root" node, or a
         task with no dependencies. """
-        log.verbose('Adding edge: {} -> {}'.format(from_node, to_node))
-
         self.graph.add_edge(from_node, to_node)
 
         if not nx.is_directed_acyclic_graph(self.graph):
@@ -172,15 +163,12 @@ class Workflow(object):
 
         """
         after = task.directives.get('after')
-        log.verbose('"after" directive: {}'.format(after))
 
         if after:
             after = utils.coerce_sequence(after)
-            log.verbose('"after" directive after coercion: {}'.format(after))
 
             for value in after:
                 matches = self.find(value)
-                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
                     matches.remove(task.tid)
@@ -196,15 +184,12 @@ class Workflow(object):
 
         """
         before = task.directives.get('before')
-        log.verbose('"before" directive: {}'.format(before))
 
         if before:
             before = utils.coerce_sequence(before)
-            log.verbose('"before" directive after coercion: {}'.format(before))
 
             for value in before:
                 matches = self.find(value)
-                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
                     matches.remove(task.tid)
@@ -220,15 +205,12 @@ class Workflow(object):
 
         Where target includes an "output" value matching the "input" value."""
         input = task.directives.get('input')
-        log.verbose('"input" directive: {}'.format(input))
 
         if input:
             input = utils.coerce_sequence(input)
-            log.verbose('"input" directive after coercion: {}'.format(input))
 
             for value in input:
                 matches = self.find_by_output(value)
-                log.verbose('Found matches: {}'.format(matches))
 
                 if task.tid in matches:
 
@@ -251,8 +233,6 @@ class Workflow(object):
 
         if task.tid in self.graph:
             raise ValueError('Duplicate task ID: {}'.format(task.tid))
-
-        log.verbose('Adding task: {}'.format(task))
 
         task.workflow = self
         self.graph.add_node(task.tid, obj=task)
@@ -323,8 +303,6 @@ class Workflow(object):
 
     def find(self, pattern, fallback=utils.sentinel):
         """Find searches for tasks by "name" with a regex pattern."""
-        log.verbose('Find: {}'.format(pattern))
-
         pat = self._format_pattern(pattern)
         matches = set()
 
@@ -349,14 +327,10 @@ class Workflow(object):
             return fallback
 
     def find_by_id(self, pattern, fallback=utils.sentinel):
-        log.verbose('Find by id pattern: {}'.format(pattern))
-
         pat = self._format_pattern(pattern)
         fn = lambda task_id: pat.match(task_id)
         gen = self.graph.nodes()
         matches = set(filter(fn, gen))
-
-        log.verbose('Found matches: {}'.format(matches))
 
         if matches:
             return matches
@@ -366,13 +340,10 @@ class Workflow(object):
             return fallback
 
     def find_by_output(self, pattern, fallback=utils.sentinel):
-        log.verbose('Find by output: {}'.format(pattern))
-
         pat = self._format_pattern(pattern)
         matches = set()
 
         for task_id, data in self.graph.nodes(True):
-            log.verbose('Checking {}'.format(task_id))
             task = data['obj']
 
             try:
@@ -381,8 +352,6 @@ class Workflow(object):
                 continue
 
             output = utils.coerce_sequence(output)
-
-            log.verbose('Output directive after coercion: {}'.format(output))
 
             for value in output:
                 if pat.match(value):
@@ -537,7 +506,6 @@ class Workflow(object):
     def update(self):
         """Recalculate the edges for this workflow"""
         for task in self.tasks(objs=True):
-            log.debug('Linking dependencies for: {}'.format(task))
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
@@ -691,7 +659,7 @@ def save_workflow(workflow, path, format=None):
     jetstream.workflow_savers[format](workflow, path)
     elapsed = datetime.now() - start
 
-    log.info('Workflow saved (after {}): {}'.format(elapsed, path))
+    log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
 
 
 def save_workflow_yaml(workflow, path):
