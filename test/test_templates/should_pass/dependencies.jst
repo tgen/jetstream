@@ -1,0 +1,11 @@
+- name: task_0
+  cmd: echo Task chain with {{ tasks }} ancestors
+
+{% for i in range(1, tasks) %}
+- name: task_{{ i }}
+  stdout: /dev/null
+  cmd: echo task {{ i }}
+  after: task_{{ i - 1 }}
+
+{% endfor %}
+  
