@@ -1,4 +1,5 @@
 import os
+import random
 
 class BaseBackend(object):
     """To subclass a backend, just override the "spawn" method with a
@@ -6,11 +7,11 @@ class BaseBackend(object):
     that a backend will allow to spawn concurrently."""
     def __init__(self, runner):
         self.runner = runner
-
-    async def coro(self):
-        pass
+        self.coroutines = tuple()
 
     async def spawn(self, task):
+        """The base Backend class cannot be used to run workflows, it is
+        only for subclassing to make new backends"""
         raise NotImplementedError
 
     def get_fd_paths(self, task):
@@ -36,3 +37,10 @@ class BaseBackend(object):
             stderr = task.directives.get('stderr')
 
         return stdin, stdout, stderr
+
+
+class PoisonedBackend(BaseBackend):
+    async def spawn(self, something):
+        if random.random() > 0.95:
+            raise Exception('Bad code in the backend should cause the runner'
+                            'to halt!')

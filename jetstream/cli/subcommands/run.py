@@ -218,7 +218,6 @@ def main(args=None):
         workflow=workflow,
         project=args.project,
         run_id=args.run_id,
-        check_workflow=args.check_workflow,
     )
 
 

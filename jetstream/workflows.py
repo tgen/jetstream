@@ -240,6 +240,14 @@ class Workflow(object):
     def _format_pattern(self, pat):
         return re.compile('^{}$'.format(pat))
 
+    def ancestors(self, task):
+        if isinstance(task, str):
+            task_id = task
+        else:
+            task_id = task.tid
+
+        return (self.get_task(tid) for tid in nx.ancestors(self.graph, task_id))
+
     def add_task(self, task):
         """Add a node to the graph and calculate any dependencies.
 
@@ -317,6 +325,14 @@ class Workflow(object):
             task_id = task.tid
 
         return (self.get_task(tid) for tid in self.graph.successors(task_id))
+
+    def descendants(self, task):
+        if isinstance(task, str):
+            task_id = task
+        else:
+            task_id = task.tid
+
+        return (self.get_task(tid) for tid in nx.descendants(self.graph, task_id))
 
     def draw(self, *args, **kwargs):
         return draw_workflow(self, *args, **kwargs)
@@ -691,7 +707,7 @@ def save_workflow(workflow, path, format=None):
     jetstream.workflow_savers[format](workflow, path)
     elapsed = datetime.now() - start
 
-    log.info('Workflow saved (after {}): {}'.format(elapsed, path))
+    log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
 
 
 def save_workflow_yaml(workflow, path):

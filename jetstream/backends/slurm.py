@@ -42,7 +42,7 @@ class SlurmBackend(BaseBackend):
         self.coroutines = (self.job_monitor,)
 
         if self.sbatch is None:
-            self.sbatch = shutil.which('sbatch')
+            self.sbatch = shutil.which('sbatch') or 'sbatch'
 
         subprocess.run([self.sbatch, '--version'], check=True)
         log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))

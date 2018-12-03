@@ -142,7 +142,7 @@ class Task(object):
         else:
             self._workflow = value
 
-    def reset(self, quiet=False):
+    def reset(self, quiet=False, descendants=True):
         """Reset the state of this task"""
         if not quiet:
             log.info('Reset: {}'.format(self))
@@ -150,8 +150,8 @@ class Task(object):
         self.status = 'new'
         self._state = utils.JsonDict()
 
-        if self.workflow:
-            for dep in self.dependents():
+        if self.workflow and descendants:
+            for dep in self.descendants():
                 dep.reset(quiet=True)
 
     def pending(self, quiet=False):
@@ -162,7 +162,7 @@ class Task(object):
         self.status = 'pending'
         self.state['start_at'] = datetime.now().isoformat()
 
-    def fail(self, returncode=None, quiet=False):
+    def fail(self, returncode=None, quiet=False, descendants=True):
         """Indicate that this task has failed"""
         if not quiet:
             log.info('Failed: {}'.format(self))
@@ -173,10 +173,10 @@ class Task(object):
         if returncode is not None:
             self.state.update(returncode=returncode)
 
-        if self.workflow:
-            for dep in self.dependents():
+        if self.workflow and descendants:
+            for dep in self.descendants():
                 dep.state.update(dependency_failed=self.tid)
-                dep.fail(quiet=True)
+                dep.fail(quiet=True, descendants=False)
 
     def complete(self, returncode=None, quiet=False):
         """Indicate that this task is complete"""
@@ -228,6 +228,11 @@ class Task(object):
     def dependencies(self):
         return self.workflow.dependencies(self)
 
+    def ancestors(self):
+        return self.workflow.ancestors(self)
+
+    def descendants(self):
+        return self.workflow.descendants(self)
 
 class TaskException(Exception):
     """Base class for catching exceptions related to tasks"""
