@@ -51,9 +51,7 @@ class JsonDict(dict):
     """Dict subclass that enforces JSON serializable keys/values.
      This is going to be slower than a dictionary, because it's validating
      every change made to the dict, but will ensure that the items can be
-     serialized later.
-     """
-
+     serialized later."""
     def __init__(self, *args, **kwargs):
         super(JsonDict, self).__init__(*args, **kwargs)
         json_dumps(self)
@@ -162,34 +160,24 @@ class Source(str):
         return '{}: {}'.format(self.line_number, self)
 
 
-def test_csv_records():
-    """Returns some test data for table parsers"""
-    return [
-        {
-            'test': 'whitespace',
-            'data': ' \t\n\n\x0b\x0c'
-        },
-        {
-            'test': 'punctuation',
-            'data': '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
-        },
-        {
-            'test': 'printable',
-            'data': '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-                    '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ \t\n\n\x0b\x0c'
-        },
-        {
-            'test': 'digits',
-            'data': '0123456789'
-        },
-        {
-            'test': 'ascii_letters',
-            'data': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        }
-    ]
+def coerce_sequence(obj):
+    """Coerce an object to a sequence.
+    If the object is not already a sequence, this will convert the object
+    to a single item list. Since strings are sequences, iterating over an
+    object that can be a string or a sequence can be difficult. This solves
+    the problem by ensuring scalars are converted to sequences. """
+    if obj is None:
+        obj = []
+    elif isinstance(obj, str):
+        obj = [obj, ]
+    elif not isinstance(obj, Sequence):
+        obj = [obj, ]
+    return obj
 
 
 def guess_max_forks(default=500):
+    """Returns 1/4 of current ulimit -u value. This leaves a good amount of
+    room for subprocesses to continue."""
     try:
         res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
         return res
@@ -197,6 +185,114 @@ def guess_max_forks(default=500):
         log.exception(e)
         return default
 
+
+def is_gzip(path, magic_number=b'\x1f\x8b'):
+    """Returns True if the path is gzipped."""
+    if os.path.exists(path) and not os.path.isfile(path):
+        raise OSError("This should only be used with regular files because"
+                      "otherwise it will lose some data.")
+
+    with open(path, 'rb') as fp:
+        if fp.read(2) == magic_number:
+            return True
+        else:
+            return False
+
+
+def is_scalar(obj):
+    """Returns `True` if the `obj` should be considered
+    a scalar for YAML serialization. Strings are an instance of Sequence,
+    so this function might look odd, but it does the job."""
+    if isinstance(obj, (str,)):
+        return True
+
+    if isinstance(obj, (Sequence, Mapping)):
+        return False
+    else:
+        return True
+
+
+def json_loads(data):
+    """Load json data"""
+    return json.loads(data)
+
+
+def json_dumps(obj, sort_keys=True, *args, **kwargs):
+    """Attempt to convert `obj` to a JSON string"""
+    return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
+
+
+def json_dump(obj, sort_keys=True, *args, **kwargs):
+    return json.dump(obj, sort_keys=sort_keys, *args, **kwargs)
+
+
+def filter_records(records, criteria):
+    """Given a list of mapping objects (`records`) and a criteria mapping,
+    this function returns a list of objects that match filter criteria."""
+    matches = list()
+    for i in records:
+        for k, v in criteria.items():
+            if k not in i:
+                log.debug('Drop "{}" due to "{}" not in doc'.format(i, k))
+                break
+            if i[k] != v:
+                log.debug('Drop "{}" due to "{}" not == "{}"'.format(i, k, v))
+                break
+        else:
+            matches.append(i)
+    return matches
+
+
+def find(path, name=None):
+    """Similar to BSD find, finds files matching name pattern."""
+    for dirname, subdirs, files in os.walk(path):
+        for f in files:
+            if name is None:
+                yield os.path.join(dirname, f)
+            elif fnmatch.fnmatch(f, name):
+                yield os.path.join(dirname, f)
+
+
+def load_json(path):
+    """Load a json file from path"""
+    with open(path, 'r') as fp:
+        return json.load(fp)
+
+
+def load_table(path):
+    """Attempts to load a table, in any format, as a list of dictionaries
+
+    :param path: Path to a table file
+    :return: :list """
+    r = list()
+    with open(path, 'r') as fp:
+        dialect = csv.Sniffer().sniff(fp.readline())
+        log.debug('Sniffed delimiter "{}" for "{}"'.format(
+            dialect.delimiter, path))
+        fp.seek(0)
+        reader = csv.DictReader(fp, delimiter=dialect.delimiter)
+        for row in reader:
+            r.append(dict(row))
+    return r
+
+
+def load_yaml(path):
+    """Load a yaml file from `path`"""
+    with open(path, 'r') as fp:
+        return yaml.safe_load(fp)
+
+
+def to_bool(value):
+    """Convert a string value to bool"""
+    if value.lower() in ('yes', 'true',):
+        return True
+    elif value.lower() in ('no', 'false',):
+        return False
+    else:
+        raise argparse.ArgumentTypeError(
+            f'Value "{value}" cannot be interpreted as bool, use true/false or '
+            'yes/no'
+        )
 
 
 def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
@@ -243,145 +339,6 @@ def read_lines_allow_gzip(path):
     return lines
 
 
-def is_gzip(path, magic_number=b'\x1f\x8b'):
-    """Returns True if the path is gzipped."""
-    if os.path.exists(path) and not os.path.isfile(path):
-        raise OSError("This should only be used with regular files because"
-                      "otherwise it will lose some data.")
-
-    with open(path, 'rb') as fp:
-        if fp.read(2) == magic_number:
-            return True
-        else:
-            return False
-
-
-def is_scalar(obj):
-    """Returns `True` if the `obj` should be considered
-    a scalar for YAML serialization. """
-    if isinstance(obj, (str,)):
-        return True
-
-    if isinstance(obj, (Sequence, Mapping)):
-        return False
-    else:
-        return True
-
-
-def coerce_sequence(obj):
-    """Coerce an object to a sequence.
-    If the object is not already a sequence, this will convert the object
-    to a single item list. Since strings are sequences, iterating over an 
-    object that can be a string or a sequence can be difficult. This solves 
-    the problem by ensuring scalars are converted to sequences. """
-    if obj is None:
-        obj = []
-    elif isinstance(obj, str):
-        obj = [obj, ]
-    elif not isinstance(obj, Sequence):
-        obj = [obj, ]
-    return obj
-
-
-def remove_prefix(string, prefix):
-    if string.startswith(prefix):
-        return string[len(prefix):]
-    else:
-        return string
-
-
-def json_load(path):
-    """Load a json file from path"""
-    with open(path, 'r') as fp:
-        return json.load(fp)
-
-
-def json_loads(data):
-    """Load json data"""
-    return json.loads(data)
-
-
-def json_dumps(obj, sort_keys=True, *args, **kwargs):
-    """Attempt to convert `obj` to a JSON string"""
-    return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
-
-
-def json_dump(obj, *args, **kwargs):
-    return json.dump(obj, sort_keys=True, *args, **kwargs)
-
-
-# TODO Handle multi-document yaml files gracefully
-def yaml_load(path):
-    """Load a yaml file from `path`"""
-    with open(path, 'r') as fp:
-        return yaml.safe_load(fp)
-
-
-def yaml_loads(data):
-    """Load yaml data"""
-    return yaml.safe_load(data)
-
-
-def yaml_dumps(obj):
-    """Attempt to convert `obj` to a YAML string"""
-    stream = io.StringIO()
-    yaml.dump(obj, stream=stream, default_flow_style=False)
-    return stream.getvalue()
-
-
-def yaml_dump(obj, stream):
-    return yaml.dump(obj, stream=stream, default_flow_style=False)
-
-
-def hash_dict(obj):
-    return hash(json_dumps(obj))
-
-
-def filter_records(records, criteria):
-    """Given a list of mapping objects (`records`) and a criteria mapping,
-    this function returns a list of objects that match filter criteria."""
-    matches = list()
-    for i in records:
-        for k, v in criteria.items():
-            if k not in i:
-                log.debug('Drop "{}" due to "{}" not in doc'.format(i, k))
-                break
-            if i[k] != v:
-                log.debug('Drop "{}" due to "{}" not == "{}"'.format(i, k, v))
-                break
-        else:
-            matches.append(i)
-    return matches
-
-
-def table_to_records(path):
-    """Attempts to load a table, in any format, as a list of dictionaries
-
-    :param path: Path to a table file
-    :return: :list """
-    r = list()
-    with open(path, 'r') as fp:
-        dialect = csv.Sniffer().sniff(fp.readline())
-        log.debug('Sniffed delimiter "{}" for "{}"'.format(
-            dialect.delimiter, path))
-        fp.seek(0)
-        reader = csv.DictReader(fp, delimiter=dialect.delimiter)
-        for row in reader:
-            r.append(dict(row))
-    return r
-
-
-def to_bool(value):
-    if value.lower() in ('yes', 'true',):
-        return True
-    elif value.lower() in ('no', 'false',):
-        return False
-    else:
-        raise argparse.ArgumentTypeError(
-            f'Value "{value}" cannot be interpreted as bool, use true/false or '
-            'yes/no'
-        )
-
 def records_to_csv(records, outpath):
     """Writes records (list of dictionaries) out to a csv file"""
     if os.path.exists(outpath):
@@ -404,11 +361,24 @@ def records_to_csv(records, outpath):
         dw.writerows(records)
 
 
-def find(path, name=None):
-    """Similar to BSD find, finds files matching name pattern."""
-    for dirname, subdirs, files in os.walk(path):
-        for f in files:
-            if name is None:
-                yield os.path.join(dirname, f)
-            elif fnmatch.fnmatch(f, name):
-                yield os.path.join(dirname, f)
+def remove_prefix(string, prefix):
+    if string.startswith(prefix):
+        return string[len(prefix):]
+    else:
+        return string
+
+
+def yaml_loads(data):
+    """Load yaml data"""
+    return yaml.safe_load(data)
+
+
+def yaml_dumps(obj):
+    """Attempt to convert `obj` to a YAML string"""
+    stream = io.StringIO()
+    yaml.dump(obj, stream=stream, default_flow_style=False)
+    return stream.getvalue()
+
+
+def yaml_dump(obj, stream):
+    return yaml.dump(obj, stream=stream, default_flow_style=False)
