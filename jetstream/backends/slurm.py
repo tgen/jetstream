@@ -32,30 +32,42 @@ class SlurmBackend(BaseBackend):
 
         :param sacct_frequency: Frequency in seconds that job updates will
         be requested from sacct
+        :param sbatch: path to the sbatch binary if not on PATH
         """
         super(SlurmBackend, self).__init__(runner)
         self.sbatch = sbatch
         self.sacct_frequency = sacct_frequency
         self.max_concurrency = max_concurrency
         self.jobs = dict()
+        self.coroutines = (self.job_monitor,)
 
-    def preflight(self):
         if self.sbatch is None:
-            self.sbatch = shutil.which('shutil')
+            self.sbatch = shutil.which('sbatch')
 
-        subprocess.run(['sbatch', '--version'], check=True)
+        subprocess.run([self.sbatch, '--version'], check=True)
         log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))
 
-    def status(self):
-        return 'Slurm jobs: {}'.format(self.semaphore)
-
-    async def coro(self):
+    async def job_monitor(self):
+        """Request job data updates from sacct for each job in self.jobs."""
         log.info('Slurm job monitor started!')
 
         try:
             while 1:
                 await asyncio.sleep(self.sacct_frequency)
-                await self._update_jobs()
+
+                if not self.jobs:
+                    return
+
+                sacct_data = sacct(*self.jobs, return_data=True)
+
+                for jid, data in sacct_data.items():
+                    if jid in self.jobs:
+                        job = self.jobs[jid]
+                        job.job_data = data
+
+                        if job.is_done():
+                            job.event.set()
+                            self.jobs.pop(jid)
         except CancelledError:
             if self.jobs:
                 log.info('Requesting scancel for outstanding slurm jobs')
@@ -63,45 +75,41 @@ class SlurmBackend(BaseBackend):
         finally:
             log.info('Slurm job monitor stopped!')
 
-    async def _update_jobs(self):
-        """Request job data updates from sacct for each job in self.jobs."""
-        log.verbose('Sacct request for {} jobs...'.format(len(self.jobs)))
-
-        if not self.jobs:
-            return
-
-        sacct_data = sacct(*self.jobs, return_data=True)
-
-        for jid, data in sacct_data.items():
-            if jid in self.jobs:
-                job = self.jobs[jid]
-                job.job_data = data
-
-                if job.is_done():
-                    job.event.set()
-                    self.jobs.pop(jid)
-
     def slurm_job_name(self, task):
+        """The slurm backend gives each job a name that is
+        <run_id>.<job number>
+        """
         count = next(self.count)
-        run_id = self.runner.fingerprint.id
+        run_id = self.runner.run_id
         return '{}.{}'.format(run_id, count)
 
     def slurm_job_comment(self, task):
-        run = self.runner.fingerprint.serialize()
+        """Slurm jobs will receive a comment that contains details about the
+        task, run id, and tags taken from the task directives. If tags are a
+        string, they will be converted to a list with shlex.split"""
         tags = task.directives.get('tags', [])
 
         if isinstance(tags, str):
             tags = shlex.split(tags)
 
         comment = {
-            'run': run,
+            'run': self.runner.run_id,
             'task': {
                 'tid': task.tid,
+                'label': task.label,
                 'tags': tags,
                 }
             }
 
-        return json.dumps(comment, sort_keys=True)
+        comment_string = json.dumps(comment, sort_keys=True)
+
+        if len(comment_string) > 1024:
+            return json.dumps({
+                'tid': task.tid,
+                'err': 'Job comment too long!'
+            }, sort_keys=True)
+        else:
+            return comment_string
 
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
@@ -386,8 +394,11 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
            cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None):
-    args = ['sbatch', '--parsable']
+           additional_args=None, sbatch=None):
+    if sbatch is None:
+        sbatch = 'sbatch'
+
+    args = [sbatch, '--parsable']
 
     if name:
         args.extend(['-J', name])
