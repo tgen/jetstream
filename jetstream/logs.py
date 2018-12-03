@@ -16,7 +16,7 @@ log.setLevel(1)
 
 base = "{asctime}: {message}"
 color_format = "[\033[4m\033[92m\U0001F335 {module:>10}\033[0m] " + base
-basic_format = "[{module:>12}] " + base
+basic_format = "[{module}] " + base
 debug_format = "{levelname} {module}:{lineno} " + basic_format
 
 

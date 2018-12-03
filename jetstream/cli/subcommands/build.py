@@ -35,8 +35,8 @@ def arg_parser():
     )
 
     parser.add_argument(
-        'out',
-        help='Path to save the workflow file'
+        '-o', '--out',
+        help='Path to save the workflow file after it is built.'
     )
 
     parser.add_argument(
@@ -131,7 +131,8 @@ def main(args=None):
         wf.compose(workflow)
         workflow = wf
 
-    workflow.save(path=args.out)
+    if args.out:
+        workflow.save(path=args.out)
 
 
 if __name__ == '__main__':
