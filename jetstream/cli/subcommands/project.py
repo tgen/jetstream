@@ -16,8 +16,7 @@ def arg_parser():
 
     parent.add_argument(
         '--project',
-        default='',
-        type=shared.set_project,
+        default=None,
         help='If the cwd is a project, it will be loaded automatically. '
              'Otherwise, a path to a project can be specified.'
     )
@@ -177,10 +176,11 @@ def arg_parser():
 
     return parser
 
+
 class Subcommands:
     @staticmethod
     def variables(args):
-        p = args.project
+        p = jetstream.Project(path=args.project)
 
         if args.format == 'json':
             if args.minified:
@@ -192,7 +192,7 @@ class Subcommands:
 
     @staticmethod
     def tasks(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         if args.task_name:
@@ -204,13 +204,13 @@ class Subcommands:
         else:
             tasks = {t.tid: t for t in wf.tasks(objs=True)}
 
-            print('\t'.join(('task_id', 'label', 'status',)))
+            print('\t'.join(('task_id', 'identity', 'status',)))
             for t in tasks.values():
-                print('\t'.join((t.tid, t.label, t.status,)))
+                print('\t'.join((t.tid, t.identity, t.status,)))
 
     @staticmethod
     def remove_tasks(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         for name in args.task_name:
@@ -220,7 +220,7 @@ class Subcommands:
 
     @staticmethod
     def remove_task_ids(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         for tid in args.task_id:
@@ -230,7 +230,7 @@ class Subcommands:
 
     @staticmethod
     def reset_tasks(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         for name in args.task_name:
@@ -242,7 +242,7 @@ class Subcommands:
 
     @staticmethod
     def complete_tasks(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         for name in args.task_name:
@@ -254,7 +254,7 @@ class Subcommands:
 
     @staticmethod
     def fail_tasks(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
         wf = p.workflow()
 
         for name in args.task_name:
@@ -266,10 +266,10 @@ class Subcommands:
 
     @staticmethod
     def history(args=None):
-        p = args.project
+        p = jetstream.Project(path=args.project)
 
         for r in p.history(paths=True):
-            r = jetstream.utils.yaml_load(r)
+            r = jetstream.utils.load_yaml(r)
             print(r['id'], r['datetime'])
 
     @staticmethod
@@ -294,13 +294,17 @@ def main(args=None):
     args = parser.parse_args(args)
     log.debug('{}: {}'.format(__name__, args))
 
-
     if args.project is None:
-        raise ValueError('This command requires a jetstream project. Run '
-                         'inside a jetstream project or use -p/--project')
+        try:
+            jetstream.Project()
+        except jetstream.NotAProject:
+            raise ValueError(
+                'This command requires a jetstream project. Run '
+                'inside a jetstream project or use -p/--project'
+            )
+
+    if args.subcommand == 'help':
+        Subcommands.help(parser)
     else:
-        if args.subcommand == 'help':
-            Subcommands.help(parser)
-        else:
-            getattr(Subcommands, args.subcommand)(args)
+        getattr(Subcommands, args.subcommand)(args)
 

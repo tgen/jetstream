@@ -36,10 +36,9 @@ from jetstream.tasks import Task
 __version__ = get_distribution('jetstream').version
 
 
-class NotDagError(Exception):
+class NotDagError(ValueError):
     """Raised when edges are added that would result in a graph that is not
     a directed-acyclic graph"""
-
 
 class Workflow(object):
     def __init__(self, **kwargs):
@@ -57,7 +56,9 @@ class Workflow(object):
         self._iter_pending = list()
 
     def __contains__(self, item):
-        return item in self.graph.nodes()
+        if isinstance(item, Task):
+            return self.graph.__contains__(item.tid)
+        return self.graph.__contains__(item)
 
     def __enter__(self):
         """Workflows can be edited in a transaction using the context manager
@@ -73,12 +74,11 @@ class Workflow(object):
             for task_id in self._cm_stack:
                 self.graph.remove_node(task_id)
 
-        try:
-            self.update()
-        except NotDagError:
+        self.update()
+        if not nx.is_directed_acyclic_graph(self.graph):
             for task_id in self._cm_stack:
                 self.graph.remove_node(task_id)
-            raise
+            raise NotDagError
 
         self._cm_stack = list()
         self._lock.release()
@@ -92,14 +92,15 @@ class Workflow(object):
 
         self._iter_tasks = list()
         self._iter_pending = list()
+        self._iter_done = list()
 
-        for task in self.tasks():
-            if task.is_new():
+        for task in nx.topological_sort(self.graph):
+            if self.get_task(task).is_new():
                 self._iter_tasks.append(task)
-            elif task.is_pending():
+            elif self.get_task(task).is_pending():
                 self._iter_pending.append(task)
             else:
-                pass
+                self._iter_done.append(task)
 
         return self
 
@@ -109,37 +110,55 @@ class Workflow(object):
     def __next__(self):
         """Select the next available task for execution. If no task is ready,
         this will return None."""
-        log.verbose('Request for next task')
+        log.verbose('Request for next task!')
+        log.verbose(f'{len(self._iter_tasks)} tasks remaining')
+        log.verbose(f'{len(self._iter_pending)} tasks pending')
+        log.verbose(f'{len(self._iter_done)} tasks done')
 
         if self.is_locked():
-            raise RuntimeError('Cannot get next while workflow is locked')
+            raise RuntimeError('Workflow.__next__ called while locked!')
 
         # Drop all pending tasks that have completed since the last call
-        self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
-        log.verbose('Pending tasks: {}'.format(self._iter_pending))
+        _temp = list()
+        for tid in self._iter_pending:
+            if self.get_task(tid).is_done():
+                self._iter_done.append(tid)
+            else:
+                _temp.append(tid)
 
-        if not self._iter_tasks and not self._iter_pending:
-            raise StopIteration
+        self._iter_pending = _temp
 
-        for i in reversed(range(len(self._iter_tasks))):
-            task = self._iter_tasks[i]
-            log.verbose('Considering: {}'.format(task))
+        # Faster search strategy
+
+        # Start search for the next task that is ready
+        _temp = list()
+        for tid in self._iter_tasks:
+            log.verbose(f'Considering: {tid}')
+            task = self.get_task(tid)
 
             if task.is_done():
-                log.verbose('{} done, removing from list'.format(task))
-                self._iter_tasks.pop(i)
+                log.verbose(f'{tid} done, removing from list')
+                self._iter_done.append(tid)
             elif task.is_pending():
-                log.verbose('{} pending, moving to pending'.format(task))
-                self._iter_tasks.pop(i)
-                self._iter_pending.append(task)
+                log.verbose(f'{tid} pending, moving to pending')
+                self._iter_pending.append(tid)
             elif task.is_ready():
-                log.verbose('{} ready, moving to pending'.format(task))
-                self._iter_tasks.pop(i)
-                self._iter_pending.append(task)
+                log.verbose(f'{tid} ready, move to pending and return')
+                self._iter_pending.append(tid)
                 task.pending(quiet=True)
                 return task
-        else:
+            else:
+                _temp.append(tid)
+
+        self._iter_tasks = _temp
+
+
+        # If there are any remaining or pending, return None until one is ready
+        if self._iter_tasks or self._iter_pending:
             return None
+        else:
+            raise StopIteration
+
 
     def __repr__(self):
         stats = Counter([t.status for t in self.tasks(objs=True)])
@@ -158,11 +177,18 @@ class Workflow(object):
         task with no dependencies. """
         log.verbose('Adding edge: {} -> {}'.format(from_node, to_node))
 
+        if from_node not in self.graph:
+            raise NotDagError(f'{from_node} is not in the workflow!')
+
+        if to_node not in self.graph:
+            raise NotDagError(f'{to_node} is not in the workflow!')
+
         self.graph.add_edge(from_node, to_node)
 
-        if not nx.is_directed_acyclic_graph(self.graph):
-            self.graph.remove_edge(from_node, to_node)
-            raise NotDagError('{} -> {}'.format(from_node, to_node))
+        if not self.is_locked():
+            if not nx.is_directed_acyclic_graph(self.graph):
+                self.graph.remove_edge(from_node, to_node)
+                raise NotDagError('{} -> {}'.format(from_node, to_node))
 
     def _make_edges_after(self, task):
         """Generate edges for "after" directives of a task.
@@ -171,22 +197,28 @@ class Workflow(object):
             tasks with name matching "after" pattern, ...  ------>  task
 
         """
-        after = task.directives.get('after')
+        after = task.directives().get('after')
         log.verbose('"after" directive: {}'.format(after))
 
         if after:
-            after = utils.coerce_sequence(after)
-            log.verbose('"after" directive after coercion: {}'.format(after))
+            matches = set()
 
-            for value in after:
-                matches = self.find(value)
-                log.verbose('Found matches: {}'.format(matches))
+            if isinstance(after, str):
+                matches.add(after)
+            elif isinstance(after, (list, tuple)):
+                for target in after:
+                    matches.add(target)
+            elif isinstance(after, dict) and 're' in after:
+                for target in self.find(after['re']):
+                    matches.add(target)
+            else:
+                raise ValueError(f'Unsupported "after" type in {task}')
 
-                if task.tid in matches:
-                    matches.remove(task.tid)
+            if task.tid in matches:
+                matches.remove(task.tid)
 
-                for match_tid in matches:
-                    self._add_edge(from_node=match_tid, to_node=task.tid)
+            for match_tid in matches:
+                self._add_edge(from_node=match_tid, to_node=task.tid)
 
     def _make_edges_before(self, task):
         """Generate edges for "before" directives of a task
@@ -195,22 +227,28 @@ class Workflow(object):
             task -------> tasks with name matching "before" pattern, ...
 
         """
-        before = task.directives.get('before')
+        before = task.directives().get('before')
         log.verbose('"before" directive: {}'.format(before))
 
         if before:
-            before = utils.coerce_sequence(before)
-            log.verbose('"before" directive after coercion: {}'.format(before))
+            matches = set()
 
-            for value in before:
-                matches = self.find(value)
-                log.verbose('Found matches: {}'.format(matches))
+            if isinstance(before, str):
+                matches.add(before)
+            elif isinstance(before, (list, tuple)):
+                for target in before:
+                    matches.add(target)
+            elif isinstance(before, dict) and 're' in before:
+                for target in self.find(before['re']):
+                    matches.add(target)
+            else:
+                raise ValueError(f'Unsupported "before" type in {task}')
 
-                if task.tid in matches:
-                    matches.remove(task.tid)
+            if task.tid in matches:
+                matches.remove(task.tid)
 
-                for match_tid in matches:
-                    self._add_edge(from_node=task.tid, to_node=match_tid)
+            for match_tid in matches:
+                self._add_edge(from_node=task.tid, to_node=match_tid)
 
     def _make_edges_input(self, task):
         """Generate edges for "input" directives of a task
@@ -219,23 +257,29 @@ class Workflow(object):
             tasks with output matching "input" pattern, ... -------> task
 
         Where target includes an "output" value matching the "input" value."""
-        input = task.directives.get('input')
+        input = task.directives().get('input')
         log.verbose('"input" directive: {}'.format(input))
 
         if input:
-            input = utils.coerce_sequence(input)
-            log.verbose('"input" directive after coercion: {}'.format(input))
+            if isinstance(input, str):
+                matches = self.find_by_output(input)
+            elif isinstance(input, (list, tuple)):
+                matches = set()
+                for target in input:
+                    for tid in self.find_by_output(target):
+                        matches.add(tid)
+            elif isinstance(input, dict) and 're' in input:
+                # Inputs must be searched for in all nodes, but this allows
+                # the syntax to match before/after directives.
+                matches = self.find_by_output(input['re'])
+            else:
+                raise ValueError(f'Unsupported "input" type in {task}')
 
-            for value in input:
-                matches = self.find_by_output(value)
-                log.verbose('Found matches: {}'.format(matches))
+            if task.tid in matches:
+                matches.remove(task.tid)
 
-                if task.tid in matches:
-
-                    matches.remove(task.tid)
-
-                for match_tid in matches:
-                    self._add_edge(from_node=match_tid, to_node=task.tid)
+            for match_tid in matches:
+                self._add_edge(from_node=match_tid, to_node=task.tid)
 
     def _format_pattern(self, pat):
         return re.compile('^{}$'.format(pat))
@@ -262,6 +306,9 @@ class Workflow(object):
 
         log.verbose('Adding task: {}'.format(task))
 
+        if task.workflow:
+            task = task.copy()
+
         task.workflow = self
         self.graph.add_node(task.tid, obj=task)
 
@@ -275,38 +322,6 @@ class Workflow(object):
                 raise e
 
         return task
-
-    def compose(self, workflow):
-        """Compose this workflow with another workflow.
-        This adds all tasks from another workflow to this workflow.
-
-        Note: This will not roll back changes if an error occurs during
-        the merge.
-
-        ::
-
-                G (wf)    --->    H (self)     =   self.graph
-           ---------------------------------------------------
-                                    (A)new         (A)complete
-             (A)complete  --->       |        =     |
-                                    (B)new         (B)new
-
-        :param workflow: Another workflow to add to this workflow
-        :return: None
-        """
-        log.info('Composing {} with {}'.format(self, workflow))
-        added = []
-        with self:
-            for task in workflow.tasks(objs=True):
-                if not task in self:
-                    t = self.new_task(**task.directives)
-                    added.append(t)
-                else:
-                    log.debug('Skipping {}, already in workflow'.format(task))
-
-        for t in added:
-            for d in t.dependents():
-                d.reset()
 
     def dependencies(self, task):
         """Returns a generator that yields the dependencies of a given task"""
@@ -338,46 +353,15 @@ class Workflow(object):
         return draw_workflow(self, *args, **kwargs)
 
     def find(self, pattern, fallback=utils.sentinel):
-        """Find searches for tasks by "name" with a regex pattern."""
-        log.verbose('Find: {}'.format(pattern))
+        log.debug('Find: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
-        matches = set()
-
-        for task_id, data in self.graph.nodes(True):
-            task = data['obj']
-
-            try:
-                name = task.directives['name']
-            except KeyError:
-                continue
-
-            if pat.match(name):
-                matches.add(task_id)
+        matches = set([tid for tid in self.graph.nodes() if pat.match(tid)])
 
         if matches:
             return matches
-        elif fallback is utils.sentinel:
-            if pattern == '.*':
-                return set()
-            raise ValueError('No task names match value: {}'.format(pattern))
-        else:
-            return fallback
-
-    def find_by_id(self, pattern, fallback=utils.sentinel):
-        log.verbose('Find by id pattern: {}'.format(pattern))
-
-        pat = self._format_pattern(pattern)
-        fn = lambda task_id: pat.match(task_id)
-        gen = self.graph.nodes()
-        matches = set(filter(fn, gen))
-
-        log.verbose('Found matches: {}'.format(matches))
-
-        if matches:
-            return matches
-        elif fallback is utils.sentinel:
-            raise ValueError('No task ids match value: {}'.format(pattern))
+        if fallback is utils.sentinel:
+            raise ValueError('No task ids match pattern: {}'.format(pattern))
         else:
             return fallback
 
@@ -388,17 +372,14 @@ class Workflow(object):
         matches = set()
 
         for task_id, data in self.graph.nodes(True):
-            log.verbose('Checking {}'.format(task_id))
             task = data['obj']
 
             try:
-                output = task.directives['output']
+                output = task.directives()['output']
             except KeyError:
                 continue
 
             output = utils.coerce_sequence(output)
-
-            log.verbose('Output directive after coercion: {}'.format(output))
 
             for value in output:
                 if pat.match(value):
@@ -408,7 +389,7 @@ class Workflow(object):
         if matches:
             return matches
         elif fallback is utils.sentinel:
-            raise ValueError('No task outputs match value: {}'.format(pattern))
+            raise ValueError('No task outputs match pattern: {}'.format(pattern))
         else:
             return fallback
 
@@ -439,35 +420,31 @@ class Workflow(object):
     def list_tasks(self):
         return list(self.tasks(objs=True))
 
+    def mash(self, workflow):
+        """Mash this workflow with another."""
+        return mash(self, workflow)
+
     def new_task(self, *args, **kwargs):
         """Shortcut to create a new Task object and add to this workflow."""
         task = Task(*args, **kwargs)
         return self.add_task(task)
 
-    def remove_task(self, pattern):
+    def remove_task(self, pattern, force=False, descendants=False):
         """Remove task(s) from the workflow.
         This will find tasks by name and call remove_task_id for each match. """
         log.info('Remove task: {}'.format(pattern))
         matches = self.find(pattern)
 
-        for match in matches:
-            self.remove_task_id(match)
+        for task_id in matches:
+            try:
+                deps = next(self.dependents(task_id))
+            except StopIteration:
+                deps = None
 
-    def remove_task_id(self, task_id, force=False):
-        """Remove a task from the workflow.
-        This will raise ValueError if the task has dependents. They must be
-        removed from the workflow prior. """
-        log.info('Removing task by id: {}'.format(task_id))
-
-        try:
-            deps = next(self.dependents(task_id))
-        except StopIteration:
-            deps = None
-
-        if deps is None or force:
-            self.graph.remove_node(task_id)
-        else:
-            raise ValueError('Task has dependents!')
+            if deps is None or force:
+                self.graph.remove_node(task_id)
+            else:
+                raise ValueError('Task has dependents!')
 
     def reset(self):
         """Resets all tasks state."""
@@ -552,6 +529,7 @@ class Workflow(object):
 
     def update(self):
         """Recalculate the edges for this workflow"""
+        log.info('Updating workflow DAG...')
         for task in self.tasks(objs=True):
             log.debug('Linking dependencies for: {}'.format(task))
             self._make_edges_after(task)
@@ -559,63 +537,78 @@ class Workflow(object):
             self._make_edges_input(task)
 
 
-def random_workflow(n=25, timeout=None, connectedness=3):
-    """Random workflow generator. The time to generate a random task for a
-     workflow scales exponentially, so this can take a very long time for
-     large numbers of tasks.
+def mash(G, H):
+    """Mash together two workflows
+    ::
 
-     Workflow size can be controlled by n, timeout, or both. But, at least
-     one must be set. Timeout is the number of seconds (approx.) before the
-     workflow will be returned.
+    Example 1: Tasks already present remain completed
+               G         --->      H        =     G
+      ---------------------------------------------------
+                               task1(new)       task1(complete)
+        task1(complete)  --->      |        =     |
+                               task2(new)       task2(new)
 
-     Connectedness is the maximum number of connections to proc when
-     generating each task.
 
-     """
-    if not (n or timeout):
-        raise ValueError('Must set n or timeout')
+    Example 2: Descendants of new or modified tasks are reset
+                G         --->      H        =     G
+      ---------------------------------------------------
+                               task1(new)       task1(new)
+        task2(complete)  --->      |        =     |
+                               task2(new)       task2(new)
 
-    wf = Workflow()
-    cmds = (None, 'echo', 'hostname', 'ls', 'date', 'who', 'sleep 1')
-    start = datetime.now()
-    added = 0
+    :param G: Workflow
+    :param H: Workflow
+    :return: None
+    """
+    log.info(f'Mashing {G} with {H}')
 
-    while 1:
-        if n and added >= n:
-            log.critical('Task limit reached!')
-            break
+    wf = jetstream.Workflow(**G.graph.graph)
+    new = set()
+    modified = set()
 
-        if timeout and (datetime.now() - start).seconds > timeout:
-            log.critical('Timeout reached!')
-            break
+    with wf:
+        log.debug('Adding all tasks from G...')
+        for task in G.tasks(objs=True):
+            wf.add_task(task)
 
-        tasks = wf.list_tasks()
-        directives = {}
-        directives['name'] = 'task_' + hex(random.getrandbits(32))
-        directives['cmd'] = random.choice(cmds)
-        directives['output'] = random.choice([
-            None,
-            hex(random.getrandbits(32)) + '.txt'
-        ])
+        log.debug('Adding tasks from H...')
+        for task in H.tasks(objs=True):
+            # Identify tasks in H that are not in G yet
+            try:
+                existing_task = wf.get_task(task.tid)
+            except KeyError:
+                t = wf.add_task(task)
+                new.add(t)
+                continue
 
-        if tasks:
-            for i in range(random.randint(0, connectedness)):
-                task = random.choice(tasks)
-                name = task.directives.get('name')
-                output = task.directives.get('output')
+            # For tasks in H that are also in G replace if they've been modified
+            if task.identity != existing_task.identity:
+                wf.remove_task(existing_task.tid, force=True)
+                t = wf.add_task(task)
+                modified.add(t)
 
-                if random.random() > 0.5:
-                    if output is not None:
-                        directives['input'] = output
-                else:
-                    directives['after'] = name
+    log.debug('Identifying tasks that need to be reset...')
+    new_u_modified = new.union(modified)
+    to_reset = set()
+    temp_graph = wf.graph.copy()
 
-        try:
-            wf.new_task(**directives)
-            log.info('{} tasks added!'.format(added))
-            added += 1
-        except Exception as e:
-            log.exception(e)
+    for t in new_u_modified:
+        if t.tid not in temp_graph:
+            continue
+
+        for d in nx.descendants(temp_graph, t.tid):
+            to_reset.add(d)
+            temp_graph.remove_node(d)
+
+    for t in to_reset:
+        wf.get_task(t).reset(quiet=True, descendants=False)
+
+    log.info(
+        'Mash report:\n'
+        f'New tasks: {len(new)}\n'
+        f'Modified tasks: {len(modified)}\n'
+        f'Ancestors indirectly affected: {len(to_reset)}'
+    )
 
     return wf
 
@@ -634,27 +627,31 @@ def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
     f = plt.figure(figsize=figsize)
 
     cm = cm or {
-        'new': 'blue',
+        'new': 'white',
         'pending': 'yellow',
         'failed': 'red',
         'complete': 'green'
     }
 
-    labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
+    #labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
     colors = [cm[node['obj'].status] for id, node in wf.graph.nodes(data=True)]
 
     nx.draw(
         wf.graph,
         pos=graphviz_layout(wf.graph, prog='dot'),
         ax=f.add_subplot(111),
-        labels=labels,
+       # labels=labels,
         node_color=colors,
+        linewidths=1,
+        edgecolors='black',
         with_labels=True,
         **kwargs
     )
 
     if filename is not None:
         f.savefig(filename)
+
+    return plt
 
 
 def load_workflow(path, format=None):
@@ -673,12 +670,12 @@ def load_workflow(path, format=None):
 
 
 def load_workflow_yaml(path):
-    data = utils.yaml_load(path)
+    data = utils.load_yaml(path)
     return Workflow.deserialize(data)
 
 
 def load_workflow_json(path):
-    data = utils.json_load(path)
+    data = utils.load_json(path)
     return Workflow.deserialize(data)
 
 
@@ -708,6 +705,70 @@ def save_workflow(workflow, path, format=None):
     elapsed = datetime.now() - start
 
     log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
+
+
+def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
+    """Random workflow generator. The time to generate a random task for a
+     workflow scales exponentially, so this can take a very long time for
+     large numbers of tasks.
+
+     Workflow size can be controlled by n, timeout, or both. But, at least
+     one must be set. Timeout is the number of seconds (approx.) before the
+     workflow will be returned.
+
+     Connectedness is the maximum number of connections to proc when
+     generating each task.
+
+     """
+    if not (n or timeout):
+        raise ValueError('Must set n or timeout')
+
+    wf = Workflow()
+    cmds = (None, 'echo', 'hostname', 'ls', 'date', 'who', 'sleep 1')
+    start = datetime.now()
+    added = start_numbering
+
+    if n:
+        n = start_numbering + n
+
+    while 1:
+        if n and added >= n:
+            log.critical('Task limit reached!')
+            break
+
+        if timeout and (datetime.now() - start).seconds > timeout:
+            log.critical('Timeout reached!')
+            break
+
+        tasks = wf.list_tasks()
+        directives = {}
+        directives['name'] = str(added)
+        directives['cmd'] = random.choice(cmds)
+        directives['output'] = random.choice([
+            None,
+            hex(random.getrandbits(32)) + '.txt'
+        ])
+
+        if tasks:
+            for i in range(random.randint(0, connectedness)):
+                task = random.choice(tasks)
+                name = task.directives().get('name')
+                output = task.directives().get('output')
+
+                if random.random() > 0.5:
+                    if output is not None:
+                        directives['input'] = output
+                else:
+                    directives['after'] = name
+
+        try:
+            wf.new_task(**directives)
+            log.info('{} tasks added!'.format(added))
+            added += 1
+        except Exception as e:
+            log.exception(e)
+
+    return wf
 
 
 def save_workflow_yaml(workflow, path):

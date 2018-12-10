@@ -217,12 +217,12 @@ def json_loads(data):
     return json.loads(data)
 
 
-def json_dumps(obj, sort_keys=True, *args, **kwargs):
+def json_dumps(obj, *args, sort_keys=True, **kwargs):
     """Attempt to convert `obj` to a JSON string"""
     return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
 
 
-def json_dump(obj, sort_keys=True, *args, **kwargs):
+def json_dump(obj, *args, sort_keys=True, **kwargs):
     return json.dump(obj, sort_keys=sort_keys, *args, **kwargs)
 
 
@@ -259,21 +259,91 @@ def load_json(path):
         return json.load(fp)
 
 
-def load_table(path):
-    """Attempts to load a table, in any format, as a list of dictionaries
+def load_table(path, dialect=None, ordered=False, key=None):
+    """Attempts to load a table file in any format. Returns a list of
+    dictionaries. This requires the table to have a header row, and does not
+    handle comment lines.
 
-    :param path: Path to a table file
-    :return: :list """
-    r = list()
+    "key" can be used to return a dictionary instead of a list. The key column
+    must have a unique value for each row. Here is an
+    example of the two different ways a table could be loaded:
+
+    t = jetstream.utils.load_table('fastqs2.csv')
+
+    [
+        {
+            'uid': '1',
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq1.gz',
+            'r2fastq': '/path/to/r2fastq1.gz'
+        },
+        {
+            'uid': '2',
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq2.gz',
+            'r2fastq': '/path/to/r2fastq2.gz'
+        },
+        {
+            'uid': '3',
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq3.gz',
+            'r2fastq': '/path/to/r2fastq3.gz'
+        }
+    ]
+
+    t = jetstream.utils.load_table('fastqs2.csv', key='uid')
+
+    {
+        '1': {
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq1.gz',
+            'r2fastq': '/path/to/r2fastq1.gz'
+            },
+        '2': {
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq2.gz',
+            'r2fastq': '/path/to/r2fastq2.gz'
+            },
+        '3': {
+            'sample': 'sampleA',
+            'r1fastq': '/path/to/r1fastq3.gz',
+            'r2fastq': '/path/to/r2fastq3.gz'
+            }
+    }
+
+    :param path: Path to a table file.
+    :param dialect: Instance of csv.Dialect, will be sniffed if dialect is None.
+    :param ordered: Return OrderedDict.
+    :param key: Return a dictionary instead of a list where items can be
+    referenced by their key.
+    :returns: If key is given :dict, otherwise a :list
+    :rtype: dict, list
+    """
     with open(path, 'r') as fp:
-        dialect = csv.Sniffer().sniff(fp.readline())
-        log.debug('Sniffed delimiter "{}" for "{}"'.format(
-            dialect.delimiter, path))
-        fp.seek(0)
-        reader = csv.DictReader(fp, delimiter=dialect.delimiter)
-        for row in reader:
-            r.append(dict(row))
-    return r
+        data = fp.read()
+
+    if dialect is None:
+        dialect = csv.Sniffer().sniff(data)
+        log.debug(f'Sniffed dialect: {dialect.__dict__} for "{path}"')
+
+    rows = list(csv.DictReader(data.splitlines(), dialect=dialect))
+
+    if not ordered:
+        rows = [dict(r) for r in rows]
+
+    if key:
+        new_rows = {}
+
+        for row in rows:
+            k = row.pop(key)
+            if k in new_rows:
+                raise ValueError(f'Duplicate key instance: {k}')
+            else:
+                new_rows[k] = row
+
+        rows = new_rows
+
+    return rows
 
 
 def load_yaml(path):

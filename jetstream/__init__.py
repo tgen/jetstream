@@ -42,10 +42,10 @@ try:
 
     from jetstream import utils
     from jetstream.utils import load_data_file, loadable_files
-    from jetstream import workflows, templates, projects, runner, backends
+    from jetstream import workflows, templates, projects, runner, backends, \
+        pipelines
     from jetstream.runner import Runner
     from jetstream.projects import Project, NotAProject
-    from jetstream.pipelines import Pipeline, pipeline_module
     from jetstream.workflows import (Workflow, Task, load_workflow,
                                      save_workflow,
                                      random_workflow,)

@@ -1,3 +1,4 @@
+import os
 import asyncio
 import signal
 from datetime import datetime
@@ -46,8 +47,10 @@ class Runner:
         self.no_task_ready_delay = no_task_ready_delay
         self.run_id = None
         self.workflow = None
+        self.project = None
 
         # Attributes used internally that should not be modified
+        self._previous_directory = None
         self._conc_sem = BoundedSemaphore(
             value=max_forks or utils.guess_max_forks(),
             loop=self.loop
@@ -71,7 +74,7 @@ class Runner:
                 delay =  self.autosave_minimum_interval - elapsed
                 await asyncio.sleep(delay)
 
-                self._save_workflow()
+                self.save_workflow()
                 last_save = datetime.now()
         except asyncio.CancelledError:
             pass
@@ -95,14 +98,6 @@ class Runner:
             self._conc_sem.release()
             self._futures.remove(future)
 
-    def _save_workflow(self):
-        if self.workflow.save_path:
-            self.workflow.save()
-        elif self.project:
-            self.workflow.save(self.project.workflow_file)
-        else:
-            self.workflow.save(path=f'{self.run_id}.pickle')
-
     async def _spawn(self, task):
         await self._conc_sem.acquire()
         self.on_spawn(task)
@@ -118,7 +113,7 @@ class Runner:
             if task is None:
                 await self._yield()
             else:
-                if not task.directives.get('cmd'):
+                if not task.directives().get('cmd'):
                     # if task is blank or None
                     task.complete()
                 else:
@@ -150,6 +145,10 @@ class Runner:
         future returns, or a timeout (whichever happens first). This greatly
         reduces the cpu load of the runner by not constantly checking the
         workflow for new tasks. """
+        log.verbose(
+            f'Yield for {self.no_task_ready_delay}s or when next '
+            f'future returns'
+        )
         e = Event(loop=self.loop)
         self._events.append(e)
 
@@ -165,7 +164,7 @@ class Runner:
     def on_spawn(self, task):
         log.debug('Runner spawn: {}'.format(task))
         try:
-            exec_directive = task.directives.get('exec')
+            exec_directive = task.directives().get('exec')
 
             if exec_directive:
                 exec(exec_directive, None, {'runner': self, 'task': task})
@@ -176,12 +175,20 @@ class Runner:
     def preflight(self):
         """Called prior to start"""
         log.info(f'Runner preflight procedure')
-        self._save_workflow()
+        self.save_workflow()
+
+    def save_workflow(self):
+        if self.workflow.save_path:
+            self.workflow.save()
+        elif self.project:
+            self.workflow.save(self.project.workflow_file)
+        else:
+            self.workflow.save(path=f'{self.run_id}.pickle')
 
     def shutdown(self):
         """Called after shutdown"""
         log.info(f'Runner shutdown procedure')
-        self._save_workflow()
+        self.save_workflow()
 
         complete = 0
         failed = 0
@@ -202,8 +209,18 @@ class Runner:
         """This method is called to start the runner on a workflow."""
         log.debug('Runner starting...')
         started = datetime.now()
+
+        self._previous_directory = os.getcwd()
+        if project is None:
+            try:
+                self.project = jetstream.Project()
+            except jetstream.NotAProject:
+                self.project = None
+        else:
+            self.project = jetstream.Project(path=project)
+            os.chdir(self.project.path)
+
         self.workflow = workflow
-        self.project = project
         self.run_id = run_id or jetstream.run_id()
         self._errs = False
 
@@ -244,6 +261,7 @@ class Runner:
                         self._errs = True
 
                 self.loop.close()
+                os.chdir(self._previous_directory)
 
                 log.info(f'Total run time: {datetime.now() - started}')
                 if self._errs:

@@ -19,22 +19,22 @@ class BaseBackend(object):
         log files inside project.logs_dir. But task.stdout/stderr should
         override this behavior. Backend subclasses should use this method to
         get the correct output paths for a task."""
-        stdin = task.directives.get('stdin')
+        stdin = task.directives().get('stdin')
 
         if self.runner.project:
-            if 'stdout' in task.directives:
-                stdout = task.directives['stdout']
+            if 'stdout' in task.directives():
+                stdout = task.directives()['stdout']
             else:
-                filename = f'{task.label}.log'
+                filename = f'{task.tid}.log'
                 stdout = os.path.join(self.runner.project.logs_dir, filename)
 
-            if 'stderr' in task.directives:
-                stderr = task.directives['stderr']
+            if 'stderr' in task.directives():
+                stderr = task.directives()['stderr']
             else:
                 stderr = stdout
         else:
-            stdout = task.directives.get('stdout')
-            stderr = task.directives.get('stderr')
+            stdout = task.directives().get('stdout')
+            stderr = task.directives().get('stderr')
 
         return stdin, stdout, stderr
 

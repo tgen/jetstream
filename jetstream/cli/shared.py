@@ -1,80 +1,125 @@
+from copy import deepcopy
 import os
-import argparse
+import traceback
+import textwrap
 import jetstream
-from jetstream import log
+from jetstream import log, utils
 
 
 kvarg_types = {
-    "default": str,
     "str": str,
     "int": int,
     "float": float,
-    "bool": jetstream.utils.to_bool,
-    "json": jetstream.utils.json_loads,
-    "yaml": jetstream.utils.yaml_loads,
+    "bool": utils.to_bool,
+    "json": utils.json_loads,
+    "yaml": utils.yaml_loads,
     "file": jetstream.load_data_file,
+    "file:csv": utils.load_table,
+    "file:json": utils.load_json,
+    "file:tab": utils.load_table,
+    "file:table": utils.load_table,
+    "file:tsv": utils.load_table,
+    "file:yaml": utils.load_yaml,
 }
 
 
-def parse_kvargs(args, separator=None):
-    """Reparses list of arbitrary arguments ``--<type>:<key> <value>``
+class TemplateVariableArgumentError(Exception):
+    pass
 
-    This works by building an argument parser configured specifically for the
-    arguments present in the list. First any arguments that start with
-    ``--`` are selected for creating a new parsing handler. If
-    ``type_separator`` is present in the raw argument, it's split to determine
-    type and key. Then an argument is added to the parser with the given type
-    and key.
 
-    After building the parser, it's used to reparse the args list and the
-    namespace is returned as a dictionary. """
-    log.debug('Reparsing kvargs: {}'.format(args))
-    parser = argparse.ArgumentParser(add_help=False)
+def _loader_helper(arg, argtype, key, value):
+    """Loads template variables and gives informative error messages"""
+    try:
+        loader = kvarg_types[argtype]
+    except KeyError:
+        msg = f'Argument {arg}: Unknown arg type: {argtype}'
+        raise TemplateVariableArgumentError(msg) from None
 
-    # TODO another layer of type declaration?
-    # --file:json:read_groups ./actually_json.txt
-    # or
-    # --file-json:read_groups ./actually_json.txt
+    try:
+        obj = loader(value)
+    except Exception:
+        tb = traceback.format_exc()
+        msg = f'Error details:\n\n' \
+              f'{textwrap.indent(tb, "  ")}\n'\
+              f'Variable loading failed for "{arg} {value}", traceback above' \
 
-    if separator is None:
-        separator = ':'
+        raise TemplateVariableArgumentError(msg) from None
 
-    for arg in args:
+    return obj
+
+
+def parse_kvargs(args, separator=':'):
+    """Parse arbitrary key-value arguments: ``--<type>:<key> <value>``"""
+    log.debug('Parsing kvargs: {}'.format(args))
+    context = dict()
+    iterator = iter(args)
+
+    while 1:
+        try:
+            arg = next(iterator)
+        except StopIteration:
+            break
+
         if arg.startswith('--'):
-            argtype, _, key = arg.lstrip('-').partition(separator)
+            argtype, _, key = arg[2:].rpartition(separator)
 
-            if argtype and key:
-                if argtype not in kvarg_types:
-                    raise ValueError(
-                        f'Variable: "{arg}" unknown type: "{argtype}"'
-                    )
+            try:
+                value = next(iterator)
+            except StopIteration:
+                msg = f'Argument {arg}: expected one argument'
+                raise TemplateVariableArgumentError(msg) from None
 
-                log.debug(f'Adding parser for key: "{key}" type: "{argtype}"')
-                fn = kvarg_types[argtype]
-                parser.add_argument(arg, type=fn, dest=key)
+            # "variables" is a special case for template variables keys that
+            # updates the context directly instead of a specific attribute
+            if key == 'variables':
+                if argtype == '':
+                    obj = _loader_helper(arg, 'file', key, value)
+                else:
+                    obj = _loader_helper(arg, argtype, key, value)
 
-    return vars(parser.parse_args(args))
+                try:
+                    context.update(obj)
+                except Exception:
+                    msg = f'Error while updating render context with object ' \
+                          f'loaded from "{arg} {value}". Loading "variables" ' \
+                          f'should return a mapping object. '
+                    raise TemplateVariableArgumentError(msg)
+
+            elif key and argtype:
+                context[key] = _loader_helper(arg, argtype, key, value)
+            else:
+                msg = f'Template variable argument parser encountered ' \
+                      f'"{arg} {value}", which does not ' \
+                      f'match the pattern for template variable arguments. ' \
+                      f'Template variable args should be in the form: ' \
+                      f'"--<type>:<key> <value>". If this argument was not ' \
+                      f'meant to be a template variable, check for spelling ' \
+                      f'errors or missing values, and review the command ' \
+                      f'--help.'
+                raise TemplateVariableArgumentError(msg)
+
+    return context
 
 
-def set_project(path=None):
-    """If path is set, chdir to the given project and load the object.
-    Otherwise check if the cwd is a project and return or return None."""
-    if path:
-        os.chdir(path)
-        project = jetstream.Project()
+def load_context(project=None, kvargs=None, kvarg_separator=None):
+    if project:
+        project = jetstream.Project(path=project)
+        log.info(f'Working in {project}')
     else:
         try:
             project = jetstream.Project()
+            log.info(f'Working in {project}')
         except jetstream.NotAProject:
+            log.info('Not working in a project')
             project = None
 
-    return project
+    if project is None:
+        context = parse_kvargs(kvargs, kvarg_separator)
+        context['__project__'] = None
+    else:
+        project.config.update(parse_kvargs(kvargs, kvarg_separator))
+        project.save_config()
+        context = deepcopy(project.config)
+        context['__project__'] = project
 
-
-def load_variables(path):
-    """Most variables files should load with the yaml parser, but tabs in
-    a json file might raise an error, so both are tried."""
-    try:
-        return jetstream.utils.yaml_load(path)
-    except jetstream.utils.yaml.YAMLError:
-        return jetstream.utils.json_load(path)
+    return context

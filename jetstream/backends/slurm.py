@@ -87,7 +87,7 @@ class SlurmBackend(BaseBackend):
         """Slurm jobs will receive a comment that contains details about the
         task, run id, and tags taken from the task directives. If tags are a
         string, they will be converted to a list with shlex.split"""
-        tags = task.directives.get('tags', [])
+        tags = task.directives().get('tags', [])
 
         if isinstance(tags, str):
             tags = shlex.split(tags)
@@ -114,7 +114,7 @@ class SlurmBackend(BaseBackend):
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
-        if not task.directives.get('cmd'):
+        if not task.directives().get('cmd'):
             return 0
 
         time.sleep(.1) # sbatch breaks when called too frequently
@@ -122,16 +122,16 @@ class SlurmBackend(BaseBackend):
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
-            cmd=task.directives['cmd'],
+            cmd=task.directives()['cmd'],
             name=self.slurm_job_name(task),
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             comment=self.slurm_job_comment(task),
-            cpus_per_task=task.directives.get('cpus'),
-            mem=task.directives.get('mem'),
-            walltime=task.directives.get('walltime'),
-            additional_args=task.directives.get('sbatch_args')
+            cpus_per_task=task.directives().get('cpus'),
+            mem=task.directives().get('mem'),
+            walltime=task.directives().get('walltime'),
+            additional_args=task.directives().get('sbatch_args')
         )
 
         log.info(f'Submitted({job.jid}): {task}')
