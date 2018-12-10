@@ -128,8 +128,6 @@ class Workflow(object):
 
         self._iter_pending = _temp
 
-        # Faster search strategy
-
         # Start search for the next task that is ready
         _temp = list()
         for tid in self._iter_tasks:
@@ -151,7 +149,6 @@ class Workflow(object):
                 _temp.append(tid)
 
         self._iter_tasks = _temp
-
 
         # If there are any remaining or pending, return None until one is ready
         if self._iter_tasks or self._iter_pending:
@@ -360,14 +357,15 @@ class Workflow(object):
 
         if matches:
             return matches
+
         if fallback is utils.sentinel:
-            raise ValueError('No task ids match pattern: {}'.format(pattern))
+            if pattern == '.*':
+                return set()
+            raise ValueError('No task names match value: {}'.format(pattern))
         else:
             return fallback
 
     def find_by_output(self, pattern, fallback=utils.sentinel):
-        log.verbose('Find by output: {}'.format(pattern))
-
         pat = self._format_pattern(pattern)
         matches = set()
 
@@ -531,7 +529,6 @@ class Workflow(object):
         """Recalculate the edges for this workflow"""
         log.info('Updating workflow DAG...')
         for task in self.tasks(objs=True):
-            log.debug('Linking dependencies for: {}'.format(task))
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)

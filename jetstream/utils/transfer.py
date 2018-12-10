@@ -122,6 +122,8 @@ def check_rsyncs(host):
     rsync_lines = stdout.read().decode('utf8').splitlines()
     n_rsyncs = max(len(rsync_lines) - 2, 0)  # Adjust for the current grep and ssh
 
+    ssh.close()
+
     log.info(f'{n_rsyncs} rsyncs on {host}!')
     return n_rsyncs
 
