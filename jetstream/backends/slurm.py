@@ -96,7 +96,6 @@ class SlurmBackend(BaseBackend):
             'run': self.runner.run_id,
             'task': {
                 'tid': task.tid,
-                'label': task.label,
                 'tags': tags,
                 }
             }
