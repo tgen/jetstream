@@ -8,9 +8,12 @@ import subprocess
 
 log = logging.getLogger(__name__)
 
-
-with open(os.path.expanduser('~/.jetstream_dev.json')) as fp:
-    settings = json.load(fp)
+try:
+    with open(os.path.expanduser('~/.jetstream_dev')) as fp:
+        settings = json.load(fp)
+except Exception:
+    log.exception('Unable to load dev settings json at ~/.jetstream_dev')
+    settings = {}
 
 
 def arg_parser(actions=None):
