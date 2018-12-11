@@ -46,8 +46,9 @@ class Runner:
         asyncio.events.set_event_loop(self.loop)
 
         if backend is None:
-            backend_value = os.environ.get('JETSTREAM_BACKEND')
-            backend = supported_backends[backend_value]
+            backend = os.environ.get('JETSTREAM_BACKEND')
+
+        backend = supported_backends[backend]
 
         self.autosave_minimum_interval = autosave
         self.backend = backend(self, *args, **kwargs)
