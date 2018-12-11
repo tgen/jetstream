@@ -115,10 +115,8 @@ class Workflow(object):
         log.verbose(f'{len(self._iter_pending)} tasks pending')
         log.verbose(f'{len(self._iter_done)} tasks done')
 
-        """Select the next available task for execution. If no task is ready,
-               this will return None."""
         if self.is_locked():
-            raise RuntimeError('Cannot get next while workflow is locked')
+            raise RuntimeError('Workflow.__next__() called while locked!')
 
         # Drop all pending tasks that have completed since the last call
         self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
@@ -604,12 +602,16 @@ def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
     very simple to get these dependencies setup, so they're loaded as needed
     and not required for package install."""
     try:
+        import matplotlib
+        if os.environ.get('DISPLAY','') == '':
+            log.critical('No display found. Using non-interactive Agg backend')
+            matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         from networkx.drawing.nx_agraph import graphviz_layout
     except ImportError:
         log.critical('This feature requires matplotlib and graphviz')
         raise
-
+    
     f = plt.figure(figsize=figsize)
 
     cm = cm or {
