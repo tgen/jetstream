@@ -5,7 +5,6 @@ import logging
 import argparse
 import jetstream
 from jetstream.cli import shared
-from jetstream.backends import LocalBackend, SlurmBackend
 
 log = logging.getLogger(__name__)
 
@@ -52,9 +51,9 @@ def arg_parser():
 
     runner.add_argument(
         '--backend',
-        choices=['local', 'slurm'],
-        default='slurm',
-        help='Specify the runner backend (Default: local)'
+        choices=['local', 'slurm', None],
+        default=None,
+        help='Specify the runner backend (Default: $JETSTREAM_BACKEND or local)'
     )
 
     runner.add_argument(
@@ -136,13 +135,8 @@ def main(args=None):
     elif args.method == 'reset':
         workflow.reset()
 
-    if args.backend == 'slurm':
-        backend = SlurmBackend
-    else:
-        backend = LocalBackend
-
     runner = jetstream.Runner(
-        backend=backend,
+        backend=args.backend,
         max_forks=args.max_forks,
         autosave=args.save_interval,
     )

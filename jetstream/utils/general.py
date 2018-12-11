@@ -268,48 +268,49 @@ def load_table(path, dialect=None, ordered=False, key=None):
     must have a unique value for each row. Here is an
     example of the two different ways a table could be loaded:
 
-    t = jetstream.utils.load_table('fastqs2.csv')
+    ::
+        t = jetstream.utils.load_table('fastqs2.csv')
 
-    [
-        {
-            'uid': '1',
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq1.gz',
-            'r2fastq': '/path/to/r2fastq1.gz'
-        },
-        {
-            'uid': '2',
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq2.gz',
-            'r2fastq': '/path/to/r2fastq2.gz'
-        },
-        {
-            'uid': '3',
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq3.gz',
-            'r2fastq': '/path/to/r2fastq3.gz'
-        }
-    ]
-
-    t = jetstream.utils.load_table('fastqs2.csv', key='uid')
-
-    {
-        '1': {
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq1.gz',
-            'r2fastq': '/path/to/r2fastq1.gz'
+        [
+            {
+                'uid': '1',
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq1.gz',
+                'r2fastq': '/path/to/r2fastq1.gz'
             },
-        '2': {
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq2.gz',
-            'r2fastq': '/path/to/r2fastq2.gz'
+            {
+                'uid': '2',
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq2.gz',
+                'r2fastq': '/path/to/r2fastq2.gz'
             },
-        '3': {
-            'sample': 'sampleA',
-            'r1fastq': '/path/to/r1fastq3.gz',
-            'r2fastq': '/path/to/r2fastq3.gz'
+            {
+                'uid': '3',
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq3.gz',
+                'r2fastq': '/path/to/r2fastq3.gz'
             }
-    }
+        ]
+
+        t = jetstream.utils.load_table('fastqs2.csv', key='uid')
+
+        {
+            '1': {
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq1.gz',
+                'r2fastq': '/path/to/r2fastq1.gz'
+                },
+            '2': {
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq2.gz',
+                'r2fastq': '/path/to/r2fastq2.gz'
+                },
+            '3': {
+                'sample': 'sampleA',
+                'r1fastq': '/path/to/r1fastq3.gz',
+                'r2fastq': '/path/to/r2fastq3.gz'
+                }
+        }
 
     :param path: Path to a table file.
     :param dialect: Instance of csv.Dialect, will be sniffed if dialect is None.

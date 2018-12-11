@@ -6,7 +6,13 @@ from contextlib import contextmanager
 from asyncio import BoundedSemaphore, Event
 import jetstream
 from jetstream import utils, log
-from jetstream.backends import LocalBackend
+from jetstream.backends import LocalBackend, SlurmBackend
+
+supported_backends = {
+    None: LocalBackend,
+    'local': LocalBackend,
+    'slurm': SlurmBackend
+}
 
 
 @contextmanager
@@ -40,7 +46,8 @@ class Runner:
         asyncio.events.set_event_loop(self.loop)
 
         if backend is None:
-            backend = LocalBackend
+            backend_value = os.environ.get('JETSTREAM_BACKEND')
+            backend = supported_backends[backend_value]
 
         self.autosave_minimum_interval = autosave
         self.backend = backend(self, *args, **kwargs)
