@@ -146,8 +146,11 @@ class SlurmBackend(BaseBackend):
             if job.is_ok():
                 task.complete(job.returncode())
             else:
+                task.state['slurm'] = job.job_data.copy()
                 task.fail(job.returncode())
         except asyncio.CancelledError:
+            job.cancel()
+            task.state['err'] = 'Runner cancelled backend.spawn'
             task.fail()
 
 
