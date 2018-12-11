@@ -31,11 +31,11 @@ class LocalBackend(BaseBackend):
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
-        if 'cmd' not in task.directives:
+        if 'cmd' not in task.directives():
             return task.complete(0)
 
-        cmd = task.directives['cmd']
-        cpus = task.directives.get('cpus', 0)
+        cmd = task.directives()['cmd']
+        cpus = task.directives().get('cpus', 0)
         cpus_reserved = 0
         open_fps = list()
 
@@ -43,7 +43,7 @@ class LocalBackend(BaseBackend):
             raise RuntimeError('Task cpus greater than available cpus')
 
         try:
-            for i in range(task.directives.get('cpus', 0)):
+            for i in range(task.directives().get('cpus', 0)):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 

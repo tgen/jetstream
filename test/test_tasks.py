@@ -15,7 +15,7 @@ class TaskBasics(TestCase):
     
     def test_task_init(self):
         t = Task(name='taskA')
-        self.assertEqual(t.directives['name'], 'taskA')
+        self.assertEqual(t.directives()['name'], 'taskA')
 
     def test_task_init_kw_or_data(self):
         self.assertRaises(
@@ -55,7 +55,6 @@ class TaskBasics(TestCase):
     def test_equality(self):
         """Rehydrated tasks should be equal to initted tasks"""
         t1 = Task(from_data={
-            'tid': 'e9e860921f7ca5f33a8f6db90d0cd91924e5a2dc',
             'status': 'new',
             'directives': {'name': 'taskA'},
             'state': {}
@@ -141,6 +140,12 @@ class TaskBasics(TestCase):
         
         t1.fail()
         self.assertEqual(t2.status, 'new')
+
+    def test_task_serializedeserialze(self):
+        t1 = Task(name='task1', cmd='echo hello world', before='foo')
+        t2 = Task.deserialize(t1.serialize())
+
+        self.assertEqual(t1, t2)
 
 
 class TasksInWorkflows(TestCase):

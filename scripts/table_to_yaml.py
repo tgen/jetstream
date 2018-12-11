@@ -4,6 +4,6 @@ from ruamel import yaml
 import jetstream
 
 print(yaml.dump(
-    jetstream.utils.table_to_records(sys.argv[1]),
+    jetstream.utils.load_table(sys.argv[1]),
     default_flow_style=False
 ))

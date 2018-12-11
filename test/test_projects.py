@@ -47,7 +47,7 @@ class ProjectBasics(TestCase):
         wf.new_task(name='task', cmd='echo test_project_run ${JETSTREAM_RUN_ID}')
         p = jetstream.Project(new=True)
         runner = jetstream.runner.Runner()
-        runner.start(workflow=wf, project=p)
+        runner.start(workflow=wf, project=p.path)
 
 
 class RunnerBasics(TestCase):

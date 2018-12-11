@@ -3,4 +3,4 @@ import sys
 import json
 import jetstream
 
-print(json.dumps(jetstream.utils.table_to_records(sys.argv[1])))
+print(json.dumps(jetstream.utils.load_table(sys.argv[1])))

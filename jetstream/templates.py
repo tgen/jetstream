@@ -79,7 +79,7 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-def render_template(path, variables=None, project=None, env=None):
+def render_template(path, context=None, env=None):
     """Load and render a template.
 
     :param variables: Mapping of data used to render template
@@ -89,8 +89,8 @@ def render_template(path, variables=None, project=None, env=None):
     log.info('Rendering template...')
     started = datetime.now()
 
-    if variables is None:
-        variables = dict()
+    if context is None:
+        context = dict()
 
     if env is None:
         env = environment(searchpath=[os.getcwd(), os.path.dirname(path)])
@@ -104,19 +104,12 @@ def render_template(path, variables=None, project=None, env=None):
     with open(path, 'r') as fp:
         data = fp.read()
 
-    if project:
-        project.config.update(variables)
-        project.save_config()  # TODO Do we always want to save the updates?
-        variables = {'project': project}
-        variables.update(project.config)
-        variables.update(project=project)
-
-    log.debug(f'Template variables:\n{variables}')
+    log.debug(f'Template render context:\n{context}')
     template = env.from_string(data)
-    render = template.render(**variables)
+    render = template.render(**context)
 
-    log.debug(f'Rendered Template:\n{render}')
-    log.info('Building workflow...')
+    log.debug(f'Rendered template:\n{render}')
+    log.info('Parsing template...')
 
     try:
         parsed_tasks = utils.yaml_loads(render)
@@ -139,16 +132,16 @@ def render_template(path, variables=None, project=None, env=None):
         )
         raise ValueError(msg)
 
-    workflow = Workflow()
+    log.debug(f'Parsed template:\n{parsed_tasks}')
+    log.info('Building workflow...')
 
+    workflow = Workflow()
     with workflow:
         for task in parsed_tasks:
             if not isinstance(task, dict):
-                log.critical(f'Error with task:\n{task}')
-                msg = (
-                    f'The template was rendered and parsed successfully, but '
-                    f'encountered a task that was not a mapping type.'
-                )
+                msg = f'Error with task:\n{task}' \
+                      f'The template was rendered and parsed successfully, ' \
+                      f'but encountered a task that was not a mapping type.'
                 raise ValueError(msg)
 
             workflow.new_task(**task)

@@ -40,7 +40,6 @@ class TestCliExt(TestCase):
                     '--backend', 'local'
                 ])
 
-
     # def test_should_fail(self):
     #     templates_dir = os.path.join(self.templates_dir, 'should_fail')
     #     templates = os.listdir(templates_dir)
@@ -49,11 +48,10 @@ class TestCliExt(TestCase):
     #         template = os.path.join(templates_dir, f)
     #
     #         with self.subTest(msg=template):
-    #             with self.assertRaises(Exception) as cm:
-    #                 run.main([
-    #                     template,
-    #                     '--config', self.templates_config
-    #                 ])
+    #             run.main([
+    #                 template,
+    #                 '--variables', self.variables
+    #             ])
 
 
 
@@ -94,7 +92,6 @@ class TestCli(TestCase):
             '--int:number', '42',
             '--float:number2', '3.14'
         ])
-
 
     def test_project_tasks(self):
         jetstream.Project(new=True)

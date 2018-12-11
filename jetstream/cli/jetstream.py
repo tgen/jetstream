@@ -47,7 +47,7 @@ def arg_parser():
 
     main_parser.add_argument('--log-filename', default=None)
 
-    main_parser.add_argument('--log-filemode', default=None)
+    main_parser.add_argument('--log-filemode', default='a')
 
     main_parser.add_argument('--log-level', default=None)
 
@@ -66,7 +66,11 @@ def main(args=None):
     if log_filename:
         file_handler = logging.FileHandler(log_filename, log_filemode)
         file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter(logs.debug_format))
+        file_handler.setFormatter(logging.Formatter(
+            logs.basic_format,
+            datefmt="%Y-%m-%d %H:%M:%S",
+            style='{'
+        ))
         logs.log.addHandler(file_handler)
 
     if args.log_debug:
