@@ -100,7 +100,6 @@ class Runner:
 
     async def _spawn(self, task):
         await self._conc_sem.acquire()
-        self.on_spawn(task)
         future = self.loop.create_task(self.backend.spawn(task))
         future.add_done_callback(self._handle_completed_task_futures)
         self._futures.append(future)
@@ -113,6 +112,8 @@ class Runner:
             if task is None:
                 await self._yield()
             else:
+                self.on_spawn(task)
+
                 if not task.directives().get('cmd'):
                     # if task is blank or None
                     task.complete()
@@ -170,7 +171,8 @@ class Runner:
                 exec(exec_directive, None, {'runner': self, 'task': task})
                 self._workflow_iterator = iter(self.workflow)
         except AttributeError:
-            pass
+            log.exception('Exception suppressed')
+
 
     def preflight(self):
         """Called prior to start"""
