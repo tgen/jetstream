@@ -115,50 +115,35 @@ class Workflow(object):
         log.verbose(f'{len(self._iter_pending)} tasks pending')
         log.verbose(f'{len(self._iter_done)} tasks done')
 
+        """Select the next available task for execution. If no task is ready,
+               this will return None."""
         if self.is_locked():
-            raise RuntimeError('Workflow.__next__ called while locked!')
+            raise RuntimeError('Cannot get next while workflow is locked')
 
         # Drop all pending tasks that have completed since the last call
-        _temp = list()
-        for tid in self._iter_pending:
-            if self.get_task(tid).is_done():
-                self._iter_done.append(tid)
-            else:
-                _temp.append(tid)
+        self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
 
-        self._iter_pending = _temp
-
-        # Faster search strategy
-
-        # Start search for the next task that is ready
-        _temp = list()
-        for tid in self._iter_tasks:
-            log.verbose(f'Considering: {tid}')
+        for i in reversed(range(len(self._iter_tasks))):
+            tid = self._iter_tasks[i]
             task = self.get_task(tid)
 
             if task.is_done():
-                log.verbose(f'{tid} done, removing from list')
-                self._iter_done.append(tid)
+                self._iter_tasks.pop(i)
+                self._iter_done.append(task)
             elif task.is_pending():
-                log.verbose(f'{tid} pending, moving to pending')
-                self._iter_pending.append(tid)
+                self._iter_tasks.pop(i)
+                self._iter_pending.append(task)
             elif task.is_ready():
-                log.verbose(f'{tid} ready, move to pending and return')
-                self._iter_pending.append(tid)
+                self._iter_tasks.pop(i)
+                self._iter_pending.append(task)
                 task.pending(quiet=True)
                 return task
-            else:
-                _temp.append(tid)
-
-        self._iter_tasks = _temp
-
 
         # If there are any remaining or pending, return None until one is ready
         if self._iter_tasks or self._iter_pending:
             return None
         else:
             raise StopIteration
-
 
     def __repr__(self):
         stats = Counter([t.status for t in self.tasks(objs=True)])
