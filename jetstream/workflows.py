@@ -94,13 +94,13 @@ class Workflow(object):
         self._iter_pending = list()
         self._iter_done = list()
 
-        for task in nx.topological_sort(self.graph):
-            if self.get_task(task).is_new():
-                self._iter_tasks.append(task)
-            elif self.get_task(task).is_pending():
-                self._iter_pending.append(task)
+        for tid in nx.topological_sort(self.graph):
+            if self.get_task(tid).is_new():
+                self._iter_tasks.append(tid)
+            elif self.get_task(tid).is_pending():
+                self._iter_pending.append(tid)
             else:
-                self._iter_done.append(task)
+                self._iter_done.append(tid)
 
         return self
 
@@ -110,18 +110,22 @@ class Workflow(object):
     def __next__(self):
         """Select the next available task for execution. If no task is ready,
         this will return None."""
-        log.verbose('Request for next task!')
-        log.verbose(f'{len(self._iter_tasks)} tasks remaining')
-        log.verbose(f'{len(self._iter_pending)} tasks pending')
-        log.verbose(f'{len(self._iter_done)} tasks done')
+        log.debug('Request for next task!')
+        log.debug(f'{len(self._iter_tasks)} tasks remaining')
+        log.debug(f'{len(self._iter_pending)} tasks pending')
+        log.debug(f'{len(self._iter_done)} tasks done')
 
-        """Select the next available task for execution. If no task is ready,
-               this will return None."""
         if self.is_locked():
             raise RuntimeError('Cannot get next while workflow is locked')
 
         # Drop all pending tasks that have completed since the last call
-        self._iter_pending = [t for t in self._iter_pending if not t.is_done()]
+        _temp = list()
+        for tid in self._iter_pending:
+            if self.get_task(tid).is_done():
+                pass
+            else:
+                _temp.append(tid)
+        self._iter_pending = _temp
 
         for i in reversed(range(len(self._iter_tasks))):
             tid = self._iter_tasks[i]
@@ -129,13 +133,13 @@ class Workflow(object):
 
             if task.is_done():
                 self._iter_tasks.pop(i)
-                self._iter_done.append(task)
+                self._iter_done.append(tid)
             elif task.is_pending():
                 self._iter_tasks.pop(i)
-                self._iter_pending.append(task)
+                self._iter_pending.append(tid)
             elif task.is_ready():
                 self._iter_tasks.pop(i)
-                self._iter_pending.append(task)
+                self._iter_pending.append(tid)
                 task.pending(quiet=True)
                 return task
 
@@ -194,7 +198,7 @@ class Workflow(object):
                 for target in after:
                     matches.add(target)
             elif isinstance(after, dict) and 're' in after:
-                for target in self.find(after['re']):
+                for target in self.find(after['re'], fallback=set()):
                     matches.add(target)
             else:
                 raise ValueError(f'Unsupported "after" type in {task}')
@@ -289,7 +293,7 @@ class Workflow(object):
         if task.tid in self.graph:
             raise ValueError('Duplicate task ID: {}'.format(task.tid))
 
-        log.verbose('Adding task: {}'.format(task))
+        log.debug('Adding task: {}'.format(task))
 
         if task.workflow:
             task = task.copy()
