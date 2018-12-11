@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 class Fingerprint(object):
     """Generate a new run ID with a snapshot of the system info."""
     def __init__(self, id=None):
-        self.id = jetstream.run_id(id)
+        self.id = id or jetstream.run_id()
         self.datetime = str(datetime.now())
         self.user = str(getuser())
         self.version = str(get_distribution("jetstream"))

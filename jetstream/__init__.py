@@ -12,15 +12,7 @@ settings = None
 _current_project = None
 
 
-def run_id(value=None):
-    if value is not None:
-        value = str(value)
-
-        if value.isidentifier():
-            return value
-        else:
-            raise ValueError('{} is not a valid identifier'.format(value))
-
+def run_id():
     return run_id_template.format(ulid.new().str)
 
 

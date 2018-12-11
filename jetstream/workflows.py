@@ -116,7 +116,7 @@ class Workflow(object):
         log.debug(f'{len(self._iter_done)} tasks done')
 
         if self.is_locked():
-            raise RuntimeError('Cannot get next while workflow is locked')
+            raise RuntimeError('Workflow.__next__() called while locked!')
 
         # Drop all pending tasks that have completed since the last call
         _temp = list()
@@ -142,7 +142,7 @@ class Workflow(object):
                 self._iter_pending.append(tid)
                 task.pending(quiet=True)
                 return task
-
+        
         # If there are any remaining or pending, return None until one is ready
         if self._iter_tasks or self._iter_pending:
             return None
@@ -349,14 +349,15 @@ class Workflow(object):
 
         if matches:
             return matches
+
         if fallback is utils.sentinel:
-            raise ValueError('No task ids match pattern: {}'.format(pattern))
+            if pattern == '.*':
+                return set()
+            raise ValueError('No task names match value: {}'.format(pattern))
         else:
             return fallback
 
     def find_by_output(self, pattern, fallback=utils.sentinel):
-        log.verbose('Find by output: {}'.format(pattern))
-
         pat = self._format_pattern(pattern)
         matches = set()
 
@@ -520,7 +521,6 @@ class Workflow(object):
         """Recalculate the edges for this workflow"""
         log.info('Updating workflow DAG...')
         for task in self.tasks(objs=True):
-            log.debug('Linking dependencies for: {}'.format(task))
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
@@ -607,12 +607,16 @@ def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
     very simple to get these dependencies setup, so they're loaded as needed
     and not required for package install."""
     try:
+        import matplotlib
+        if os.environ.get('DISPLAY','') == '':
+            log.critical('No display found. Using non-interactive Agg backend')
+            matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         from networkx.drawing.nx_agraph import graphviz_layout
     except ImportError:
         log.critical('This feature requires matplotlib and graphviz')
         raise
-
+    
     f = plt.figure(figsize=figsize)
 
     cm = cm or {

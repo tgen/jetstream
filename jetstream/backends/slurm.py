@@ -13,7 +13,7 @@ from jetstream import log
 from jetstream.backends import BaseBackend
 
 sacct_delimiter = '\037'
-job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch)))?$")
+job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
 
 class SlurmBackend(BaseBackend):
