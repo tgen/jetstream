@@ -537,27 +537,28 @@ class Workflow(object):
 
 
 def mash(G, H):
-    """Mash together two workflows
-    ::
+    """Mash together two Workflows
 
-    Example 1: Tasks already present remain completed
-               G         --->      H        =     G
-      ---------------------------------------------------
-                               task1(new)       task1(complete)
-        task1(complete)  --->      |        =     |
-                               task2(new)       task2(new)
+    Description::
+
+        Example 1: Tasks already present remain completed
+                   G         --->      H        =  New Workflow
+          ---------------------------------------------------
+                                   task1(new)       task1(complete)
+            task1(complete)  --->      |        =     |
+                                   task2(new)       task2(new)
 
 
-    Example 2: Descendants of new or modified tasks are reset
-                G         --->      H        =     G
-      ---------------------------------------------------
-                               task1(new)       task1(new)
-        task2(complete)  --->      |        =     |
-                               task2(new)       task2(new)
+        Example 2: Descendants of new or modified tasks are reset
+                    G        --->      H       =  New Workflow
+          ---------------------------------------------------
+                                   task1(new)       task1(new)
+            task2(complete)  --->      |        =     |
+                                   task2(new)       task2(new)
 
-    :param G: Workflow
-    :param H: Workflow
-    :return: None
+    :param G: Workflow to be mashed, workflow properties will be kept from G
+    :param H: Another Workflow
+    :return: Workflow
     """
     log.info(f'Mashing {G} with {H}')
 

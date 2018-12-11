@@ -12,7 +12,6 @@ Submodules
 .. toctree::
 
    jetstream.utils.general
-   jetstream.utils.pair_fastqs
    jetstream.utils.transfer
    jetstream.utils.yaml
 

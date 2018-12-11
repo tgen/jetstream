@@ -78,35 +78,6 @@ class JsonDict(dict):
         return dict(self)
 
 
-class LogisticDelay:
-    def __init__(self, max=600, inflection=30, sharpness=0.2, ignore=0):
-        self.max = max
-        self.inflection = inflection
-        self.sharpness = sharpness
-        self.ignore = ignore
-        self.i = 0
-
-    def wait(self):
-        self.i += 1
-        delay = self.delay(self.i)
-        time.sleep(delay)
-
-    def reset(self):
-        self.i = 0
-
-    def delay(self, i):
-        if i > self.ignore:
-            c = self.max
-            a = self.inflection
-            e = 2.718281828459045
-            k = self.sharpness
-
-            return c / (1 + a * e ** (-k * (i - a)))
-
-        else:
-            return 0
-
-
 class Source(str):
     """String subclass that includes a `line_numbers` property for tracking
     the source code line numbers after lines are split up.
@@ -268,7 +239,7 @@ def load_table(path, dialect=None, ordered=False, key=None):
     must have a unique value for each row. Here is an
     example of the two different ways a table could be loaded:
 
-    ::
+    ..
         t = jetstream.utils.load_table('fastqs2.csv')
 
         [
@@ -316,10 +287,9 @@ def load_table(path, dialect=None, ordered=False, key=None):
     :param dialect: Instance of csv.Dialect, will be sniffed if dialect is None.
     :param ordered: Return OrderedDict.
     :param key: Return a dictionary instead of a list where items can be
-    referenced by their key.
+        referenced by their key.
     :returns: If key is given :dict, otherwise a :list
-    :rtype: dict, list
-    """
+    :rtype: dict, list"""
     with open(path, 'r') as fp:
         data = fp.read()
 
