@@ -422,19 +422,29 @@ class Workflow(object):
     def remove_task(self, pattern, force=False, descendants=False):
         """Remove task(s) from the workflow.
         This will find tasks by name and call remove_task_id for each match. """
-        log.info('Remove task: {}'.format(pattern))
+        log.info(f'Remove task: {pattern}')
         matches = self.find(pattern)
 
         for task_id in matches:
             try:
-                deps = next(self.dependents(task_id))
+                dep = next(self.dependents(task_id))
             except StopIteration:
-                deps = None
+                dep = None
 
-            if deps is None or force:
-                self.graph.remove_node(task_id)
+            if dep:
+                if descendants:
+                    for d in self.descendants(task_id):
+                        log.info(f'Removing {d}')
+                        self.graph.remove_node(d.tid)
+                    log.info(f'Removing {task_id}')
+                    self.graph.remove_node(task_id)
+                elif force:
+                    self.graph.remove_node(task_id)
+                else:
+                    raise ValueError('Task has dependents!')
             else:
-                raise ValueError('Task has dependents!')
+                log.info(f'Removing task: {task_id}')
+                self.graph.remove_node(task_id)
 
     def reset(self):
         """Resets all tasks state."""
@@ -519,7 +529,7 @@ class Workflow(object):
 
     def update(self):
         """Recalculate the edges for this workflow"""
-        log.info('Updating workflow DAG...')
+        log.info('Loading workflow DAG...')
         for task in self.tasks(objs=True):
             self._make_edges_after(task)
             self._make_edges_before(task)

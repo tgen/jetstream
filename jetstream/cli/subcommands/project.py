@@ -107,19 +107,19 @@ def arg_parser():
              'name matching the pattern and remove them from the workflow.'
     )
 
-    task_remove_id = subparsers.add_parser(
-        name='remove_task_ids',
-        description='Warning - Experimental feature! '
-                    'Remove tasks from the current project workflow by ID. '
-                    'This will NOT check the workflow before removing the '
-                    'task, and may leave broken dependencies in the graph.',
-        parents=[parent, ]
+    task_remove.add_argument(
+        '-d', '--descendants',
+        action='store_true',
+        default=False,
+        help='Also remove any descendants of the task'
     )
 
-    task_remove_id.add_argument(
-        'task_id',
-        nargs='+',
-        help='Task ID(s) to remove.'
+    task_remove.add_argument(
+        '-f', '--force',
+        action='store_true',
+        default=False,
+        help='Ignore dependency errors. Warning - This may corrupt the '
+             'workflow causing it to be unloadable.'
     )
 
     task_reset = subparsers.add_parser(
@@ -214,17 +214,7 @@ class Subcommands:
         wf = p.workflow()
 
         for name in args.task_name:
-            wf.remove_task(name)
-
-        wf.save()
-
-    @staticmethod
-    def remove_task_ids(args=None):
-        p = jetstream.Project(path=args.project)
-        wf = p.workflow()
-
-        for tid in args.task_id:
-            wf.remove_task_id(tid, force=True)
+            wf.remove_task(name, force=args.force, descendants=args.descendants)
 
         wf.save()
 
