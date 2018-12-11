@@ -3,25 +3,31 @@ from jetstream.utils.general import *
 
 
 data_loaders = {
-    '.txt': table_to_records,
-    '.csv': table_to_records,
-    '.mer': table_to_records,
-    '.tsv': table_to_records,
-    '.json': json_load,
-    '.yaml': yaml_load,
-    '.yml': yaml_load,
+    '.txt': load_table,
+    '.csv': load_table,
+    '.mer': load_table,
+    '.tsv': load_table,
+    '.json': load_json,
+    '.yaml': load_yaml,
+    '.yml': load_yaml,
 }
 
 
-def load_data_file(path):
+def load_data_file(path, filetype=None):
     """Attempts to load a data file from path, raises :ValueError
     if an suitable loader function is not found in data_loaders"""
-    for ext, fn in data_loaders.items():
-        if path.endswith(ext):
-            loader = fn
-            break
+    if filetype is not None:
+        try:
+            loader = data_loaders[filetype]
+        except KeyError:
+            raise ValueError(f'No loader for {filetype}')
     else:
-        raise ValueError('No loader fn found for {}'.format(path))
+        for ext, fn in data_loaders.items():
+            if path.endswith(ext):
+                loader = fn
+                break
+        else:
+            raise ValueError('No loader fn found for {}'.format(path))
 
     return loader(path)
 

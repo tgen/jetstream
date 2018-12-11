@@ -1,0 +1,14 @@
+- name: task_1
+  stdout: /dev/null
+  cmd: echo task 1
+  output: task_1.txt
+
+{% for i in range(2, tasks+1) %}
+- name: task_{{ i }}
+  stdout: /dev/null
+  cmd: echo task {{ i }}
+  input: task_{{ i - 1 }}.txt
+  output: task_{{ i }}.txt
+
+{% endfor %}
+  

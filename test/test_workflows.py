@@ -62,22 +62,22 @@ class WorkflowBasics(TestCase):
         stdin = '#!/bin/bash\necho hello world'
         t = wf.new_task(name='task', stdin=stdin)
 
-        self.assertEqual(t.directives.get('stdin'), stdin)
+        self.assertEqual(t.directives().get('stdin'), stdin)
 
     def test_add_task_w_stdout(self):
         wf = jetstream.Workflow()
         stdout = 'out.txt'
         t = wf.new_task(name='task', stdout=stdout)
 
-        self.assertEqual(t.directives.get('stdout'), stdout)
-        self.assertEqual(t.directives.get('stderr'), None)
+        self.assertEqual(t.directives().get('stdout'), stdout)
+        self.assertEqual(t.directives().get('stderr'), None)
 
     def test_add_task_w_stderr(self):
         wf = jetstream.Workflow()
         stderr = 'err.txt'
         t = wf.new_task(name='task', stderr=stderr)
 
-        self.assertEqual(t.directives.get('stderr'), stderr)
+        self.assertEqual(t.directives().get('stderr'), stderr)
 
     def test_add_task_w_stdout_stderr(self):
         wf = jetstream.Workflow()
@@ -85,22 +85,22 @@ class WorkflowBasics(TestCase):
         stderr = 'err.txt'
         t = wf.new_task(name='task', stdout=stdout, stderr=stderr)
 
-        self.assertEqual(t.directives.get('stdout'), stdout)
-        self.assertEqual(t.directives.get('stderr'), stderr)
+        self.assertEqual(t.directives().get('stdout'), stdout)
+        self.assertEqual(t.directives().get('stderr'), stderr)
 
     def test_add_task_w_cpus(self):
         wf = jetstream.Workflow()
         cpus = 4
         t = wf.new_task(name='task', cpus=cpus)
         
-        self.assertEqual(t.directives.get('cpus'), cpus)
+        self.assertEqual(t.directives().get('cpus'), cpus)
 
     def test_add_task_w_mem(self):
         wf = jetstream.Workflow()
         mem = 4
         t = wf.new_task(name='task', mem=mem)
 
-        self.assertEqual(t.directives.get('mem'), mem)
+        self.assertEqual(t.directives().get('mem'), mem)
 
     def test_find_by_id(self):
         wf = jetstream.Workflow()
@@ -163,27 +163,21 @@ class WorkflowDependencies(TestCase):
 
         self.assertRaises(ValueError, wf.new_task, name='task', input='a')
 
-    def test_coerce_sequence_from_str(self):
-        wf = jetstream.Workflow()
-        t = wf.new_task(name='task', output='banana.txt')
-        op = jetstream.utils.coerce_sequence(t.directives.get('output'))
-        
-        self.assertIsInstance(op, list)
-
-    def test_coerce_sequence_from_list(self):
-        wf = jetstream.Workflow()
-
-        t = wf.new_task(name='task', output=['output1.txt', 'output2.txt'])
-        op = jetstream.utils.coerce_sequence(t.directives.get('output'))
-
-        self.assertIsInstance(op, list)
-
     def test_wf_dependents_1(self):
         wf = jetstream.Workflow()
 
         t1 = wf.new_task(name='task1', output='banana.txt')
         t2 = wf.new_task(name='task2', input='banana.txt')
         
+        deps = set(wf.dependents(t1))
+        self.assertEqual(deps, {t2,})
+
+    def test_wf_dependents_2(self):
+        wf = jetstream.Workflow()
+
+        t1 = wf.new_task(name='task1', output=['banana.txt', 'banana2.txt'])
+        t2 = wf.new_task(name='task2', input=['banana.txt', 'banana2.txt'])
+
         deps = set(wf.dependents(t1))
         self.assertEqual(deps, {t2,})
 
@@ -194,13 +188,11 @@ class WorkflowDependencies(TestCase):
         t2 = wf.new_task(name='task2', output='log2.txt')
         t3 = wf.new_task(name='task3', input=['log1.txt', 'log2.txt'])
         
-        deps = list(wf.dependencies(t3))
-
-        self.assertEqual(deps, [t1, t2])
+        deps = set(wf.dependencies(t3))
+        self.assertEqual(deps, {t1, t2})
 
     def test_neg_add_task_w_after(self):
         wf = jetstream.Workflow()
-
         self.assertRaises(ValueError, wf.new_task, name='task', after='task1')
 
     def test_neg_self_dependency(self):
@@ -245,8 +237,6 @@ class WorkflowDependencies(TestCase):
         self.assertEqual(wf.is_ready(t1), True)
         self.assertEqual(wf.is_ready(t2), False)
 
-    # TODO Pos composition, compose_all
-
     def test_dependent_failure(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='hello')
@@ -255,13 +245,31 @@ class WorkflowDependencies(TestCase):
 
         self.assertEqual(t2.status, 'failed')
 
+    def test_workflow_mash(self):
+        wf1 = jetstream.random_workflow(n=10)
+        wf2 = jetstream.random_workflow(n=20)
+
+        common_task = Task(name='in_common')
+        wf1.add_task(common_task)
+        wf2.add_task(common_task)
+
+        for t in wf1:
+            t.complete()
+
+        wf3 = jetstream.workflows.mash(wf1, wf2)
+        self.assertIn(common_task, wf3)
+
+        t = wf3.get_task('in_common')
+        self.assertTrue(t.is_complete)
+
+
 
 class WorkflowIteration(TestCase):
     def test_random_workflow_n(self):
         wf = jetstream.random_workflow(n=25)
 
     def test_random_workflow_timout(self):
-        wf = jetstream.random_workflow(None, timeout=1)
+        wf = jetstream.random_workflow(n=None, timeout=1)
 
     def test_random_workflow_n_and_timout(self):
         wf = jetstream.random_workflow(250, timeout=1)

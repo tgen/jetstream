@@ -35,14 +35,14 @@ def arg_parser():
     )
 
     parser.add_argument(
-        'out',
-        help='Path to save the workflow file'
+        '-o', '--out',
+        default=None,
+        help='Path to save the workflow file after it is built.'
     )
 
     parser.add_argument(
         '--project',
-        default='',
-        type=shared.set_project,
+        default=None,
         help='If the cwd is a project, it will always be loaded. Otherwise,'
              'a path to a project can be specified, and the run will start'
              'in that project directory.'
@@ -65,24 +65,15 @@ def arg_parser():
 
         1) Current project config file: ``<project>/jetstream/config.yaml``
         2) Any files in: ``<project>/config/`` 
-        3) Variables in Json/Yaml file loaded from ``--variables``
-        4) Config variables given by ``--<type>:<key> <value>`` arguments
+        3) Config variables given by ``--<type>:<key> <value>`` arguments
 
         """)
     )
 
     template.add_argument(
-        '--variables',
-        type=shared.load_variables,
-        default={},
-        help='Load a several variables from a file (json or yaml). Variables '
-             'can be loaded individually with arguments in the form: '
-             '``--<type>:<key> <value>`` '
-    )
-
-    template.add_argument(
-        '--kvarg-separator',
-        help='Set an alternate separator for kvargs'
+        '--separator',
+        default=':',
+        help='Set an alternate separator for template variable arguments'
     )
 
     mod = parser.add_argument_group(
@@ -111,15 +102,18 @@ def arg_parser():
 def main(args=None):
     parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
-    kvargs = shared.parse_kvargs(remaining)
-    args.variables.update(kvargs)
     log.debug(args)
 
     if args.mode == 'template':
+        context = shared.load_context(
+            project=args.project,
+            kvargs=remaining,
+            kvarg_separator=args.separator
+        )
+
         workflow = jetstream.render_template(
             path=args.path,
-            variables=args.variables,
-            project=args.project
+            context=context
         )
     elif args.mode == 'module':
         raise NotImplementedError
@@ -131,7 +125,8 @@ def main(args=None):
         wf.compose(workflow)
         workflow = wf
 
-    workflow.save(path=args.out)
+    if args.out:
+        workflow.save(path=args.out)
 
 
 if __name__ == '__main__':

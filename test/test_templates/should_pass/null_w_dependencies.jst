@@ -1,0 +1,10 @@
+- name: task_0
+  cmd: null
+
+{% for i in range(1, tasks) %}
+- name: task_{{ i }}
+  cmd: null
+  after: task_{{ i - 1 }}
+
+{% endfor %}
+  

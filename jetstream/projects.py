@@ -123,7 +123,7 @@ class Project:
         """Loads all data files in  <project>/config/ as values in the
         project.config dictionary. """
         if os.path.exists(self.config_file):
-            self.config = jetstream.utils.yaml_load(self.config_file)
+            self.config = jetstream.utils.load_yaml(self.config_file)
 
         if os.path.isdir(self.config_dir):
             config_files = dict()
@@ -144,7 +144,7 @@ class Project:
             return jetstream.workflows.load_workflow(self.workflow_file)
         else:
             log.warning('No existing workflow found in this project!')
-            return jetstream.Workflow()
+            return None
 
     def history(self, paths=False):
         """Find all run ids in this project"""
