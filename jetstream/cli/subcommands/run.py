@@ -172,8 +172,12 @@ def main(args=None):
     else:
         workflow = jetstream.load_workflow(args.path, args.workflow_format)
 
-    if args.project:
-        project = jetstream.Project(path=args.project)
+    try:
+        project = jetstream.Project(args.project)
+    except jetstream.NotAProject:
+        project = None
+
+    if project:
         existing_wf = project.workflow()
 
         if existing_wf is not None:

@@ -2,9 +2,23 @@ from datetime import datetime
 from hashlib import sha1
 from jetstream import utils, log
 
+valid_status = ('new', 'pending', 'complete', 'failed')
+
+
+class TaskException(Exception):
+    """Base class for catching exceptions related to tasks"""
+    msg_prefix = ''
+
+    def __init__(self, msg=''):
+        super(TaskException, self).__init__(self.msg_prefix + msg)
+
+
+class InvalidTaskStatus(TaskException):
+    msg_prefix = "Invalid task status, options: {}: ".format(
+        ', '.join(valid_status))
+
 
 class Task(object):
-    valid_status = ('new', 'pending', 'complete', 'failed')
     def __init__(self, *, from_data=None, **kwargs):
         """Tasks are the fundamental units of a workflow.
 
@@ -114,7 +128,7 @@ class Task(object):
     @status.setter
     def status(self, value):
         """Must be in Task.valid_status."""
-        if value not in Task.valid_status:
+        if value not in valid_status:
             raise InvalidTaskStatus(value)
 
         self._status = value
@@ -151,31 +165,25 @@ class Task(object):
         """Directives are stored as a tuple so that they're immutable"""
         return self._directives
 
-    def reset(self, quiet=False, descendants=True):
+    def reset(self, descendants=True):
         """Reset the state of this task"""
-        if not quiet:
-            log.info('Reset: {}'.format(self.tid))
-
+        log.debug(f'Reset: {self.tid}')
         self.status = 'new'
         self._state = utils.JsonDict()
 
         if self.workflow and descendants:
             for dep in self.descendants():
-                dep.reset(quiet=True)
+                dep.reset(descendants=False)
 
-    def pending(self, quiet=False):
+    def pending(self):
         """Indicate that this task has been passed to the runner"""
-        if not quiet:
-            log.info('Pending: {}'.format(self.tid))
-
+        log.debug(f'Pending: {self.tid}')
         self.status = 'pending'
         self.state['start_at'] = datetime.now().isoformat()
 
-    def fail(self, returncode=None, quiet=False, descendants=True):
+    def fail(self, returncode=None, descendants=True):
         """Indicate that this task has failed"""
-        if not quiet:
-            log.info('Failed: {}'.format(self.tid))
-
+        log.debug(f'Failed: {self.tid}')
         self.status = 'failed'
         self.state['done_at'] = datetime.now().isoformat()
 
@@ -185,13 +193,11 @@ class Task(object):
         if self.workflow and descendants:
             for dep in self.descendants():
                 dep.state.update(dependency_failed=self.tid)
-                dep.fail(quiet=True, descendants=False)
+                dep.fail(descendants=False)
 
-    def complete(self, returncode=None, quiet=False):
+    def complete(self, returncode=None):
         """Indicate that this task is complete"""
-        if not quiet:
-            log.info('Complete: {}'.format(self.tid))
-
+        log.debug(f'Complete: {self.tid}')
         self.status = 'complete'
         self.state['done_at'] = datetime.now().isoformat()
 
@@ -243,15 +249,3 @@ class Task(object):
     def descendants(self):
         return self.workflow.descendants(self)
 
-
-class TaskException(Exception):
-    """Base class for catching exceptions related to tasks"""
-    msg_prefix = ''
-
-    def __init__(self, msg=''):
-        super(TaskException, self).__init__(self.msg_prefix + msg)
-
-
-class InvalidTaskStatus(TaskException):
-    msg_prefix = "Invalid task status, options: {}: ".format(
-        ', '.join(Task.valid_status))

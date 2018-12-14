@@ -122,11 +122,12 @@ class Workflow(object):
         _temp = list()
         for tid in self._iter_pending:
             if self.get_task(tid).is_done():
-                pass
+                self._iter_done.append(tid)
             else:
                 _temp.append(tid)
         self._iter_pending = _temp
-
+        
+        # Start search for next task
         for i in reversed(range(len(self._iter_tasks))):
             tid = self._iter_tasks[i]
             task = self.get_task(tid)
@@ -140,7 +141,7 @@ class Workflow(object):
             elif task.is_ready():
                 self._iter_tasks.pop(i)
                 self._iter_pending.append(tid)
-                task.pending(quiet=True)
+                task.pending()
                 return task
         
         # If there are any remaining or pending, return None until one is ready
@@ -422,7 +423,7 @@ class Workflow(object):
     def remove_task(self, pattern, force=False, descendants=False):
         """Remove task(s) from the workflow.
         This will find tasks by name and call remove_task_id for each match. """
-        log.info(f'Remove task: {pattern}')
+        log.debug(f'Remove task: {pattern}')
         matches = self.find(pattern)
 
         for task_id in matches:
@@ -450,21 +451,21 @@ class Workflow(object):
         """Resets all tasks state."""
         log.critical('Resetting state for all tasks...')
         for task in self.tasks(objs=True):
-            task.reset()
+            task.reset(descendants=False)
 
     def resume(self):
         """Resets all "pending" tasks state."""
         log.info('Resetting state for all pending tasks...')
         for task in self.tasks(objs=True):
             if task.status == 'pending':
-                task.reset()
+                task.reset(descendants=False)
 
     def retry(self):
         """Resets all "pending" and "failed" tasks state."""
         log.info('Resetting state for all pending and failed tasks...')
         for task in self.tasks(objs=True):
             if task.status in ('pending', 'failed'):
-                task.reset()
+                task.reset(descendants=False)
 
     def serialize(self):
         """Convert the workflow to a node-link formatted object that can
@@ -601,13 +602,13 @@ def mash(G, H):
             temp_graph.remove_node(d)
 
     for t in to_reset:
-        wf.get_task(t).reset(quiet=True, descendants=False)
+        wf.get_task(t).reset(descendants=False)
 
     log.info(
         'Mash report:\n'
         f'New tasks: {len(new)}\n'
         f'Modified tasks: {len(modified)}\n'
-        f'Ancestors indirectly affected: {len(to_reset)}'
+        f'Reset due to modified ancestor: {len(to_reset)}'
     )
 
     return wf
