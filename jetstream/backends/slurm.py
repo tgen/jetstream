@@ -414,7 +414,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
            cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None, sbatch=None):
+           additional_args=None, sbatch=None, retry=3):
     if sbatch is None:
         sbatch = 'sbatch'
 
@@ -465,7 +465,17 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
     args.append(temp.name)
     args = [str(r) for r in args]
 
-    p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
+    remaining_tries = int(retry)
+    while 1:
+        try:
+            p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
+            break
+        except subprocess.CalledProcessError:
+            if remaining_tries > 0:
+                remaining_tries -= 1
+                log.exception(f'Error during sbatch, retrying...')
+            else:
+                raise
 
     jid = p.stdout.decode().strip()
     job = SlurmBatchJob(jid)
