@@ -423,7 +423,7 @@ class Workflow(object):
     def remove_task(self, pattern, force=False, descendants=False):
         """Remove task(s) from the workflow.
         This will find tasks by name and call remove_task_id for each match. """
-        log.info(f'Remove task: {pattern}')
+        log.debug(f'Remove task: {pattern}')
         matches = self.find(pattern)
 
         for task_id in matches:
@@ -608,7 +608,7 @@ def mash(G, H):
         'Mash report:\n'
         f'New tasks: {len(new)}\n'
         f'Modified tasks: {len(modified)}\n'
-        f'Ancestors indirectly affected: {len(to_reset)}'
+        f'Reset due to modified ancestor: {len(to_reset)}'
     )
 
     return wf
