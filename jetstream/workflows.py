@@ -122,11 +122,12 @@ class Workflow(object):
         _temp = list()
         for tid in self._iter_pending:
             if self.get_task(tid).is_done():
-                pass
+                self._iter_done.append(tid)
             else:
                 _temp.append(tid)
         self._iter_pending = _temp
-
+        
+        # Start search for next task
         for i in reversed(range(len(self._iter_tasks))):
             tid = self._iter_tasks[i]
             task = self.get_task(tid)

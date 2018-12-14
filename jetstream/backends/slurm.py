@@ -53,6 +53,7 @@ class SlurmBackend(BaseBackend):
     def _bump_next_update(self):
         d = timedelta(seconds=self.sacct_frequency)
         self._next_update = datetime.now() + d
+        log.debug(f'Next sacct update at {self._next_update.isoformat()}')
 
     async def wait_for_next_update(self):
         while datetime.now() < self._next_update:
@@ -67,9 +68,11 @@ class SlurmBackend(BaseBackend):
         try:
             while 1:
                 await self.wait_for_next_update()
+                self._bump_next_update()
 
                 if not self.jobs:
-                    return
+                    log.debug('No current jobs to check')
+                    continue
 
                 sacct_data = sacct(*self.jobs, return_data=True)
 
