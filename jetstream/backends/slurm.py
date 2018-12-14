@@ -7,6 +7,7 @@ import itertools
 import tempfile
 import shutil
 import asyncio
+from datetime import datetime, timedelta
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
 from jetstream import log
@@ -26,8 +27,8 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, runner, max_concurrency=9001, sacct_frequency=10,
-                 sbatch=None):
+    def __init__(self, runner, max_concurrency=9001, sacct_frequency=60,
+                 sbatch=None, sbatch_delay=0.1):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -37,9 +38,11 @@ class SlurmBackend(BaseBackend):
         super(SlurmBackend, self).__init__(runner)
         self.sbatch = sbatch
         self.sacct_frequency = sacct_frequency
+        self.sbatch_delay = sbatch_delay
         self.max_concurrency = max_concurrency
         self.jobs = dict()
         self.coroutines = (self.job_monitor,)
+        self._next_update = datetime.now()
 
         if self.sbatch is None:
             self.sbatch = shutil.which('sbatch') or 'sbatch'
@@ -47,13 +50,23 @@ class SlurmBackend(BaseBackend):
         subprocess.run([self.sbatch, '--version'], check=True)
         log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))
 
+    def _bump_next_update(self):
+        d = timedelta(seconds=self.sacct_frequency)
+        self._next_update = datetime.now() + d
+
+    async def wait_for_next_update(self):
+        while datetime.now() < self._next_update:
+            sleep_delta = self._next_update - datetime.now()
+            sleep_seconds = max(0, sleep_delta.total_seconds())
+            await asyncio.sleep(sleep_seconds)
+
     async def job_monitor(self):
         """Request job data updates from sacct for each job in self.jobs."""
         log.info('Slurm job monitor started!')
 
         try:
             while 1:
-                await asyncio.sleep(self.sacct_frequency)
+                await self.wait_for_next_update()
 
                 if not self.jobs:
                     return
@@ -116,8 +129,9 @@ class SlurmBackend(BaseBackend):
         if not task.directives().get('cmd'):
             return 0
 
-        time.sleep(.1) # sbatch breaks when called too frequently
+        time.sleep(self.sbatch_delay) # sbatch breaks when called too frequently
 
+        self._bump_next_update()
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
@@ -308,7 +322,8 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
     data = {}
     for i in range(0, len(job_ids), chunk_size):
         chunk = job_ids[i: i + chunk_size]
-        data.update(launch_sacct(*chunk))
+        sacct_output = launch_sacct(*chunk)
+        data.update(sacct_output)
 
     log.verbose('Status updates for {} jobs'.format(len(data)))
 
