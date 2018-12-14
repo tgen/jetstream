@@ -140,7 +140,7 @@ class Workflow(object):
             elif task.is_ready():
                 self._iter_tasks.pop(i)
                 self._iter_pending.append(tid)
-                task.pending(quiet=True)
+                task.pending()
                 return task
         
         # If there are any remaining or pending, return None until one is ready
@@ -450,21 +450,21 @@ class Workflow(object):
         """Resets all tasks state."""
         log.critical('Resetting state for all tasks...')
         for task in self.tasks(objs=True):
-            task.reset()
+            task.reset(descendants=False)
 
     def resume(self):
         """Resets all "pending" tasks state."""
         log.info('Resetting state for all pending tasks...')
         for task in self.tasks(objs=True):
             if task.status == 'pending':
-                task.reset()
+                task.reset(descendants=False)
 
     def retry(self):
         """Resets all "pending" and "failed" tasks state."""
         log.info('Resetting state for all pending and failed tasks...')
         for task in self.tasks(objs=True):
             if task.status in ('pending', 'failed'):
-                task.reset()
+                task.reset(descendants=False)
 
     def serialize(self):
         """Convert the workflow to a node-link formatted object that can
@@ -601,7 +601,7 @@ def mash(G, H):
             temp_graph.remove_node(d)
 
     for t in to_reset:
-        wf.get_task(t).reset(quiet=True, descendants=False)
+        wf.get_task(t).reset(descendants=False)
 
     log.info(
         'Mash report:\n'

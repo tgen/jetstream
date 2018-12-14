@@ -147,7 +147,7 @@ class SlurmBackend(BaseBackend):
             additional_args=task.directives().get('sbatch_args')
         )
 
-        log.info(f'Submitted({job.jid}): {task}')
+        log.info(f'SlurmBackend submitted({job.jid}): {task.tid}')
         task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
 
         event = asyncio.Event(loop=self.runner.loop)
@@ -158,14 +158,17 @@ class SlurmBackend(BaseBackend):
             await event.wait()
 
             if job.is_ok():
+                log.info(f'Complete: {task.tid}')
                 task.complete(job.returncode())
             else:
+                log.info(f'Failed: {task.tid}')
                 task.state['slurm'] = job.job_data.copy()
                 task.fail(job.returncode())
+
         except asyncio.CancelledError:
             job.cancel()
-            task.state['err'] = 'Runner cancelled backend.spawn'
-            task.fail()
+            task.state['err'] = 'Runner cancelled Backend.spawn'
+            task.fail(-15)
 
 
 class SlurmBatchJob(object):

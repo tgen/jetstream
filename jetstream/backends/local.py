@@ -74,18 +74,19 @@ class LocalBackend(BaseBackend):
                 stderr=stderr_fp
             )
 
-            log.info(f'Launched({p.pid}): {task}')
+            log.info(f'LocalBackend spawned({p.pid}): {task.tid}')
             rc = await p.wait()
 
             if rc != 0:
+                log.info(f'Failed: {task.tid}')
                 return task.fail(p.returncode)
             else:
+                log.info(f'Complete: {task.tid}')
                 return task.complete(p.returncode)
         except CancelledError:
+            task.state['err'] = 'Runner cancelled Backend.spawn()'
             return task.fail(-15)
         finally:
-            log.debug('Done: {}'.format(task))
-
             for fp in open_fps:
                 fp.close()
 
