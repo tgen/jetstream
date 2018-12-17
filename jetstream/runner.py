@@ -19,7 +19,6 @@ supported_backends = {
 def sigterm_ignored():
     """Context manager that temporarily catches SIGTERM signals, and raises
     a KeyboardInterrupt instead."""
-
     def signal_handler(signum, frame):
         """Used to replace the default SIGTERM handler"""
         log.debug('SIGTERM received!')
@@ -87,6 +86,14 @@ class Runner:
         except asyncio.CancelledError:
             pass
 
+    def _get_workflow_save_path(self):
+        if self.workflow.save_path:
+            return self.workflow.save_path
+        elif self.project:
+            return self.project.workflow_file
+        else:
+            return f'{self.run_id}.pickle'
+
     def _halt(self):
         if self._main:
             self._main.cancel()
@@ -99,8 +106,8 @@ class Runner:
             if self._events:
                 for e in self._events:
                     e.set()
-        except Exception as e:
-            log.exception(e)
+        except Exception:
+            log.exception(f'Unhandled exception in a task future: {future}')
             self._halt()
         finally:
             self._conc_sem.release()
@@ -184,20 +191,15 @@ class Runner:
 
     def preflight(self):
         """Called prior to start"""
-        log.info(f'Runner preflight procedure')
+        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
         self.save_workflow()
 
     def save_workflow(self):
-        if self.workflow.save_path:
-            self.workflow.save()
-        elif self.project:
-            self.workflow.save(self.project.workflow_file)
-        else:
-            self.workflow.save(path=f'{self.run_id}.pickle')
+        self.workflow.save(self._get_workflow_save_path())
 
     def shutdown(self):
         """Called after shutdown"""
-        log.info(f'Runner shutdown procedure')
+        log.info(f'Saving workflow: {self.workflow.save_path}')
         self.save_workflow()
 
         complete = 0
@@ -268,6 +270,7 @@ class Runner:
 
                 for fut, res in zip(futures, results):
                     if isinstance(res, Exception):
+                        log.critical(f'Error collected during shutdown: {res}')
                         self._errs = True
 
                 self.loop.close()
@@ -275,4 +278,6 @@ class Runner:
 
                 log.info(f'Total run time: {datetime.now() - started}')
                 if self._errs:
-                    raise RuntimeError('Runner halted unexpectedly!')
+                    raise RuntimeError('Run completed with errors!')
+                else:
+                    log.critical('Run complete!')

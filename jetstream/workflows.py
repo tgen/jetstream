@@ -690,28 +690,6 @@ def load_workflow_pickle(path):
     return Workflow.deserialize(data)
 
 
-def save_workflow(workflow, path, format=None):
-    """Save a workflow to the path
-
-    This helper function will try to choose the correct file format based
-    on the extension of the path, but defaults to pickle for unrecognized
-    extensions.
-
-    :param workflow: Workflow instance
-    :param path: where to save
-    :return: None
-    """
-    if format is None:
-        ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
-
-    start = datetime.now()
-    jetstream.workflow_savers[format](workflow, path)
-    elapsed = datetime.now() - start
-
-    log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
-
-
 def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
     """Random workflow generator. The time to generate a random task for a
      workflow scales exponentially, so this can take a very long time for
@@ -776,8 +754,30 @@ def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
     return wf
 
 
+def save_workflow(workflow, path, format=None):
+    """Save a workflow to the path
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions.
+
+    :param workflow: Workflow instance
+    :param path: where to save
+    :return: None
+    """
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = jetstream.workflow_extensions.get(ext, 'pickle')
+
+    start = datetime.now()
+    jetstream.workflow_savers[format](workflow, path)
+    elapsed = datetime.now() - start
+
+    log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
+
+
 def save_workflow_yaml(workflow, path):
-    log.info('Saving workflow (yaml): {}'.format(path))
+    log.debug('Saving workflow (yaml): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
@@ -787,7 +787,7 @@ def save_workflow_yaml(workflow, path):
 
 
 def save_workflow_json(workflow, path):
-    log.info('Saving workflow (json): {}'.format(path))
+    log.debug('Saving workflow (json): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
@@ -797,7 +797,7 @@ def save_workflow_json(workflow, path):
 
 
 def save_workflow_pickle(workflow, path):
-    log.info('Saving workflow (pickle): {}'.format(path))
+    log.debug('Saving workflow (pickle): {}'.format(path))
     lock_path = path + '.lock'
 
     with open(lock_path, 'wb') as fp:
