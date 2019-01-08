@@ -101,19 +101,25 @@ class Project(object):
             for j in self.get_jobs():
                 if not all_jobs and j.is_done() and j.is_ok():
                     continue
-
+                
                 d = j.job_data  # Use the sacct data for each job
+                if d is None:
+                    print(f'Error loading job data for: {j}')
+                    continue
+                try:
+                    job_id = d['JobID'][:12].ljust(12)
+                    job_name = d['JobName'][:col_size].ljust(col_size)
+                    job_state = d['State'][:col_size].ljust(col_size)
+                    job_start = d['Start'][:col_size].ljust(col_size)
+                    job_end = d['End'][:col_size].ljust(col_size)
+                    job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
+                    values = (job_id, job_name, job_state, job_start, job_end,
+                              job_elapsed)
 
-                job_id = d['JobID'][:12].ljust(12)
-                job_name = d['JobName'][:col_size].ljust(col_size)
-                job_state = d['State'][:col_size].ljust(col_size)
-                job_start = d['Start'][:col_size].ljust(col_size)
-                job_end = d['End'][:col_size].ljust(col_size)
-                job_elapsed = d['Elapsed'][:col_size].ljust(col_size)
-                values = (job_id, job_name, job_state, job_start, job_end,
-                          job_elapsed)
-
-                rep += " ".join(values) + '\n'
+                    rep += " ".join(values) + '\n'
+                except KeyError:
+                    print(f'Error loading job data for: {j}')
+                    continue
 
         return rep
 
