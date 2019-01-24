@@ -58,6 +58,7 @@ class Runner:
 
         # Attributes used internally that should not be modified
         self._previous_directory = None
+        self._run_started = None
         self._conc_sem = BoundedSemaphore(
             value=max_forks or utils.guess_max_forks(),
             loop=self.loop
@@ -85,6 +86,34 @@ class Runner:
                 last_save = datetime.now()
         except asyncio.CancelledError:
             pass
+
+    def _cleanup_event_loop(self):
+        """If the async event loop has outstanding futures, they must be
+        cancelled, and results collected, prior to exiting. Otherwise, lots of
+        ugly error messages will be shown to the user. """
+        futures = asyncio.Task.all_tasks(self.loop)
+
+        if futures:
+            for task in futures:
+                task.cancel()
+
+            results = self.loop.run_until_complete(
+                asyncio.gather(
+                    *futures,
+                    loop=self.loop,
+                    return_exceptions=True
+                )
+            )
+        else:
+            results = []
+
+        for fut, res in zip(futures, results):
+            if isinstance(res, Exception):
+                log.critical(f'Error collected during shutdown: {res}')
+                self._errs = True
+
+        if self.loop:
+            self.loop.close()
 
     def _get_workflow_save_path(self):
         if self.workflow.save_path:
@@ -157,10 +186,10 @@ class Runner:
     async def _yield(self):
         """Since the workflow is a simple synchronous class, it will just
         return None when there are no tasks ready to be launched. This method
-        in allows the runner to "pause" checking the workflow until a task
+        allows the runner to "pause" checking the workflow until a task
         future returns, or a timeout (whichever happens first). This greatly
-        reduces the cpu load of the runner by not constantly checking the
-        workflow for new tasks. """
+        reduces the cpu load of the runner while idle by not constantly
+        checking the workflow for new tasks. """
         log.verbose(
             f'Yield for {self.no_task_ready_delay}s or when next '
             f'future returns'
@@ -173,11 +202,8 @@ class Runner:
         except asyncio.TimeoutError:
             pass
 
-    def close(self):
-        if self.loop:
-            self.loop.close()
-
     def on_spawn(self, task):
+        """Called prior to launching a task"""
         log.debug('Runner spawn: {}'.format(task))
         try:
             exec_directive = task.directives().get('exec')
@@ -187,7 +213,6 @@ class Runner:
                 self._workflow_iterator = iter(self.workflow)
         except AttributeError:
             log.exception('Exception suppressed')
-
 
     def preflight(self):
         """Called prior to start"""
@@ -199,7 +224,7 @@ class Runner:
 
     def shutdown(self):
         """Called after shutdown"""
-        log.info(f'Saving workflow: {self.workflow.save_path}')
+        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
         self.save_workflow()
 
         complete = 0
@@ -218,30 +243,27 @@ class Runner:
             log.info(f'\U0001f44d {complete} tasks complete!')
 
     def start(self, workflow, project=None, run_id=None):
-        """This method is called to start the runner on a workflow."""
-        log.debug('Runner starting...')
-        started = datetime.now()
-
-        self._previous_directory = os.getcwd()
-        if project is None:
-            try:
-                self.project = jetstream.Project()
-            except jetstream.NotAProject:
-                self.project = None
-        else:
-            self.project = jetstream.Project(path=project)
-            os.chdir(self.project.path)
+        """Called to start the runner on a workflow."""
 
         self.workflow = workflow
         self.run_id = run_id or jetstream.run_id()
         self._errs = False
+        self._run_started = datetime.now()
+        self._previous_directory = os.getcwd()
+        self._current_project = project
 
         if self.no_task_ready_delay is None:
-            self.no_task_ready_delay = 0.1 * len(self.workflow)
+            self._no_task_ready_delay = 0.1 * len(self.workflow)
+        else:
+            self._no_task_ready_delay = self.no_task_ready_delay
+
+        log.info(f'Starting run: {self.run_id}')
 
         with sigterm_ignored():
             self.preflight()
-            log.info(f'Starting run: {self.run_id}')
+
+            if self._current_project:
+                os.chdir(self.project.path)
 
             try:
                 self._start_backend_coroutines()
@@ -252,32 +274,6 @@ class Runner:
                 self._errs = True
             finally:
                 self.shutdown()
-                futures = asyncio.Task.all_tasks(self.loop)
-
-                if futures:
-                    for task in futures:
-                        task.cancel()
-
-                    results = self.loop.run_until_complete(
-                        asyncio.gather(
-                            *futures,
-                            loop=self.loop,
-                            return_exceptions=True
-                        )
-                    )
-                else:
-                    results = []
-
-                for fut, res in zip(futures, results):
-                    if isinstance(res, Exception):
-                        log.critical(f'Error collected during shutdown: {res}')
-                        self._errs = True
-
-                self.loop.close()
+                self._cleanup_event_loop()
                 os.chdir(self._previous_directory)
-
                 log.info(f'Total run time: {datetime.now() - started}')
-                if self._errs:
-                    raise RuntimeError('Run completed with errors!')
-                else:
-                    log.critical('Run complete!')
