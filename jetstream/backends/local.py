@@ -1,19 +1,14 @@
+import logging
 import asyncio
-from subprocess import CompletedProcess
-from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
+import jetstream
 from multiprocessing import cpu_count
-from jetstream import log
-from jetstream.backends import BaseBackend
+from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
+
+log = logging.getLogger(__name__)
 
 
-def guess_local_cpus(default=1):
-    return cpu_count() or default
-
-
-class LocalBackend(BaseBackend):
-    respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus')
-
-    def __init__(self, runner, cpus=None, blocking_io_penalty=10):
+class LocalBackend(jetstream.backends.BaseBackend):
+    def __init__(self, runner, cpus=None, blocking_io_penalty=None):
         """The LocalBackend executes tasks as processes on the local machine.
 
         :param cpus: If this is None, the number of available CPUs will be
@@ -23,8 +18,8 @@ class LocalBackend(BaseBackend):
         :param max_concurrency: Max concurrency limit
         """
         super(LocalBackend, self).__init__(runner)
-        self.cpus = cpus or guess_local_cpus()
-        self.blocking_io_penaty = blocking_io_penalty
+        self.cpus = cpus or jetstream.settings['backends']['local']['cpus'] or self.guess_local_cpus()
+        self.blocking_io_penaty = blocking_io_penalty or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int) or 10
         self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
         log.info(f'LocalBackend initialized with {self.cpus} cpus')
 
@@ -123,3 +118,7 @@ class LocalBackend(BaseBackend):
                 await asyncio.sleep(self.blocking_io_penaty)
 
         return p
+
+    def guess_local_cpus(self, default=1):
+        return cpu_count() or default
+
