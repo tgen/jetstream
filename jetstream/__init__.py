@@ -1,74 +1,81 @@
-import sys
+import logging
+import logging.config
 import os
-import re
-import ulid
-import traceback
-from jetstream import profile, logs
-from jetstream.profile import load_profile, dumps_profile, profile_path
+import sys
 
-__name__ = 'jetstream'
-log = logs.logging.getLogger(__name__)
-settings = None
-_current_project = None
+import confuse
+import ulid
+import yaml
+
+
+# Configure parallel library dependencies (Used by numpy)
+if 'OPENBLAS_NUM_THREADS' not in os.environ:
+    os.environ.update(OPENBLAS_NUM_THREADS='1')
+
+if 'MKL_NUM_THREADS' not in os.environ:
+    os.environ.update(MKL_NUM_THREADS='1')
+
+# Load settings and configure logging
+settings = confuse.LazyConfig('jetstream', __name__)
+log = logging.getLogger(__name__)
+log.addHandler(logging.NullHandler())
+log.setLevel(1)
+
+# Package module imports
+import jetstream.backends
+import jetstream.kvargs
+import jetstream.pipelines
+import jetstream.runner
+import jetstream.templates
+import jetstream.utils
+import jetstream.workflows
+from jetstream.projects import Project, NotAProject
+from jetstream.runner import Runner
+from jetstream.templates import environment, render_template
+from jetstream.workflows import Workflow, Task, load_workflow, save_workflow, \
+    random_workflow
+
+
+def context(*, project=None, kvargs=None, separator=None):
+    """Returns a dictionary that can be used as the context rendering
+    templates with Jinja2"""
+    context = {'__project__': project}
+
+    if project:
+        config = project.load_config()
+        context.update(config)
+
+    if kvargs:
+        config = jetstream.kvargs.parse_kvargs(kvargs, separator)
+        context.update(config)
+
+    return context
 
 
 def run_id():
-    return run_id_template.format(ulid.new().str)
+    """Generate a new run ID"""
+    return 'js{}'.format(ulid.new().str)
 
 
-try:
-    settings = load_profile()
+def start_logging(profile=None):
+    """Logging is only set up with a NullHandler by default. This function sets
+    up logging with the chosen settings profile. """
+    if profile is None:
+        if sys.stderr.isatty():
+            profile = 'interactive'
+        else:
+            profile = 'default'
 
-    # Configure parallel library dependencies (Used by numpy)
-    if 'OPENBLAS_NUM_THREADS' not in os.environ:
-        _openblas_num_threads = str(settings['openblas_num_threads'])
-        os.environ.update(OPENBLAS_NUM_THREADS=_openblas_num_threads)
-
-    if 'MKL_NUM_THREADS' not in os.environ:
-        _mkl_num_threads = str(settings['mkl_num_threads'])
-        os.environ.update(MKL_NUM_THREADS=_mkl_num_threads)
-
-    # Sortable unique id generator and precompiled regex pattern
-    run_id_template = 'js{}'
-    run_id_pattern = re.compile(r'^js[A-Z0-9]{26}$')
-
-    from jetstream import utils
-    from jetstream.utils import load_data_file, loadable_files
-    from jetstream import workflows, templates, projects, runner, backends, \
-        pipelines
-    from jetstream.runner import Runner
-    from jetstream.projects import Project, NotAProject
-    from jetstream.workflows import (Workflow, Task, load_workflow,
-                                     save_workflow,
-                                     random_workflow,)
-    from jetstream.templates import environment, render_template
-
-    workflow_extensions = {
-        '': 'pickle',
-        '.pickle': 'pickle',
-        '.yaml': 'yaml',
-        '.yml': 'yaml',
-        '.json': 'json',
-    }
-
-    workflow_loaders = {
-        'pickle': workflows.load_workflow_pickle,
-        'yaml': workflows.load_workflow_yaml,
-        'json': workflows.load_workflow_json
-    }
-
-    workflow_savers = {
-        'pickle': workflows.save_workflow_pickle,
-        'yaml': workflows.save_workflow_yaml,
-        'json': workflows.save_workflow_json
-    }
+    profile = str(profile).lower()
+    config = settings['logging_profiles'][profile].get(dict)
+    logging.config.dictConfig(config)
+    log.debug(f'Logging started: {profile}: {config}')
 
 
-except Exception as e:
-    msg = 'Current settings profile:\n{}\n'\
-          'Error! Jetstream failed to load, there may be errors in the ' \
-          'settings profile.\nSee traceback for details.'
-    print(traceback.format_exc(), file=sys.stderr)
-    print(msg.format(dumps_profile(settings)), file=sys.stderr)
-    sys.exit(1)
+def represent_str(dumper, data):
+    """Allows PyYaml module to dump strings as literals """
+    if utils.is_multiline(data):
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
+yaml.add_representer(str, representer=represent_str)

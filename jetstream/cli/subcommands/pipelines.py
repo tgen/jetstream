@@ -1,10 +1,10 @@
 """
+
 """
 import os
 import logging
 import argparse
 import jetstream
-from jetstream.cli import shared
 
 log = logging.getLogger(__name__)
 
@@ -22,73 +22,8 @@ def arg_parser():
     )
 
     parser.add_argument(
-        '--project',
-        help='Path to a project'
-    )
-
-    parser.add_argument(
-        '--separator',
-        default=':',
-        help='Set an alternate separator for kvargs variables'
-    )
-
-    parser.add_argument(
         '--pipelines-dir',
-        default=os.environ.get('JETSTREAM_PIPELINES'),
-        help='Override path to the pipelines dir',
-    )
-
-    runner = parser.add_argument_group(
-        title='Runner Configuration'
-    )
-
-    runner.add_argument(
-        '--save-interval',
-        type=int,
-        default=30,
-        help='Frequency, in seconds, that the workflow file will be saved to '
-             'disk. (Default: 3600)')
-
-    runner.add_argument(
-        '--backend',
-        choices=['local', 'slurm', None],
-        default=None,
-        help='Specify the runner backend (Default: $JETSTREAM_BACKEND or local)'
-    )
-
-    runner.add_argument(
-        '--local',
-        dest='backend',
-        action='store_const',
-        const='local'
-    )
-
-    runner.add_argument(
-        '--slurm',
-        dest='backend',
-        action='store_const',
-        const='slurm'
-    )
-
-    runner.add_argument(
-        '--run-id',
-        help='Give this run a specific ID instead of randomly generating one.'
-    )
-
-    runner.add_argument(
-        '--max-forks',
-        default=None,
-        type=int,
-        help='Override the default fork limits of the runner. By default, '
-             'this will be set to a conservative fraction of the total thread '
-             'limit on runner host.')
-
-    runner.add_argument(
-        '--method',
-        choices=['retry', 'resume', 'reset'],
-        default='retry',
-        help='Method to use when running existing workflows. This parameter '
-             'will determine which tasks are reset prior to starting the run.'
+        help='Override path to the pipelines.',
     )
 
     return parser
@@ -99,21 +34,29 @@ def main(args=None):
     args, remaining = parser.parse_known_args(args)
     log.debug(args)
 
+    # Resolve the requested pipeline
+    pipelines_home = jetstream.settings['pipelines']['home'].get()
+    if not pipelines_home or not os.path.isdir(pipelines_home):
+        raise ValueError('Pipelines are not configured. See the "pipelines" '
+                         'section of the settings. ')
+
     pipeline, constants = jetstream.pipelines.get(args.name)
 
-    if constants is not None:
-        remaining.extend(['--file:constants', str(constants.resolve())])
+    # Add the pipeline constants to the kvargs
+    if constants:
+        remaining.extend(['--file:constants', constants])
 
-    # If the pipeline has a bin directory, prepend the env PATH
+    # If the pipeline has a bin directory, prepend the env PATH and make
+    # the directory available via env variable PIPELINE_BIN
     if pipeline.bin:
         bin_path = pipeline.path.joinpath(pipeline.manifest['bin'])
         os.environ['PIPELINE_BIN'] = str(bin_path)
         os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
-    context = shared.load_context(
+    context = jetstream.context(
         project=args.project,
         kvargs=remaining,
-        kvarg_separator=args.separator
+        separator=args.separator
     )
 
     workflow = jetstream.render_template(

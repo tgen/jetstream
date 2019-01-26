@@ -1,18 +1,20 @@
+import asyncio
+import itertools
+import json
+import logging
 import re
 import shlex
-import time
-import json
-import subprocess
-import itertools
-import tempfile
 import shutil
-import asyncio
+import subprocess
+import tempfile
+import time
+
 from datetime import datetime, timedelta
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
-from jetstream import log
 from jetstream.backends import BaseBackend
 
+log = logging.getLogger(__name__)
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
@@ -331,7 +333,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
         sacct_output = launch_sacct(*chunk)
         data.update(sacct_output)
 
-    log.verbose('Status updates for {} jobs'.format(len(data)))
+    log.debug('Status updates for {} jobs'.format(len(data)))
 
     if return_data:
         return data
@@ -359,13 +361,13 @@ def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
     :param raw: Return raw stdout instead of parsed
     :return: Dict or Bytes
     """
-    log.verbose('Sacct request for {} jobs...'.format(len(job_ids)))
+    log.debug('Sacct request for {} jobs...'.format(len(job_ids)))
     args = ['sacct', '-P', '--format', 'all', '--delimiter={}'.format(delimiter)]
 
     for jid in job_ids:
         args.extend(['-j', str(jid)])
 
-    log.verbose('Launching: {}'.format(' '.join([shlex.quote(r) for r in args])))
+    log.debug('Launching: {}'.format(' '.join([shlex.quote(r) for r in args])))
     p = subprocess.run(args, stdout=PIPE, check=True)
 
     if raw:
@@ -484,5 +486,4 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
     job = SlurmBatchJob(jid)
     job.args = args
     job.script = script
-
     return job

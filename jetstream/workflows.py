@@ -19,16 +19,18 @@ arguments to template.
 
 """
 import os
-import re
-import shutil
 import pickle
 import random
+import re
+import shutil
+from collections import Counter
 from datetime import datetime
+from pkg_resources import get_distribution
+from threading import Lock
+
 import networkx as nx
 from networkx.readwrite import json_graph
-from threading import Lock
-from collections import Counter
-from pkg_resources import get_distribution
+
 import jetstream
 from jetstream import utils, log
 from jetstream.tasks import Task
@@ -36,9 +38,19 @@ from jetstream.tasks import Task
 __version__ = get_distribution('jetstream').version
 
 
+workflow_extensions = {
+    '': 'pickle',
+    '.pickle': 'pickle',
+    '.yaml': 'yaml',
+    '.yml': 'yaml',
+    '.json': 'json',
+}
+
+
 class NotDagError(ValueError):
     """Raised when edges are added that would result in a graph that is not
     a directed-acyclic graph"""
+
 
 class Workflow(object):
     def __init__(self, **kwargs):
@@ -88,7 +100,7 @@ class Workflow(object):
         they are stored in separate lists, and then removed as they are
         completed. When a change to the graph occurs during iteration, these
         lists should be recalculated. """
-        log.verbose('Building workflow iterator...')
+        log.debug('Building workflow iterator...')
 
         self._iter_tasks = list()
         self._iter_pending = list()
@@ -165,7 +177,7 @@ class Workflow(object):
         This means that the in-degree of a node represents the number of
         dependencies it has. A node with zero in-edges is a "root" node, or a
         task with no dependencies. """
-        log.verbose('Adding edge: {} -> {}'.format(from_node, to_node))
+        log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
 
         if from_node not in self.graph:
             raise NotDagError(f'{from_node} is not in the workflow!')
@@ -188,7 +200,7 @@ class Workflow(object):
 
         """
         after = task.directives().get('after')
-        log.verbose('"after" directive: {}'.format(after))
+        log.debug('"after" directive: {}'.format(after))
 
         if after:
             matches = set()
@@ -218,7 +230,7 @@ class Workflow(object):
 
         """
         before = task.directives().get('before')
-        log.verbose('"before" directive: {}'.format(before))
+        log.debug('"before" directive: {}'.format(before))
 
         if before:
             matches = set()
@@ -248,7 +260,7 @@ class Workflow(object):
 
         Where target includes an "output" value matching the "input" value."""
         input = task.directives().get('input')
-        log.verbose('"input" directive: {}'.format(input))
+        log.debug('"input" directive: {}'.format(input))
 
         if input:
             if isinstance(input, str):
@@ -530,11 +542,27 @@ class Workflow(object):
 
     def update(self):
         """Recalculate the edges for this workflow"""
-        log.info('Loading workflow DAG...')
+        log.debug('Loading workflow DAG...')
         for task in self.tasks(objs=True):
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
+
+
+def get_workflow_loaders():
+    return {
+        'pickle': load_workflow_pickle,
+        'yaml': load_workflow_yaml,
+        'json': load_workflow_json
+    }
+
+
+def get_workflow_savers():
+    return {
+        'pickle': save_workflow_pickle,
+        'yaml': save_workflow_yaml,
+        'json': save_workflow_json
+    }
 
 
 def mash(G, H):
@@ -667,9 +695,9 @@ def load_workflow(path, format=None):
     extensions. It also sets workflow.save_path to the path"""
     if format is None:
         ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
+        format = workflow_extensions.get(ext, 'pickle')
 
-    wf = jetstream.workflow_loaders[format](path)
+    wf = get_workflow_loaders()[format](path)
     wf.save_path = os.path.abspath(path)
     return wf
 
@@ -767,10 +795,10 @@ def save_workflow(workflow, path, format=None):
     """
     if format is None:
         ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
+        format = workflow_extensions.get(ext, 'pickle')
 
     start = datetime.now()
-    jetstream.workflow_savers[format](workflow, path)
+    get_workflow_savers()[format](workflow, path)
     elapsed = datetime.now() - start
 
     log.debug('Workflow saved (after {}): {}'.format(elapsed, path))

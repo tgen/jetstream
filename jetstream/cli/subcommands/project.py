@@ -1,12 +1,11 @@
 """Interact with jetstream projects. View tasks, run history, or project data.
 This option requires a subcommand.
 """
-import sys
 import argparse
 import logging
-import jetstream
+import sys
 import textwrap
-from jetstream.cli import shared
+import jetstream
 
 log = logging.getLogger(__name__)
 

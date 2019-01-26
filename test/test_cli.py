@@ -1,23 +1,22 @@
 import os
-import sys
 import tempfile
 import jetstream
-from jetstream.cli.subcommands import init, run, project, build
+from jetstream.cli.jetstream import main
 
 from unittest import TestCase
 
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class TestCliExt(TestCase):
     """Tests that run workflow templates stored externally in
     test/test_templates """
 
-
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
         super(TestCliExt, self).setUp()
-        self.templates_dir = os.path.abspath(os.path.join('test', 'test_templates'))
-        self.variables = os.path.abspath(os.path.join('test', 'test_templates', 'variables.yaml'))
+        self.templates_dir = os.path.abspath(os.path.join(TESTS_DIR, 'test_templates'))
+        self.variables = os.path.abspath(os.path.join(TESTS_DIR, 'test_templates', 'variables.yaml'))
         self._original_dir = os.getcwd()
         self._temp_dir = tempfile.TemporaryDirectory()
         os.chdir(self._temp_dir.name)
@@ -34,24 +33,7 @@ class TestCliExt(TestCase):
             t = os.path.join(templates_dir, f)
 
             with self.subTest(msg=t):
-                run.main([
-                    t,
-                    '--variables', self.variables,
-                    '--backend', 'local'
-                ])
-
-    # def test_should_fail(self):
-    #     templates_dir = os.path.join(self.templates_dir, 'should_fail')
-    #     templates = os.listdir(templates_dir)
-    #
-    #     for f in templates:
-    #         template = os.path.join(templates_dir, f)
-    #
-    #         with self.subTest(msg=template):
-    #             run.main([
-    #                 template,
-    #                 '--variables', self.variables
-    #             ])
+                main(['run', t, '--variables', self.variables, '--backend', 'local'])
 
 
 
