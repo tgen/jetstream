@@ -1,0 +1,5 @@
+
+- name: test_nested_run
+  stdout: /dev/null
+  cmd: >
+    jetstream run <(echo '- cmd: echo nested run')

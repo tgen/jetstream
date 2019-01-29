@@ -9,21 +9,19 @@ class ProjectBasics(TestCase):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
         super(ProjectBasics, self).setUp()
-        self._original_dir = os.getcwd()
-        self._temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self._temp_dir.name)
+        self.original_dir = os.getcwd()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self.temp_dir.name)
 
     def tearDown(self):
-        os.chdir(self._original_dir)
-        self._temp_dir.cleanup()
+        os.chdir(self.original_dir)
+        self.temp_dir.cleanup()
 
     def test_project_init(self):
-        p = jetstream.Project(new=True)
+        p = jetstream.new_project()
         self.assertIsInstance(p, jetstream.Project)
 
     def test_loading_project_data_json(self):
-        p = jetstream.Project(new=True)
-
         test_data = {
             "sampleA": {
                 "data": [
@@ -33,21 +31,15 @@ class ProjectBasics(TestCase):
                 ]
             }
         }
-
-        test_data_path = os.path.join(p.config_dir, 'samples.json')
-
-        with open(test_data_path, 'w') as fp:
-            jetstream.utils.json_dump(test_data, fp)
-
-        p.reload()
-        self.assertEqual(p.config['samples'], test_data)
+        p = jetstream.new_project(config=test_data)
+        self.assertEqual(p.config, test_data)
 
     def test_project_run(self):
         wf = jetstream.Workflow()
         wf.new_task(name='task', cmd='echo test_project_run ${JETSTREAM_RUN_ID}')
-        p = jetstream.Project(new=True)
+        p = jetstream.new_project()
         runner = jetstream.runner.Runner()
-        runner.start(workflow=wf, project=p.path)
+        runner.start(workflow=wf, project=p)
 
 
 class RunnerBasics(TestCase):

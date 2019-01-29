@@ -1,11 +1,14 @@
 import os
 import tempfile
 import jetstream
-from jetstream.cli.jetstream import main
-
 from unittest import TestCase
+from jetstream.cli.jetstream import main as cli_main
 
+CMD_ARGS = ['--logging', 'silent']
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
+TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
+
 
 class TestCliExt(TestCase):
     """Tests that run workflow templates stored externally in
@@ -15,26 +18,29 @@ class TestCliExt(TestCase):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
         super(TestCliExt, self).setUp()
-        self.templates_dir = os.path.abspath(os.path.join(TESTS_DIR, 'test_templates'))
-        self.variables = os.path.abspath(os.path.join(TESTS_DIR, 'test_templates', 'variables.yaml'))
-        self._original_dir = os.getcwd()
-        self._temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self._temp_dir.name)
+        self.original_dir = os.getcwd()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self.temp_dir.name)
 
     def tearDown(self):
-        os.chdir(self._original_dir)
-        self._temp_dir.cleanup()
+        os.chdir(self.original_dir)
+        self.temp_dir.cleanup()
 
     def test_should_pass(self):
-        templates_dir = os.path.join(self.templates_dir, 'should_pass')
+        templates_dir = os.path.join(TEST_TEMPLATES, 'should_pass')
         templates = os.listdir(templates_dir)
 
         for f in templates:
             t = os.path.join(templates_dir, f)
 
             with self.subTest(msg=t):
-                main(['run', t, '--variables', self.variables, '--backend', 'local'])
+                args = CMD_ARGS + [
+                    'run',
+                    t,
+                    '--variables', TEST_VARIABLES
+                ]
 
+                cli_main(args)
 
 
 class TestCli(TestCase):
@@ -42,48 +48,63 @@ class TestCli(TestCase):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
         super(TestCli, self).setUp()
-        self._original_dir = os.getcwd()
-        self._temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self._temp_dir.name)
+        self.original_dir = os.getcwd()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        os.chdir(self.temp_dir.name)
 
     def tearDown(self):
-        os.chdir(self._original_dir)
-        self._temp_dir.cleanup()
+        os.chdir(self.original_dir)
+        self.temp_dir.cleanup()
 
     def test_init(self):
-        init.main()
+        args = CMD_ARGS +[
+            'init',
+        ]
+
+        cli_main(args)
 
     def test_run(self):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
 
-        run.main([
+        args = CMD_ARGS + [
+            'run',
             'testwf.jst',
-            '--backend', 'local'
-        ])
+        ]
+
+        cli_main(args)
 
     def test_run_w_vars(self):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null')
 
-        run.main([
+        args = CMD_ARGS + [
+            'run',
             'testwf.jst',
-            '--backend', 'local',
             '--str:name', 'Philip J. Fry',
             '--bool:ok', 'true',
             '--int:number', '42',
             '--float:number2', '3.14'
-        ])
+        ]
+
+        cli_main(args)
 
     def test_project_tasks(self):
-        jetstream.Project(new=True)
+        jetstream.new_project()
 
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: hostname\n')
 
-        run.main([
+        args = CMD_ARGS + [
+            'run',
             'testwf.jst',
-            '--backend', 'local'
-        ])
+        ]
 
-        project.main(['tasks'])
+        cli_main(args)
+
+        args = CMD_ARGS + [
+            'project',
+            'tasks',
+        ]
+
+        cli_main(args)
