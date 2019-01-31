@@ -8,8 +8,12 @@ log = logging.getLogger(__name__)
 
 
 class LocalBackend(jetstream.backends.BaseBackend):
-    def __init__(self, runner, cpus=None, blocking_io_penalty=None):
+    def __init__(self, cpus=None, blocking_io_penalty=None):
         """The LocalBackend executes tasks as processes on the local machine.
+
+        This contains a semaphore that limits tasks by the number of cpus
+        that they require. It requires that self.runner be set to get the
+        event loop, so it's not instantiated until preflight.
 
         :param cpus: If this is None, the number of available CPUs will be
             guessed. This cannot be changed after starting the backend.
@@ -17,9 +21,12 @@ class LocalBackend(jetstream.backends.BaseBackend):
             prevents a new process from spawning.
         :param max_concurrency: Max concurrency limit
         """
-        super(LocalBackend, self).__init__(runner)
+        super(LocalBackend, self).__init__()
+        self._cpu_sem = None
         self.cpus = cpus or jetstream.settings['backends']['local']['cpus'] or self.guess_local_cpus()
-        self.blocking_io_penaty = blocking_io_penalty or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int) or 10
+        self.blocking_io_penaty = blocking_io_penalty or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
+
+    def preflight(self):
         self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
         log.info(f'LocalBackend initialized with {self.cpus} cpus')
 

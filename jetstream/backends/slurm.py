@@ -29,16 +29,16 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, runner, max_concurrency=9001, sacct_frequency=60,
-                 sbatch=None, sbatch_delay=0.1):
+    def __init__(self, max_concurrency=9000, sacct_frequency=60,
+                 sbatch_executable=None, sbatch_delay=0.1):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
         be requested from sacct
         :param sbatch: path to the sbatch binary if not on PATH
         """
-        super(SlurmBackend, self).__init__(runner)
-        self.sbatch = sbatch
+        super(SlurmBackend, self).__init__()
+        self.sbatch_executable = sbatch_executable
         self.sacct_frequency = sacct_frequency
         self.sbatch_delay = sbatch_delay
         self.max_concurrency = max_concurrency
@@ -46,10 +46,10 @@ class SlurmBackend(BaseBackend):
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
 
-        if self.sbatch is None:
-            self.sbatch = shutil.which('sbatch') or 'sbatch'
+        if self.sbatch_executable is None:
+            self.sbatch_executable = shutil.which('sbatch') or 'sbatch'
 
-        subprocess.run([self.sbatch, '--version'], check=True)
+        subprocess.run([self.sbatch_executable, '--version'], check=True)
         log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))
 
     def _bump_next_update(self):
@@ -149,7 +149,8 @@ class SlurmBackend(BaseBackend):
             cpus_per_task=task.directives().get('cpus'),
             mem=task.directives().get('mem'),
             walltime=task.directives().get('walltime'),
-            additional_args=task.directives().get('sbatch_args')
+            additional_args=task.directives().get('sbatch_args'),
+            sbatch_executable=self.sbatch_executable
         )
 
         log.info(f'SlurmBackend submitted({job.jid}): {task.tid}')
@@ -419,11 +420,11 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
            cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None, sbatch=None, retry=3):
-    if sbatch is None:
-        sbatch = 'sbatch'
+           additional_args=None, sbatch_executable=None, retry=3):
+    if sbatch_executable is None:
+        sbatch_executable = 'sbatch'
 
-    args = [sbatch, '--parsable']
+    args = [sbatch_executable, '--parsable']
 
     if name:
         args.extend(['-J', name])

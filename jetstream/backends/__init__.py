@@ -6,8 +6,8 @@ class BaseBackend(object):
     """To subclass a backend, just override the "spawn" method with a
     coroutine. max_concurrency can be set to limit the number of jobs
     that a backend will allow to spawn concurrently."""
-    def __init__(self, runner):
-        self.runner = runner
+    def __init__(self):
+        self.runner = None
         self.coroutines = tuple()
 
     async def spawn(self, task):
