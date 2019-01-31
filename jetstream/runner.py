@@ -31,8 +31,16 @@ def sigterm_ignored():
 
 
 class Runner:
-    def __init__(self, backend=None, max_forks=None, throttle=None,
-                 autosave_min=None, autosave_max=None, *args, **kwargs):
+    def __init__(self, backend_cls=None, backend_params=None, max_forks=None,
+                 throttle=None, autosave_min=None, autosave_max=None):
+        self.backend = None
+
+        if backend_cls is None:
+            self.backend_cls, self.backend_params = jetstream.lookup_backend('local')
+        else:
+            self.backend_cls = backend_cls
+            self.backend_params = backend_params
+
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
         self.throttle = throttle or settings['runner']['throttle'].get()
@@ -51,16 +59,6 @@ class Runner:
         self._run_id = None
         self._workflow = None
         self._project = None
-
-
-        if backend is None:
-            backend_name = jetstream.settings['runner']['backend'].get()
-            backend = jetstream.utils.dynamic_import(backend_name)
-        elif isinstance(backend, str):
-            backend = jetstream.settings['']
-
-        self._start_event_loop()
-        self.backend = backend(self, *args, **kwargs)
 
     @property
     def run_id(self):
@@ -138,7 +136,7 @@ class Runner:
         if self.workflow.save_path:
             return self.workflow.save_path
         elif self.project:
-            return self.project.workflow_file
+            return self.project.workflow_path
         else:
             return f'{self.run_id}.pickle'
 
@@ -192,8 +190,10 @@ class Runner:
         """Starts the autosaver coroutine"""
         self.loop.create_task(self._autosave_coro())
 
-    def _start_backend_coroutines(self):
+    def _start_backend(self):
         """Starts up any additional coroutines required by the backend"""
+        self.backend = self.backend_cls(**self.backend_params)
+        self.backend.runner = self
         backend_coroutines = getattr(self.backend, 'coroutines', [])
 
         if not isinstance(backend_coroutines, (list, tuple)):
@@ -268,15 +268,18 @@ class Runner:
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
 
-    def start(self, project=None, workflow=None, run_id=None):
+    def start(self, workflow, run_id=None, project=None):
         """Called to start the runner on a workflow."""
-        self._workflow = workflow
         self._project = project
+        self._workflow = workflow
+        self._workflow_len = len(workflow)
         self._run_id = run_id or jetstream.run_id()
-        self._errs = False
         self._run_started = datetime.now()
         self._previous_directory = os.getcwd()
-        self._workflow_len = len(workflow)
+        self._errs = False
+        self._start_event_loop()
+        self._start_backend()
+        self._start_autosave()
 
         if self.max_forks is None:
             self.max_forks = utils.guess_max_forks()
@@ -286,12 +289,10 @@ class Runner:
         with sigterm_ignored():
             self.preflight()
 
-            if self.project:
-                os.chdir(self.project.path)
+            if project:
+                os.chdir(project.path)
 
             try:
-                self._start_backend_coroutines()
-                self._start_autosave()
                 self._main = self.loop.create_task(self._spawn_new_tasks())
                 self.loop.run_until_complete(self._main)
             except asyncio.CancelledError:

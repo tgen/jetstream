@@ -3,7 +3,6 @@ import traceback
 import logging
 import jetstream
 
-
 log = logging.getLogger(__name__)
 
 
@@ -49,8 +48,8 @@ def kvarg(k, v, separator=None):
     except KeyError:
         o = list(jetstream.settings['kvargs']['loaders'].all_contents())
         o = ', '.join(list(o))
-        msg = f'Argument "{k} {v}": Unknown arg loader: "{loader}". Available' \
-              f'arg loaders are: {o}.'
+        msg = f'Argument "{k} {v}": Unknown arg type: {loader}. Choose ' \
+              f'one of: {o}.'
         raise KvargsError(msg) from None
 
     try:
@@ -69,8 +68,16 @@ def kvarg(k, v, separator=None):
 
 def parse_kvargs(args, separator=None):
     """Parse arbitrary key-value arguments and return as a dictionary. """
+
+    # # For backwards compatibility, the --variables and --config arguments are
+    # # treated as a special case and substituted with --file:variables
+    for i, value in enumerate(args):
+        if value in ('--variables', '--config', '--globals'):
+            args[i] = '--file:globals'
+
     log.debug('Parsing kvargs: {}'.format(args))
-    results = dict()
+
+    data = dict()
     iterator = iter(args)
 
     while 1:
@@ -83,11 +90,24 @@ def parse_kvargs(args, separator=None):
             try:
                 value = next(iterator)
             except StopIteration:
-                msg = f'Argument {arg}: expected one following argument'
-                raise KvargsError(msg) from None
+                err = f'Argument {arg}: expected one following argument'
+                raise KvargsError(err) from None
 
             key, obj = kvarg(arg, value, separator=separator)
-            results[key] = obj
+            data[key] = obj
+
+    # After loading all the arguments, we pluck out the globals key and use it
+    # as the base object to which all the other variables are added.
+    try:
+        results = data.pop('globals')
+        if not isinstance(results, dict):
+            err = f'Globals were loaded but did not return a dict ' \
+                  f'type. The keys: "variables", "config", and "globals" ' \
+                  f'should always load a mapping-like value.'
+            raise KvargsError(err)
+        results.update(data)
+    except KeyError:
+        results = data
 
     return results
 

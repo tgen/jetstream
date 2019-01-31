@@ -200,9 +200,9 @@ class Workflow(object):
 
         """
         after = task.directives().get('after')
-        log.debug('"after" directive: {}'.format(after))
 
         if after:
+            log.debug('Adding "after" edges for: {}'.format(task))
             matches = set()
 
             if isinstance(after, str):
@@ -230,9 +230,9 @@ class Workflow(object):
 
         """
         before = task.directives().get('before')
-        log.debug('"before" directive: {}'.format(before))
 
         if before:
+            log.debug('Adding "before" edges for: {}'.format(task))
             matches = set()
 
             if isinstance(before, str):
@@ -260,9 +260,9 @@ class Workflow(object):
 
         Where target includes an "output" value matching the "input" value."""
         input = task.directives().get('input')
-        log.debug('"input" directive: {}'.format(input))
 
         if input:
+            log.debug('Adding "input" edges for: {}'.format(task))
             if isinstance(input, str):
                 matches = self.find_by_output(input)
             elif isinstance(input, (list, tuple)):
@@ -287,6 +287,8 @@ class Workflow(object):
         return re.compile('^{}$'.format(pat))
 
     def ancestors(self, task):
+        """Returns a generator that yields all of the ancestors of a given task
+        object or id. See also Workflow.dependencies() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -326,7 +328,8 @@ class Workflow(object):
         return task
 
     def dependencies(self, task):
-        """Returns a generator that yields the dependencies of a given task"""
+        """Returns a generator that yields all only the direct dependencies of
+        a given task object or id. See also Workflow.ancestors() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -335,7 +338,9 @@ class Workflow(object):
         return (self.get_task(tid) for tid in self.graph.predecessors(task_id))
 
     def dependents(self, task):
-        """Returns a generator that yields the dependents of a given task"""
+        """Returns a generator that yields only the tasks that directly
+        depend upon of a given task object or id. See also
+        Workflow.decendants() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -344,6 +349,8 @@ class Workflow(object):
         return (self.get_task(tid) for tid in self.graph.successors(task_id))
 
     def descendants(self, task):
+        """Returns a generator that yields all the descendants of a given
+        task object or id. See also Workflow.dependents() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -352,25 +359,36 @@ class Workflow(object):
         return (self.get_task(tid) for tid in nx.descendants(self.graph, task_id))
 
     def draw(self, *args, **kwargs):
+        """Attempt to draw the network graph for this workflow. See
+        jetstream.workflows.draw_workflow() for more info."""
         return draw_workflow(self, *args, **kwargs)
 
-    def find(self, pattern, fallback=utils.sentinel):
+    def find(self, pattern, fallback=utils.sentinel, objs=False):
+        """Find tasks by matching the pattern with the task ID. If no matches
+        are found, and fallback is not set, a ValueError will be raised. If
+        fallback is set, it will be returned when no matches are found."""
         log.debug('Find: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
         matches = set([tid for tid in self.graph.nodes() if pat.match(tid)])
 
         if matches:
-            return matches
-
-        if fallback is utils.sentinel:
+            if objs:
+                return set([self.get_task(t) for t in matches])
+            else:
+                return matches
+        elif fallback is utils.sentinel:
             if pattern == '.*':
                 return set()
             raise ValueError('No task names match value: {}'.format(pattern))
         else:
             return fallback
 
-    def find_by_output(self, pattern, fallback=utils.sentinel):
+    def find_by_output(self, pattern, fallback=utils.sentinel, objs=False):
+        """Find tasks where the pattern matches the task output directives. If
+        no matches are found, and fallback is not set, a ValueError will be
+        raised. If fallback is set, it will be returned when no matches are
+        found."""
         pat = self._format_pattern(pattern)
         matches = set()
 
@@ -390,13 +408,17 @@ class Workflow(object):
                     break
 
         if matches:
-            return matches
+            if objs:
+                return set([self.get_task(t) for t in matches])
+            else:
+                return matches
         elif fallback is utils.sentinel:
             raise ValueError('No task outputs match pattern: {}'.format(pattern))
         else:
             return fallback
 
     def get_task(self, task_id):
+        """Return the task object for a given task_id"""
         return self.graph.nodes[task_id]['obj']
 
     def is_locked(self):
@@ -421,6 +443,7 @@ class Workflow(object):
             return True
 
     def list_tasks(self):
+        """Returns all task objects as a list"""
         return list(self.tasks(objs=True))
 
     def mash(self, workflow):
@@ -542,13 +565,14 @@ class Workflow(object):
 
     def update(self):
         """Recalculate the edges for this workflow"""
-        log.debug('Loading workflow DAG...')
+        log.debug('Adding edges...')
         for task in self.tasks(objs=True):
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
 
 
+# TODO Move these to the config file
 def get_workflow_loaders():
     return {
         'pickle': load_workflow_pickle,
@@ -697,7 +721,10 @@ def load_workflow(path, format=None):
         ext = os.path.splitext(path)[1]
         format = workflow_extensions.get(ext, 'pickle')
 
-    wf = get_workflow_loaders()[format](path)
+    loader_fn = get_workflow_loaders()[format]
+    log.debug(f'Loading workflow from: {path} with: {loader_fn}')
+
+    wf = loader_fn(path)
     wf.save_path = os.path.abspath(path)
     return wf
 

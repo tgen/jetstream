@@ -1,10 +1,13 @@
 """Initiate a Jinja environment with template loaders that search
 locations set by arguments or environment variables. """
-import os
 import json
 import hashlib
+import logging
+import os
 import traceback
+import confuse
 from datetime import datetime
+import jetstream
 from jinja2 import (
     Environment,
     StrictUndefined,
@@ -12,8 +15,8 @@ from jinja2 import (
     evalcontextfilter,
     FileSystemLoader
 )
-from jetstream import log, utils
-from jetstream.workflows import Workflow
+
+log = logging.getLogger(__name__)
 
 
 @evalcontextfilter
@@ -25,14 +28,20 @@ def raise_helper(eval_ctx, msg):
 @evalcontextfilter
 def basename(eval_ctx, path):
     """Allow "basename(<path>)" to be used in templates"""
-    return os.path.basename(path)
+    if isinstance(path, str):
+        return os.path.basename(path)
+    else:
+        return [os.path.basename(p) for p in path]
 
 
 @evalcontextfilter
 def dirname(eval_ctx, path):
     """Allow "dirname(<path>)" to be used in templates"""
     # TODO Make this work on sequences of paths
-    return os.path.dirname(path)
+    if isinstance(path, str):
+        return os.path.dirname(path)
+    else:
+        return [os.path.dirname(p) for p in path]
 
 
 @evalcontextfilter
@@ -79,7 +88,28 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-def render_template(path, context=None, env=None):
+def context(constants=None, project=None, command_args=None, flatten=True):
+    context = confuse.Configuration('NULL', read=False)
+    app_constants = jetstream.settings['constants'].get()
+    context.set(confuse.ConfigSource(app_constants, 'jetstream.settings[constants]'))
+
+    if constants is not None:
+        context.set(confuse.ConfigSource(constants, 'constants'))
+
+    if project is not None:
+        context.set(confuse.ConfigSource(project.config, f'{project} config'))
+
+    if command_args is not None:
+        context.set(confuse.ConfigSource(command_args, 'command-line args'))
+
+    log.debug(f'Context loaded from: {context.sources}')
+    if flatten:
+        return context.flatten()
+    else:
+        return context
+
+
+def render_template(path, context=None, env=None, render_only=False):
     """Load and render a template.
 
     :param variables: Mapping of data used to render template
@@ -88,9 +118,6 @@ def render_template(path, context=None, env=None):
     """
     log.info('Rendering template...')
     started = datetime.now()
-
-    if context is None:
-        context = dict()
 
     if env is None:
         env = environment(searchpath=[os.getcwd(), os.path.dirname(path)])
@@ -108,12 +135,15 @@ def render_template(path, context=None, env=None):
     template = env.from_string(data)
     render = template.render(**context)
 
+    if render_only:
+        return render
+
     log.debug(f'Rendered template:\n{render}')
     log.info('Parsing template...')
 
     try:
-        parsed_tasks = utils.yaml_loads(render)
-    except utils.yaml.YAMLError:
+        parsed_tasks = jetstream.utils.yaml_loads(render)
+    except jetstream.utils.yaml.YAMLError:
         log.critical(f'Error parsing rendered template:\n{render}')
         tb = traceback.format_exc()
         log.critical(f'Parser Traceback:\n{tb}\n')
@@ -132,10 +162,10 @@ def render_template(path, context=None, env=None):
         )
         raise ValueError(msg)
 
-    log.debug(f'Parsed template:\n{parsed_tasks}')
+    # log.debug(f'Parsed template:\n{parsed_tasks}')
     log.info('Building workflow...')
 
-    workflow = Workflow()
+    workflow = jetstream.Workflow()
     with workflow:
         for task in parsed_tasks:
             if not isinstance(task, dict):
