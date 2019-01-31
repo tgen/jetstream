@@ -20,6 +20,7 @@ _subcommands = OrderedDict(
     project='jetstream.cli.subcommands.project',
     render='jetstream.cli.subcommands.render',
     run='jetstream.cli.subcommands.run',
+    settings='jetstream.cli.subcommands.settings',
     tasks='jetstream.cli.subcommands.tasks',
 )
 
