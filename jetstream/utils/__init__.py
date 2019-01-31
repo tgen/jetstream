@@ -28,8 +28,7 @@ log = logging.getLogger(__name__)
 
 class Fingerprint(object):
     """Generate a new run ID with a snapshot of the system info."""
-    def __init__(self, id=None):
-        self.id = id or jetstream.run_id()
+    def __init__(self):
         self.datetime = str(datetime.now())
         self.user = str(getuser())
         self.version = str(get_distribution("jetstream"))
@@ -155,13 +154,13 @@ def dynamic_import(path):
     m, _, f = path.rpartition('.')
 
     try:
-        if m and jetstream.settings['utils']['dynamic_import'].get():
+        if m and jetstream.settings['dynamic_import'].get():
             mod = importlib.import_module(m)
             return getattr(mod, f)
         else:
             return getattr(builtins, f)
     except AttributeError as e:
-        err = f'Failed to import "{path}": {e}'
+        err = f'Failed to import "{path}": Error: {e}'
         raise AttributeError(err) from None
 
 
@@ -179,8 +178,9 @@ def guess_max_forks(default=500):
 def is_gzip(path, magic_number=b'\x1f\x8b'):
     """Returns True if the path is gzipped."""
     if os.path.exists(path) and not os.path.isfile(path):
-        raise OSError("This should only be used with regular files because"
-                      "otherwise it will lose some data.")
+        err = 'This should only be used with regular files because otherwise ' \
+              'it will lose some data.'
+        raise ValueError(err)
 
     with open(path, 'rb') as fp:
         if fp.read(2) == magic_number:
@@ -269,7 +269,7 @@ def find(path, name=None):
 def load_file(path, filetype=None):
     """Attempts to load a data file from path, raises :ValueError
     if an suitable loader function is not found in get_file_loaders"""
-    file_loaders = jetstream.settings['utils']['load_file'].get(dict)
+    file_loaders = jetstream.settings['load_file'].get(dict)
 
     if filetype is not None:
         try:
@@ -277,14 +277,16 @@ def load_file(path, filetype=None):
             fn = dynamic_import(loader_name)
             return fn(path)
         except KeyError:
-            raise ValueError(f'No loader for {filetype}')
+            err = f'No loader defined for {filetype}'
+            raise ValueError(err)
     else:
         for ext, loader_name in file_loaders.items():
             if path.endswith(ext):
                 fn = dynamic_import(loader_name)
                 return fn(path)
         else:
-            raise ValueError(f'No loader found for {path}')
+            err = f'No loader extension pattern matched path: {path}'
+            raise ValueError(err)
 
 
 def load_json(path):
@@ -383,7 +385,7 @@ def load_table(path, dialect=None, ordered=False, key=None):
 def load_yaml(path):
     """Load a yaml file from `path`"""
     with open(path, 'r') as fp:
-        return yaml.safe_load(fp)
+        return yaml.safe_load(fp.read())
 
 
 def parse_bool(value):
