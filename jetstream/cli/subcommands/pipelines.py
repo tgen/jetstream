@@ -1,23 +1,20 @@
-"""
+"""Run a pipeline
 
-"""
+Pipelines are Jetstream templates that have been documented with version
+information and added to the jetstream pipelines directory. This command
+allows pipelines to be referenced by name and automatically includes the
+pipeline scripts and constants in the run."""
 import os
 import logging
-import argparse
 import jetstream
 
 log = logging.getLogger(__name__)
 
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream pipelines',
-        description=__doc__.replace('``', '"'),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
+def arg_parser(parser):
     parser.add_argument(
         'name',
+        nargs='?',
         help='Pipeline name'
     )
 
@@ -30,17 +27,23 @@ def arg_parser():
 
 
 def main(args=None):
-    parser = arg_parser()
-    args, remaining = parser.parse_known_args(args)
-    log.debug(args)
+    log.debug(f'{__name__} {args}')
+
+    raise NotImplementedError("TODO: FINISH THIS COMMAND")
+
+    if args.name is None:
+        print('WHAT', jetstream.pipelines.ls())
+        return
 
     # Resolve the requested pipeline
     pipelines_home = jetstream.settings['pipelines']['home'].get()
     if not pipelines_home or not os.path.isdir(pipelines_home):
-        raise ValueError('Pipelines are not configured. See the "pipelines" '
-                         'section of the settings. ')
+        err = 'Pipelines are not configured. Check the application settings.'
+        raise ValueError(err)
 
     pipeline, constants = jetstream.pipelines.get(args.name)
+
+
 
     # Add the pipeline constants to the kvargs
     if constants:
@@ -66,7 +69,7 @@ def main(args=None):
 
     try:
         project = jetstream.Project(args.project)
-    except jetstream.NotAProject:
+    except jetstream.ProjectInvalid:
         project = None
 
     if project:

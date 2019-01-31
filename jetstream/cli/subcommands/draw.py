@@ -8,48 +8,32 @@ Jetstream. TODO: Add optional install params to setup.py?
 
 """
 import logging
-import argparse
 import jetstream
 
 log = logging.getLogger(__name__)
 
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream draw',
-        description=__doc__.replace('``', '"'),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    parser.add_argument(
-        'path',
-        help='Path to a workflow file'
-    )
-
-    parser.add_argument(
+def arg_parser(p):
+    p.add_argument(
         'out',
         help='Path to save the image file'
     )
 
-    parser.add_argument(
-        '--workflow-format',
-        choices=[None, 'yaml', 'json', 'pickle'],
-        default=None,
-        help='Set the workflow file format instead of using the file '
-             'extension.'
+    p.add_argument(
+        '-w', '--workflow',
+        help='Path to a Jetstream workflow file'
     )
 
-    return parser
 
+def main(args):
+    log.debug(f'{__name__} {args}')
 
-def main(args=None):
-    parser = arg_parser()
-    args = parser.parse_args(args)
-    log.debug(args)
+    if args.workflow:
+        args.workflow = jetstream.load_workflow(args.workflow)
+    else:
+        if args.project is None:
+            raise ValueError('No workflow given and not working in a project')
+        args.workflow = args.project.workflow
 
-    workflow = jetstream.load_workflow(args.path, args.workflow_format)
+    workflow = jetstream.load_workflow(args.workflow)
     workflow.draw(filename=args.out)
-
-
-if __name__ == '__main__':
-    main()

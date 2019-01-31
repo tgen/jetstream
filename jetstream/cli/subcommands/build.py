@@ -1,11 +1,15 @@
-"""Shortcut to "jetstream run" with --build-only option enabled"""
+"""Shortcut to "jetstream run" with --build-only option"""
+import logging
 from jetstream.cli.subcommands import run
 
+log = logging.getLogger(__name__)
 
-def main(args=None):
-    args.append('--build-only')
+
+def arg_parser(parser):
+    pass
+
+
+def main(args):
+    log.debug(f'{__name__} {args}')
+    args.build_only = True
     return run.main(args)
-
-
-if __name__ == '__main__':
-    main()

@@ -1,4 +1,4 @@
-"""Run Jetstream from a template, module, or workflow.
+"""Run Jetstream from a template, module, or workflow
 
 Template Variable Data:
 
@@ -31,19 +31,14 @@ Detailed argument help:
 
 """
 import logging
-import argparse
 import jetstream
+from jetstream import settings
+from jetstream.templates import context, render_template
 
 log = logging.getLogger(__name__)
 
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream run',
-        description=__doc__.replace('``', '"'),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
+def arg_parser(parser):
     parser.add_argument(
         'path',
         help='Path to a workflow template, python module, or workflow file'
@@ -76,13 +71,6 @@ def arg_parser():
     )
 
     parser.add_argument(
-        '--project',
-        help='If the cwd is a project, it will be loaded automatically. '
-             'Otherwise, a path to a project can be specified, and the run '
-             'will start in that project directory.'
-    )
-
-    parser.add_argument(
         '--run-id',
         help='Give this run a specific ID instead of randomly generating one.'
     )
@@ -105,37 +93,42 @@ def arg_parser():
     return parser
 
 
-def main(args=None):
-    parser = arg_parser()
-    args, remaining = parser.parse_known_args(args)
-    log.debug(args)
+def main(args):
+    log.debug(f'{__name__} {args}')
 
-    try:
-        project = jetstream.Project(args.project)
-        log.info(f'Working in {project}')
-    except jetstream.NotAProject:
-        project = None
-        log.info('Not working inside of a project!')
+    # Get the runner setup first so that we find errors here before spending
+    # time building the workflow
+    cls, params = jetstream.lookup_backend(args.backend)
+    runner = jetstream.Runner(cls, params)
 
+    # Setup the workflow, this can be built from a template, python module, or
+    # loaded from a file.
     if args.mode == 'template':
-        c = jetstream.context(project=project, kvargs=remaining)
-        workflow = jetstream.render_template(path=args.path, context=c)
+        c = context(
+            constants=settings['constants'].get(dict),
+            project=args.project,
+            command_args=args.kvargs
+        )
+        workflow = render_template(args.path, c)
     elif args.mode == 'module':
         raise NotImplementedError
     else:
         workflow = jetstream.load_workflow(args.path, args.workflow_format)
 
-    if project:
-        existing_wf = project.workflow()
-
-        if existing_wf is not None:
+    if args.project:
+        try:
+            existing_wf = args.project.workflow
             workflow = jetstream.workflows.mash(existing_wf, workflow)
+        except FileNotFoundError:
+            pass
 
     if args.build_only:
         if args.out:
             workflow.save(args.out)
         return
 
+    # Resetting tasks allows workflows that were stopped prior to completion to
+    # be rerun. Or tasks that failed due to external state can be retried.
     if args.reset_method == 'retry':
         workflow.retry()
     elif args.reset_method == 'resume':
@@ -147,13 +140,8 @@ def main(args=None):
     else:
         raise ValueError(f'Unrecognized task reset method: {args.reset_method}')
 
-    if args.backend:
-        backend = jetstream.utils.dynamic_import(args.backend)
-    else:
-        backend = None
 
-    runner = jetstream.Runner(backend=backend)
-    runner.start(workflow=workflow, project=project, run_id=args.run_id)
+    runner.start(workflow, run_id=args.run_id, project=args.project)
 
 
 if __name__ == '__main__':
