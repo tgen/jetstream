@@ -1,25 +1,69 @@
+# ============================== Jetstream ====================================
+# Set the logging style. If this is null, the best logger will be chosen from
+# the logging profiles below. You can also define custom profiles, see more
+# info below.
+log: null
+
+# Set the default backend. Choose from the options listed in settings.backends
+backend: local
+
+# Controls the amount of time that the Project object will wait for a project
+# to be unlocked
+lock_timeout: 60
+
+# If this is set to false, utils.dynamic_import will only search builtins when
+# loading functions
+dynamic_import: true
+
+# Sets up the loader functions that jetstream.utils.load_file will use for
+# auto loading files based on extension
+load_file:
+  txt: jetstream.utils.load_table
+  csv: jetstream.utils.load_table
+  mer: jetstream.utils.load_table
+  tsv: jetstream.utils.load_table
+  json: jetstream.utils.load_json
+  yaml: jetstream.utils.load_yaml
+  yml: jetstream.utils.load_yaml
+
+
 # =================================== Runner ==================================
 runner:
-  backend: local
   max_forks: null
   throttle: 0.1
   autosave_min: 5
   autosave_max: 60
 
+
 # ================================== Backends =================================
 backends:
   local:
-    class: jetstream.backends.LocalBackend
+    (): jetstream.backends.local.LocalBackend
     blocking_io_penalty: 30
     cpus: null
+  slurm:
+    (): jetstream.backends.slurm.SlurmBackend
+    max_concurrency: 9001
+    sacct_frequency: 10
+
 
 # ================================== Pipelines ================================
+# Change pipelines:home in order to use the pipelines feature
 pipelines:
-  home: null  # Change this value to use the pipelines feature
+  home: null
   manifest_filename: pipeline.json
   constants_filename: constants.yaml
 
-# =================================== Kvargs ==================================
+
+# =================================== Templates ===============================
+# Templates are a method for building workflows from text documents. In order
+# to recycle a workflow for several project, variables can be used to add
+# dynamic features. The value of these variables will be loaded for rendering
+# the template prior to a run. Variables will be loaded from this config file
+# first, followed by user config files, and ultimately from special command-line
+# arguments called kvargs (more on those below). The last value loaded for a
+# variable will be whats used to render the template.
+#
 # Kvargs are arbitrary keyword arguments that include an explicit type
 # declaration. Jetstream uses kvargs to load variable data when rendering
 # templates. The format for kvargs is "--<type><separator><key> <value>". These
@@ -29,6 +73,9 @@ pipelines:
 # If allow_dynamic_import is true, loaders will imported dynamically.
 # Otherwise, only the builtins module will be searched for a loader function.
 #
+constants:
+  foo: bar
+
 kvargs:
   allow_dynamic_import: true
   separator: ":"
@@ -45,12 +92,12 @@ kvargs:
 
 
 # ================================== Logging ==================================
-#   To permanently force a single logging style, create a key in your user
+# To permanently force a single logging style, create a key in your user
 # config like this:
 #
 #   logging: <profile name>
 #
-#   Each key under logging_profiles is a mapping that meets the dictionary
+# Each key under logging_profiles is a mapping that meets the dictionary
 # configuration requirements for the logging module.
 # To create a new logging profile, create a new key under the logging_profiles
 # section of your user config, the value should be a mapping that meets the
@@ -77,8 +124,9 @@ kvargs:
 #          level: INFO
 #          handlers: [h]
 #
-logging: null  # Chooses the best logging option for the terminal
 logging_profiles:
+  silent:
+    version: 1
   default:
     version: 1
     formatters:
@@ -128,9 +176,9 @@ logging_profiles:
         level: INFO
         handlers: [h]
 
+
 # =============================== Notifications ===============================
-#
-#   Notification settings control how the runner should alert users when
+# Notification settings control how the runner should alert users when
 # certain events occur. Here are some examples
 #
 # notifications:
@@ -149,16 +197,4 @@ logging_profiles:
 #
 #      {# this will be formatted with the current run context available #}
 #      <p>{{ message }}</p>
-
-# ================================ Other ======================================
-utils:
-  dynamic_import: true  # If this is set to false, utils.dynamic_import will
-                        # only search builtins when loading functions
-  load_file:
-    txt: jetstream.utils.load_table
-    csv: jetstream.utils.load_table
-    mer: jetstream.utils.load_table
-    tsv: jetstream.utils.load_table
-    json: jetstream.utils.load_json
-    yaml: jetstream.utils.load_yaml
-    yml: jetstream.utils.load_yaml
+notifications: null
