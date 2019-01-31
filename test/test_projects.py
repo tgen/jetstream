@@ -36,10 +36,10 @@ class ProjectBasics(TestCase):
 
     def test_project_run(self):
         wf = jetstream.Workflow()
-        wf.new_task(name='task', cmd='echo test_project_run ${JETSTREAM_RUN_ID}')
-        p = jetstream.new_project()
+        wf.new_task(name='task', cmd='echo test_project_run', stdout='/dev/null')
+        jetstream.new_project()
         runner = jetstream.runner.Runner()
-        runner.start(workflow=wf, project=p)
+        runner.start(wf)
 
 
 class RunnerBasics(TestCase):

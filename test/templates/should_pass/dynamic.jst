@@ -1,4 +1,5 @@
 - name: start
+  stdout: /dev/null
   cmd: |
     set -ue
 
@@ -6,15 +7,17 @@
 
 
 - name: add_tasks
+  stdout: /dev/null
   after: start
   exec: |
     runner.workflow.new_task(
         name='dynamic_task',
-        cmd='sleep 1 && echo This is the dynamic task && sleep 1'
+        cmd='sleep 1'
     )
 
 
 - name: after_adding_tasks
+  stdout: /dev/null
   after: add_tasks
   cmd: |
     set -ue
@@ -23,6 +26,7 @@
 
 
 - name: after_dynamic_task
+  stdout: /dev/null
   after:
     re: dynamic_task|after_adding_tasks
   cmd: |

@@ -2,6 +2,8 @@ import os
 import tempfile
 import jetstream
 from unittest import TestCase
+from contextlib import redirect_stdout
+from io import StringIO
 from jetstream.cli.jetstream import main as cli_main
 
 CMD_ARGS = ['--logging', 'silent']
@@ -13,6 +15,7 @@ TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
 class TestCliExt(TestCase):
     """Tests that run workflow templates stored externally in
     test/test_templates """
+    longMessage = True
 
     def setUp(self):
         """ All of these tests take place in the context of a project
@@ -37,7 +40,8 @@ class TestCliExt(TestCase):
                 args = CMD_ARGS + [
                     'run',
                     t,
-                    '--variables', TEST_VARIABLES
+                    '--',
+                    '--globals', TEST_VARIABLES
                 ]
 
                 cli_main(args)
@@ -65,7 +69,7 @@ class TestCli(TestCase):
 
     def test_run(self):
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: hostname\n')
+            fp.write('- cmd: true\n  stdout: /dev/null\n')
 
         args = CMD_ARGS + [
             'run',
@@ -76,11 +80,12 @@ class TestCli(TestCase):
 
     def test_run_w_vars(self):
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null')
+            fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null\n')
 
         args = CMD_ARGS + [
             'run',
             'testwf.jst',
+            '--',
             '--str:name', 'Philip J. Fry',
             '--bool:ok', 'true',
             '--int:number', '42',
@@ -89,22 +94,25 @@ class TestCli(TestCase):
 
         cli_main(args)
 
-    def test_project_tasks(self):
-        jetstream.new_project()
+    def test_tasks(self):
+        p = jetstream.new_project()
 
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: hostname\n')
+            fp.write('- cmd: true\n  stdout: /dev/null\n')
 
         args = CMD_ARGS + [
             'run',
             'testwf.jst',
+            '--project', p.path
         ]
 
         cli_main(args)
+
 
         args = CMD_ARGS + [
-            'project',
             'tasks',
+            '--project', p.path
         ]
 
-        cli_main(args)
+        with redirect_stdout(StringIO()):
+            cli_main(args)
