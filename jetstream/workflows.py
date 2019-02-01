@@ -101,7 +101,6 @@ class Workflow(object):
         completed. When a change to the graph occurs during iteration, these
         lists should be recalculated. """
         log.debug('Building workflow iterator...')
-
         self._iter_tasks = list()
         self._iter_pending = list()
         self._iter_done = list()
@@ -284,6 +283,7 @@ class Workflow(object):
                 self._add_edge(from_node=match_tid, to_node=task.tid)
 
     def _format_pattern(self, pat):
+        """Pads a regex pattern so that it only matches exact strings"""
         return re.compile('^{}$'.format(pat))
 
     def ancestors(self, task):
@@ -450,9 +450,9 @@ class Workflow(object):
         """Mash this workflow with another."""
         return mash(self, workflow)
 
-    def new_task(self, *args, **kwargs):
+    def new_task(self,  **kwargs):
         """Shortcut to create a new Task object and add to this workflow."""
-        task = Task(*args, **kwargs)
+        task = Task(**kwargs)
         return self.add_task(task)
 
     def remove_task(self, pattern, force=False, descendants=False):
@@ -524,7 +524,8 @@ class Workflow(object):
             for node in data['nodes']:
                 task_data = node['obj']
                 task_data['tid'] = node['id']
-                wf.new_task(from_data=task_data)
+                t = jetstream.tasks.deserialize(task_data)
+                wf.add_task(t)
 
         return wf
 
@@ -572,6 +573,53 @@ class Workflow(object):
             self._make_edges_input(task)
 
 
+def draw_workflow(wf, *, figsize=(12, 12), cm=None, filename=None,
+                  interactive=False, **kwargs):
+    """This requires matplotlib setup and graphviz installed. It is not
+    very simple to get these dependencies setup, so they're loaded as needed
+    and not required for package install."""
+    try:
+        import matplotlib
+        if not interactive and os.environ.get('DISPLAY', '') == '':
+            log.critical('No display found. Using non-interactive Agg backend')
+            matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from networkx.drawing.nx_agraph import graphviz_layout
+    except ImportError:
+        log.critical('This feature requires matplotlib and graphviz')
+        raise
+
+    f = plt.figure(figsize=figsize)
+
+    cm = cm or {
+        'new': 'white',
+        'pending': 'yellow',
+        'failed': 'red',
+        'complete': 'green'
+    }
+
+    # labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
+    colors = [cm[node['obj'].status] for id, node in
+              wf.graph.nodes(data=True)]
+
+    nx.draw(
+        wf.graph,
+        pos=graphviz_layout(wf.graph, prog='dot'),
+        ax=f.add_subplot(111),
+        # labels=labels,
+        node_color=colors,
+        linewidths=1,
+        edgecolors='black',
+        with_labels=True,
+        **kwargs
+    )
+
+    if filename is not None:
+        f.savefig(filename)
+
+    return plt
+
+
 # TODO Move these to the config file
 def get_workflow_loaders():
     return {
@@ -587,6 +635,40 @@ def get_workflow_savers():
         'yaml': save_workflow_yaml,
         'json': save_workflow_json
     }
+
+
+def load_workflow(path, format=None):
+    """Load a workflow from a file.
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions. It also sets workflow.save_path to the path"""
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = workflow_extensions.get(ext, 'pickle')
+
+    loader_fn = get_workflow_loaders()[format]
+    log.debug(f'Loading workflow from: {path} with: {loader_fn}')
+
+    wf = loader_fn(path)
+    wf.save_path = os.path.abspath(path)
+    return wf
+
+
+def load_workflow_yaml(path):
+    data = utils.load_yaml(path)
+    return Workflow.deserialize(data)
+
+
+def load_workflow_json(path):
+    data = utils.load_json(path)
+    return Workflow.deserialize(data)
+
+
+def load_workflow_pickle(path):
+    with open(path, 'rb') as fp:
+        data = pickle.load(fp)
+    return Workflow.deserialize(data)
 
 
 def mash(G, H):
@@ -666,85 +748,6 @@ def mash(G, H):
     return wf
 
 
-def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
-    """This requires matplotlib setup and graphviz installed. It is not
-    very simple to get these dependencies setup, so they're loaded as needed
-    and not required for package install."""
-    try:
-        import matplotlib
-        if os.environ.get('DISPLAY','') == '':
-            log.critical('No display found. Using non-interactive Agg backend')
-            matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        from networkx.drawing.nx_agraph import graphviz_layout
-    except ImportError:
-        log.critical('This feature requires matplotlib and graphviz')
-        raise
-    
-    f = plt.figure(figsize=figsize)
-
-    cm = cm or {
-        'new': 'white',
-        'pending': 'yellow',
-        'failed': 'red',
-        'complete': 'green'
-    }
-
-    #labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
-    colors = [cm[node['obj'].status] for id, node in wf.graph.nodes(data=True)]
-
-    nx.draw(
-        wf.graph,
-        pos=graphviz_layout(wf.graph, prog='dot'),
-        ax=f.add_subplot(111),
-       # labels=labels,
-        node_color=colors,
-        linewidths=1,
-        edgecolors='black',
-        with_labels=True,
-        **kwargs
-    )
-
-    if filename is not None:
-        f.savefig(filename)
-
-    return plt
-
-
-def load_workflow(path, format=None):
-    """Load a workflow from a file.
-
-    This helper function will try to choose the correct file format based
-    on the extension of the path, but defaults to pickle for unrecognized
-    extensions. It also sets workflow.save_path to the path"""
-    if format is None:
-        ext = os.path.splitext(path)[1]
-        format = workflow_extensions.get(ext, 'pickle')
-
-    loader_fn = get_workflow_loaders()[format]
-    log.debug(f'Loading workflow from: {path} with: {loader_fn}')
-
-    wf = loader_fn(path)
-    wf.save_path = os.path.abspath(path)
-    return wf
-
-
-def load_workflow_yaml(path):
-    data = utils.load_yaml(path)
-    return Workflow.deserialize(data)
-
-
-def load_workflow_json(path):
-    data = utils.load_json(path)
-    return Workflow.deserialize(data)
-
-
-def load_workflow_pickle(path):
-    with open(path, 'rb') as fp:
-        data = pickle.load(fp)
-    return Workflow.deserialize(data)
-
-
 def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
     """Random workflow generator. The time to generate a random task for a
      workflow scales exponentially, so this can take a very long time for
@@ -779,14 +782,11 @@ def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
             break
 
         tasks = wf.list_tasks()
-        directives = {}
-        directives['name'] = str(added)
-        directives['cmd'] = random.choice(cmds)
-        directives['output'] = random.choice([
-            None,
-            hex(random.getrandbits(32)) + '.txt'
-        ])
-
+        directives = {
+            'name': str(added),
+            'cmd': random.choice(cmds),
+            'output': random.choice([None, hex(random.getrandbits(32)) + '.txt'])
+        }
         if tasks:
             for i in range(random.randint(0, connectedness)):
                 task = random.choice(tasks)
@@ -818,6 +818,7 @@ def save_workflow(workflow, path, format=None):
 
     :param workflow: Workflow instance
     :param path: where to save
+    :param format: format to save
     :return: None
     """
     if format is None:

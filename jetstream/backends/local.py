@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import jetstream
-from multiprocessing import cpu_count
+
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 
 log = logging.getLogger(__name__)
@@ -23,8 +23,11 @@ class LocalBackend(jetstream.backends.BaseBackend):
         """
         super(LocalBackend, self).__init__()
         self._cpu_sem = None
-        self.cpus = cpus or jetstream.settings['backends']['local']['cpus'] or self.guess_local_cpus()
-        self.blocking_io_penaty = blocking_io_penalty or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
+        self.cpus = cpus \
+                    or jetstream.settings['backends']['local']['cpus'] \
+                    or jetstream.utils.guess_local_cpus()
+        self.blocking_io_penaty = blocking_io_penalty \
+                                  or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
 
     def preflight(self):
         self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
@@ -125,7 +128,3 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 await asyncio.sleep(self.blocking_io_penaty)
 
         return p
-
-    def guess_local_cpus(self, default=1):
-        return cpu_count() or default
-

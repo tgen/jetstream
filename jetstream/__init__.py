@@ -29,7 +29,6 @@ confuse.NotFoundError = ConfigValueNotFound
 settings = confuse.LazyConfig('jetstream', __name__)
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
-log.setLevel(1)
 
 
 # Package module imports

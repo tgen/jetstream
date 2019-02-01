@@ -15,9 +15,10 @@ import yaml
 from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
+from multiprocessing import cpu_count
+from pkg_resources import get_distribution
 from socket import gethostname
 from uuid import getnode
-from pkg_resources import get_distribution
 
 import jetstream
 import jetstream.utils.transfer
@@ -162,6 +163,10 @@ def dynamic_import(path):
     except AttributeError as e:
         err = f'Failed to import "{path}": Error: {e}'
         raise AttributeError(err) from None
+
+
+def guess_local_cpus( default=1):
+    return cpu_count() or default
 
 
 def guess_max_forks(default=500):

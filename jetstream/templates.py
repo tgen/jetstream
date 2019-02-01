@@ -112,9 +112,10 @@ def context(constants=None, project=None, command_args=None, flatten=True):
 def render_template(path, context=None, env=None, render_only=False):
     """Load and render a template.
 
-    :param variables: Mapping of data used to render template
+    :param context: Mapping object with data used to render template
     :param env: A preconfigured Jinja Environment
-    :return: Rendered template string
+    :param render_only: Return the rendered template instead of a workflow
+    :return: jetstream.Workflow
     """
     log.info('Rendering template...')
     started = datetime.now()

@@ -117,7 +117,7 @@ def main(args):
 
     if args.project:
         try:
-            existing_wf = args.project.workflow
+            existing_wf = args.project.load_workflow()
             workflow = jetstream.workflows.mash(existing_wf, workflow)
         except FileNotFoundError:
             pass
@@ -142,7 +142,3 @@ def main(args):
 
 
     runner.start(workflow, run_id=args.run_id, project=args.project)
-
-
-if __name__ == '__main__':
-    main()

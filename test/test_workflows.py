@@ -266,13 +266,13 @@ class WorkflowDependencies(TestCase):
 
 class WorkflowIteration(TestCase):
     def test_random_workflow_n(self):
-        wf = jetstream.random_workflow(n=25)
+        jetstream.random_workflow(n=25)
 
     def test_random_workflow_timout(self):
-        wf = jetstream.random_workflow(n=None, timeout=1)
+        jetstream.random_workflow(n=None, timeout=1)
 
     def test_random_workflow_n_and_timout(self):
-        wf = jetstream.random_workflow(250, timeout=1)
+        jetstream.random_workflow(250, timeout=1)
 
     def test_workflow_iter(self):
         wf = jetstream.random_workflow(n=25, timeout=1)
@@ -328,7 +328,5 @@ class WorkflowSaving(TestCase):
                 wf.new_task(name=str(i), cmd='echo task {}'.format(i))
 
         jetstream.save_workflow(wf, 'wf.yaml')
-
         wf2 = jetstream.load_workflow('wf.yaml')
-
         self.assertIn(t1, wf2)

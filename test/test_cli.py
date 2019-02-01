@@ -69,7 +69,7 @@ class TestCli(TestCase):
 
     def test_run(self):
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: true\n  stdout: /dev/null\n')
+            fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
         args = CMD_ARGS + [
             'run',
@@ -107,7 +107,6 @@ class TestCli(TestCase):
         ]
 
         cli_main(args)
-
 
         args = CMD_ARGS + [
             'tasks',

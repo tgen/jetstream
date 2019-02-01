@@ -51,11 +51,13 @@ class Runner:
         self._futures = []
         self._loop = None
         self._last_save = None
-        self._workflow_len = None
+        self._main = None
         self._previous_directory = None
         self._run_started = None
+        self._workflow_iterator = None
+        self._workflow_len = None
 
-        # Properties
+        # Properties that should not be modified during a run
         self._run_id = None
         self._workflow = None
         self._project = None
