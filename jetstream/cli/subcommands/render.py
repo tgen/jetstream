@@ -20,7 +20,7 @@ def main(args):
 
     c = context(
         constants=settings['constants'].get(dict),
-        project=jetstream.current_project,
+        project=args.project,
         command_args=args.kvargs
     )
 

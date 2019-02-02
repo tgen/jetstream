@@ -6,7 +6,7 @@ log = logging.getLogger(__name__)
 
 
 def arg_parser(parser):
-    pass
+    run.arg_parser(parser)
 
 
 def main(args):
