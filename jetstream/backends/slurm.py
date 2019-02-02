@@ -29,8 +29,8 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, max_concurrency=9000, sacct_frequency=60,
-                 sbatch_executable=None, sbatch_delay=0.1):
+    def __init__(self, sacct_frequency=60, sbatch_delay=0.1,
+                 sbatch_executable=None):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -41,7 +41,6 @@ class SlurmBackend(BaseBackend):
         self.sbatch_executable = sbatch_executable
         self.sacct_frequency = sacct_frequency
         self.sbatch_delay = sbatch_delay
-        self.max_concurrency = max_concurrency
         self.jobs = dict()
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
@@ -50,7 +49,7 @@ class SlurmBackend(BaseBackend):
             self.sbatch_executable = shutil.which('sbatch') or 'sbatch'
 
         subprocess.run([self.sbatch_executable, '--version'], check=True)
-        log.info('SlurmBackend with {} max jobs'.format(self.max_concurrency))
+        log.info('SlurmBackend initialized')
 
     def _bump_next_update(self):
         d = timedelta(seconds=self.sacct_frequency)

@@ -22,15 +22,12 @@ class LocalBackend(jetstream.backends.BaseBackend):
         :param max_concurrency: Max concurrency limit
         """
         super(LocalBackend, self).__init__()
-        self._cpu_sem = None
         self.cpus = cpus \
                     or jetstream.settings['backends']['local']['cpus'] \
                     or jetstream.utils.guess_local_cpus()
-        self.blocking_io_penaty = blocking_io_penalty \
-                                  or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
-
-    def preflight(self):
-        self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
+        self.bip = blocking_io_penalty \
+                   or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
+        self._cpu_sem = BoundedSemaphore(self.cpus)
         log.info(f'LocalBackend initialized with {self.cpus} cpus')
 
     async def spawn(self, task):
@@ -124,7 +121,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 )
                 break
             except BlockingIOError as e:
-                log.warning('System refusing new processes: {}'.format(e))
-                await asyncio.sleep(self.blocking_io_penaty)
+                log.warning(f'System refusing new processes: {e}')
+                await asyncio.sleep(self.bip)
 
         return p

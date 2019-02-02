@@ -31,8 +31,9 @@ def sigterm_ignored():
 
 
 class Runner:
-    def __init__(self, backend_cls=None, backend_params=None, max_forks=None,
-                 throttle=None, autosave_min=None, autosave_max=None):
+    def __init__(self, backend_cls=None, backend_params=None,
+                 max_concurrency=None, throttle=None, autosave_min=None,
+                 autosave_max=None):
         self.backend = None
 
         if backend_cls is None:
@@ -44,7 +45,8 @@ class Runner:
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
         self.throttle = throttle or settings['runner']['throttle'].get()
-        self.max_forks = max_forks or settings['runner']['max_forks'].get()
+        self.max_concurrency = max_concurrency \
+                               or settings['runner']['max_concurrency'].get()
         self._conc_sem = None
         self._errs = False
         self._events = []
@@ -283,10 +285,10 @@ class Runner:
         self._start_backend()
         self._start_autosave()
 
-        if self.max_forks is None:
-            self.max_forks = utils.guess_max_forks()
+        if self.max_concurrency is None:
+            self.max_concurrency = utils.guess_max_forks()
 
-        self._conc_sem = BoundedSemaphore(value=self.max_forks, loop=self.loop)
+        self._conc_sem = BoundedSemaphore(value=self.max_concurrency)
 
         with sigterm_ignored():
             self.preflight()

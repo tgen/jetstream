@@ -29,7 +29,7 @@ load_file:
 
 # =================================== Runner ==================================
 runner:
-  max_forks: null
+  max_concurrency: null
   throttle: 0.1
   autosave_min: 5
   autosave_max: 60
@@ -43,7 +43,6 @@ backends:
     cpus: null
   slurm:
     (): jetstream.backends.slurm.SlurmBackend
-    max_concurrency: 9001
     sacct_frequency: 10
 
 
