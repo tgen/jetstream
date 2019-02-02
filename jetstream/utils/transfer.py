@@ -129,7 +129,7 @@ def check_rsyncs(host):
 
 
 def rsync(src_path, dest_path, *args):
-    cmd = ['rsync', '-e', 'ssh -o "BatchMode yes"', ]
+    cmd = ['rsync', '-e', 'ssh -v -o "BatchMode yes"', ]
     cmd += list(args)
     cmd += [src_path, dest_path]
     log.critical('Launching: {}'.format(' '.join(cmd)))
