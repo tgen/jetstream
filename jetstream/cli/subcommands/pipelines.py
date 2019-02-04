@@ -7,95 +7,59 @@ pipeline scripts and constants in the run."""
 import os
 import logging
 import jetstream
+from jetstream.cli.subcommands.run import main as run_main
+from jetstream.cli.subcommands.run import arg_parser as run_arg_parser
 
 log = logging.getLogger(__name__)
 
 
 def arg_parser(parser):
-    parser.add_argument(
-        'name',
-        nargs='?',
-        help='Pipeline name'
-    )
+    # This subcommand is just an extension of the run command, so we add all
+    # the arguments from that command to the parser as well.
+    run_arg_parser(parser)
 
     parser.add_argument(
-        '--pipelines-dir',
+        '--pipelines-home',
         help='Override path to the pipelines.',
     )
 
-    return parser
+    parser.add_argument(
+        '--ls',
+        action='store_true',
+        help='Show details about installed pipelines'
+    )
 
 
 def main(args=None):
     log.debug(f'{__name__} {args}')
 
-    raise NotImplementedError("TODO: FINISH THIS COMMAND")
+    # Make sure pipelines are configured
+    if args.pipelines_home:
+        jetstream.settings['pipelines']['home'] = args.pipelines_home
 
-    if args.name is None:
-        print('WHAT', jetstream.pipelines.ls())
-        return
-
-    # Resolve the requested pipeline
     pipelines_home = jetstream.settings['pipelines']['home'].get()
     if not pipelines_home or not os.path.isdir(pipelines_home):
         err = 'Pipelines are not configured. Check the application settings.'
         raise ValueError(err)
 
-    pipeline, constants = jetstream.pipelines.get(args.name)
+    # Ls just prints info about current pipelines
+    if args.ls:
+        installed = jetstream.pipelines.ls(pipelines_home)
+        return print(jetstream.utils.yaml_dumps(installed))
 
+    # If the pipeline has extra constants, add them to the settings constants
+    pipeline = jetstream.pipelines.lookup(args.path)
+    args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
+    jetstream.settings['constants'].set(pipeline.manifest.get('constants'))
 
-
-    # Add the pipeline constants to the kvargs
-    if constants:
-        remaining.extend(['--file:constants', constants])
-
-    # If the pipeline has a bin directory, prepend the env PATH and make
-    # the directory available via env variable PIPELINE_BIN
-    if pipeline.bin:
-        bin_path = pipeline.path.joinpath(pipeline.manifest['bin'])
+    # If the pipeline has a bin directory, prepend the env PATH
+    if 'bin' in pipeline.manifest:
+        bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
         os.environ['PIPELINE_BIN'] = str(bin_path)
         os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
-    context = jetstream.context(
-        project=args.project,
-        kvargs=remaining,
-        separator=args.separator
-    )
+    run_main(args)
 
-    workflow = jetstream.render_template(
-        path=pipeline.main,
-        context=context
-    )
-
-    try:
-        project = jetstream.Project(args.project)
-    except jetstream.ProjectInvalid:
-        project = None
-
-    if project:
-        existing_wf = project.workflow()
-
-        if existing_wf is not None:
-            workflow = jetstream.workflows.mash(existing_wf, workflow)
-
-    if args.method == 'retry':
-        workflow.retry()
-    elif args.method == 'resume':
-        workflow.resume()
-    elif args.method == 'reset':
-        workflow.reset()
-
-    runner = jetstream.Runner(
-        backend=args.backend,
-        max_forks=args.max_forks,
-        autosave=args.save_interval,
-    )
-
-    runner.start(
-        workflow=workflow,
-        project=args.project,
-        run_id=args.run_id,
-    )
 
 if __name__ == '__main__':
     main()

@@ -1,5 +1,6 @@
 """Shared utilities"""
 import builtins
+import confuse
 import csv
 import fnmatch
 import gzip
@@ -148,6 +149,14 @@ def coerce_sequence(obj):
     elif not isinstance(obj, Sequence):
         obj = [obj, ]
     return obj
+
+
+def config_stack(*sources):
+    conf = confuse.Configuration('UNLIKELYAPPNAME', read=False)
+    for s in sources:
+        conf.set(confuse.ConfigSource(s))
+
+    return json.loads(json.dumps(conf.flatten()))
 
 
 def dynamic_import(path):

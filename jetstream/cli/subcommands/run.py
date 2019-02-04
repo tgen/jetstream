@@ -105,7 +105,6 @@ def main(args):
     # loaded from a file.
     if args.mode == 'template':
         c = context(
-            constants=settings['constants'].get(dict),
             project=args.project,
             command_args=args.kvargs
         )

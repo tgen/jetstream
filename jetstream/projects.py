@@ -102,6 +102,7 @@ class Project:
             try:
                 self.load_config()
             except FileNotFoundError:
+                log.exception('No project config file found!')
                 self._config = None
         return self._config
 
@@ -115,6 +116,7 @@ class Project:
             try:
                 self.load_info()
             except FileNotFoundError:
+                log.exception('No project info file found!')
                 self._info = None
         return self._info
 
@@ -129,6 +131,7 @@ class Project:
             try:
                 self.load_workflow()
             except FileNotFoundError:
+                log.exception('No project workflow file found!')
                 self._workflow = None
         return self._workflow
 

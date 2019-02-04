@@ -88,25 +88,52 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-def context(constants=None, project=None, command_args=None, flatten=True):
-    context = confuse.Configuration('NULL', read=False)
-    app_constants = jetstream.settings['constants'].get()
-    context.set(confuse.ConfigSource(app_constants, 'jetstream.settings[constants]'))
+def context(*, project=None, command_args=None, settings=True):
+    """Enforces the correct priority order for loading data sources when
+    rendering templates"""
 
-    if constants is not None:
-        context.set(confuse.ConfigSource(constants, 'constants'))
+    # Template rendering config stack
+    #
+    #
+    # constants:
+    #   command args "constants" key
+    #   pipeline manifest "constants" section (if using pipelines)
+    #   settings file "constants" section
+    #
+    # <globals>: <values>
+    #   command args
+    #   project config file (if working in a project)
+    #
+    #
+    #Constants load order: Config files > Pipeline manifest (pipelines only) > command args???"""]
+    # Load constants
+    stack = []
 
-    if project is not None:
-        context.set(confuse.ConfigSource(project.config, f'{project} config'))
+    if settings:
+        sc = jetstream.settings.flatten().get('constants')
+        if sc:
+            stack.append(sc)
 
-    if command_args is not None:
-        context.set(confuse.ConfigSource(command_args, 'command-line args'))
+    if command_args:
+        cc = command_args.get('constants', {})
+        if cc:
+            stack.append(cc)
 
-    log.debug(f'Context loaded from: {context.sources}')
-    if flatten:
-        return context.flatten()
-    else:
-        return context
+    a = {'constants': jetstream.utils.config_stack(*stack)}
+
+    # Load globals
+    stack = []
+
+    if project:
+        stack.append(project.config)
+
+    if command_args:
+        stack.append(command_args)
+
+    b = jetstream.utils.config_stack(*stack)
+
+    # Mash them all together
+    return jetstream.utils.config_stack(a, b)
 
 
 def render_template(path, context=None, env=None, render_only=False):

@@ -1,77 +1,46 @@
-import json
 import logging
 import os
 import traceback
+import yaml
 import jetstream
 
 log = logging.getLogger(__name__)
+MANIFEST_FILENAME = 'pipeline.yaml'
 
 
 class InvalidPipeline(Exception):
     pass
 
 
-class ValidationFailed(Exception):
-    pass
-
-
 class Pipeline(object):
-    """Represents a pipeline installed on the system. This will load the
-    manifest and validate the data. To add a new validation, create a method
-    with the name "validate_<field>" where field is the manifest value to
-    validate. It should take one argument the value to validate."""
-    sentinel = object()
-
+    """Represents a pipeline installed on the system."""
     def __init__(self, path):
-        self.path = os.path.abspath(path)
-        self._manifest = Pipeline.sentinel
-        self._constants = Pipeline.sentinel
+        self.path = os.path.abspath(os.path.expanduser(path))
+        self.manifest = self.load_manifest(self.path)
 
     def __repr__(self):
-        return f'<Pipeline({self.manifest.get("name")}) at {self.path}>'
+        if self.manifest is None:
+            return f'<Pipeline at {self.path}>'
+        else:
+            return f'<Pipeline({self.manifest.get("name")}) at {self.path}>'
 
-    @property
-    def manifest_path(self):
-        filename = jetstream.settings['pipelines']['manifest_filename'].get()
-        return os.path.join(self.path, filename)
+    @staticmethod
+    def load_manifest(path):
+        if not os.path.isdir(path):
+            raise InvalidPipeline(f'"{path}" is not a directory!')
 
-    @property
-    def constants_path(self):
-        constants = jetstream.settings['pipelines']['constants_filename'].get()
-        return os.path.join(self.path, constants)
+        manifest_path = os.path.join(path, MANIFEST_FILENAME)
 
-    @property
-    def constants(self):
-        if self._constants is Pipeline.sentinel:
-            self._constants = jetstream.load_file()
-        return self._constants
-
-    @property
-    def manifest(self):
-        """Provides lazy loading of Pipeline details"""
-        if self._manifest is Pipeline.sentinel:
-            self.reload()
-        return self._manifest
-
-    def load_manifest(self):
-        manifest = self.manifest_path
-
-        if not os.path.exists(manifest):
-            raise InvalidPipeline(f'Manifest not found: {manifest}')
-
-        with open(manifest, 'r') as fp:
-            try:
-                return json.load(fp)
-            except json.decoder.JSONDecodeError:
-                tb = traceback.format_exc()
-                msg = f'Failed to load {self.path} error below:\n{tb}'
-                raise InvalidPipeline(msg) from None
-
-    def reload(self):
-        if not os.path.isdir(self.path):
-            raise InvalidPipeline(f'"{self.path}" is not a directory!')
-
-        self._manifest = self.load_manifest()
+        try:
+            with open(manifest_path, 'r') as fp:
+                manifest = jetstream.utils.yaml_loads(fp.read())
+        except FileNotFoundError:
+            err = f'Manifest file not found {manifest_path}'
+            raise InvalidPipeline(err) from None
+        except yaml.YAMLError:
+            tb = traceback.format_exc()
+            msg = f'Failed to load {path} error below:\n{tb}'
+            raise InvalidPipeline(msg) from None
 
         try:
             name = manifest['name']
@@ -81,15 +50,14 @@ class Pipeline(object):
         if not name.isidentifier():
             raise InvalidPipeline(f'"{name}" is not a valid identifier')
 
+        return manifest
 
-def ls():
-    home = jetstream.settings['pipelines']['home']
-    manifest = jetstream.settings['pipelines']['manifest_filename']
 
+def ls(home):
     pipelines = {}
     for d in os.listdir(home):
         path = os.path.join(home, d)
-        manifest = os.path.join(path, manifest)
+        manifest = os.path.join(path, MANIFEST_FILENAME)
 
         if os.path.isdir(path) and os.path.exists(manifest):
             try:
@@ -97,30 +65,20 @@ def ls():
             except InvalidPipeline:
                 log.exception('Failed to load pipeline!')
 
-            pipelines[pipeline.name] = pipeline
+            pipelines[pipeline.manifest['name']] = pipeline
 
     return pipelines
 
 
-def get(name):
-    pipelines = jetstream.pipelines.ls()
+def lookup(name):
+    home = jetstream.settings['pipelines']['home'].get()
+    pipelines = jetstream.pipelines.ls(home)
 
     try:
-        pipeline = pipelines[name]
+        return pipelines[name]
     except KeyError:
-        manifest = {p.name: p.manifest for p in pipelines.values()}
-        if manifest:
-            msg = f'"{name}" not found.\n\nPipelines available:\n' \
-                  f'{jetstream.utils.yaml_dumps(manifest)}'
-        else:
-            msg = 'No pipelines found!'
-
+        msg = f'Pipeline "{name}" not found!'
         raise ValueError(msg) from None
-
-    if CONSTANTS.exists():
-        return pipeline, CONSTANTS
-    else:
-        return pipelines, None
 
 
 # TODO New feature - load workflows directly from a python module:
