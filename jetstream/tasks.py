@@ -68,7 +68,12 @@ class Task(object):
         return self.tid.__hash__()
 
     def __repr__(self):
-        return f'<Task({self.status}): {self.tid} {self.state.get("label", "")}>'
+        l = self.state.get("label")
+
+        if l:
+            return f'<Task({self.status}:{l}): {self.tid}>'
+        else:
+            return  f'<Task({self.status}): {self.tid}>'
 
     @property
     def status(self):
