@@ -53,7 +53,10 @@ class Pipeline(object):
         return manifest
 
 
-def ls(home):
+def ls(home=None):
+    if home is None:
+        home = jetstream.settings['pipelines']['home'].get()
+
     pipelines = {}
     for d in os.listdir(home):
         path = os.path.join(home, d)

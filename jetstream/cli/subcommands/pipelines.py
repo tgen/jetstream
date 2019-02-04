@@ -18,12 +18,14 @@ def arg_parser(parser):
     # the arguments from that command to the parser as well.
     run_arg_parser(parser)
 
-    parser.add_argument(
+    pipelines = parser.add_argument_group('pipeline options')
+
+    pipelines.add_argument(
         '--pipelines-home',
-        help='Override path to the pipelines.',
+        help='Override path to the pipelines home',
     )
 
-    parser.add_argument(
+    pipelines.add_argument(
         '--ls',
         action='store_true',
         help='Show details about installed pipelines'

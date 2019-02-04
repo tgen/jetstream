@@ -32,7 +32,6 @@ Detailed argument help:
 """
 import logging
 import jetstream
-from jetstream import settings
 from jetstream.templates import context, render_template
 
 log = logging.getLogger(__name__)
@@ -41,7 +40,8 @@ log = logging.getLogger(__name__)
 def arg_parser(parser):
     parser.add_argument(
         'path',
-        help='Path to a workflow template, python module, or workflow file'
+        help='Path to a workflow template, python module, or workflow file.'
+             'If using "pipelines" command, the name of the pipeline'
     )
 
     parser.add_argument(
@@ -104,10 +104,7 @@ def main(args):
     # Setup the workflow, this can be built from a template, python module, or
     # loaded from a file.
     if args.mode == 'template':
-        c = context(
-            project=args.project,
-            command_args=args.kvargs
-        )
+        c = context(project=args.project, command_args=args.kvargs)
         workflow = render_template(args.path, c)
     elif args.mode == 'module':
         raise NotImplementedError
