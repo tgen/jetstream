@@ -52,7 +52,7 @@ def main(args=None):
     # If the pipeline has extra constants, add them to the settings constants
     pipeline = jetstream.pipelines.lookup(args.path)
     args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
-    jetstream.settings['constants'].set(pipeline.manifest.get('constants'))
+    jetstream.settings['constants'].set(pipeline.manifest.get('constants', {}))
 
     # If the pipeline has a bin directory, prepend the env PATH
     if 'bin' in pipeline.manifest:

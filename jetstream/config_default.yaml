@@ -50,8 +50,6 @@ backends:
 # Change pipelines:home in order to use the pipelines feature
 pipelines:
   home: null
-  manifest_filename: pipeline.json
-  constants_filename: constants.yaml
 
 
 # =================================== Templates ===============================
