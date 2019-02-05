@@ -131,8 +131,6 @@ def main(args):
         workflow.resume()
     elif args.reset_method == 'reset':
         workflow.reset()
-    elif args.reset_method is None:
-        pass
     else:
         raise ValueError(f'Unrecognized task reset method: {args.reset_method}')
 
