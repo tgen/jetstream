@@ -32,7 +32,7 @@ class SlurmBackend(BaseBackend):
                 'slurm_args')
 
     def __init__(self, sacct_frequency=60, sbatch_delay=0.1,
-                 sbatch_executable=None):
+                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed')):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -42,9 +42,10 @@ class SlurmBackend(BaseBackend):
         super(SlurmBackend, self).__init__()
         self.sbatch_executable = sbatch_executable
         self.sacct_frequency = sacct_frequency
+        self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
         self.jobs = dict()
-        self.sacct_fields = jetstream.settings['backends']['slurm']['sacct_fields'].get()
+
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
 
