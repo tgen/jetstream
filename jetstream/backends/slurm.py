@@ -128,7 +128,7 @@ class SlurmBackend(BaseBackend):
             return comment_string
 
     async def spawn(self, task):
-        log.debug('Spawn: {}'.format(task))
+        log.debug(f'Spawn: {task}')
 
         if not task.directives().get('cmd'):
             return 0
@@ -152,8 +152,12 @@ class SlurmBackend(BaseBackend):
             sbatch_executable=self.sbatch_executable
         )
 
-        log.info(f'SlurmBackend submitted({job.jid}): {task.tid}')
-        task.state.update(slurm_job_id=job.jid, slurm_args=job.args)
+        task.state.update(
+            label=f'Slurm({job.jid})',
+            slurm_job_id=job.jid,
+            slurm_args=job.args
+        )
+        log.info(f'SlurmBackend submitted: {task}')
 
         event = asyncio.Event(loop=self.runner.loop)
         job.event = event
@@ -163,10 +167,10 @@ class SlurmBackend(BaseBackend):
             await event.wait()
 
             if job.is_ok():
-                log.info(f'Complete: {task.tid}')
+                log.info(f'Complete: {task}')
                 task.complete(job.returncode())
             else:
-                log.info(f'Failed: {task.tid}')
+                log.info(f'Failed: {task}')
                 task.state['slurm'] = job.job_data.copy()
                 task.fail(job.returncode())
 

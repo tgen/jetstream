@@ -93,7 +93,7 @@ class Task(object):
         return self._identity
 
     def clear_state(self):
-        log.debug(f'Clear state: {self.tid}')
+        log.debug(f'Clear state: {self}')
         directives = self.directives()
 
         # Retry is state-ish but provided in a directive. Each time the task is
@@ -115,7 +115,7 @@ class Task(object):
 
     def reset(self, descendants=True, clear_state=True):
         """Reset the state of this task"""
-        log.debug(f'Reset: {self.tid}')
+        log.debug(f'Reset: {self}')
         if clear_state:
             self.clear_state()
 
@@ -125,13 +125,13 @@ class Task(object):
 
     def pending(self):
         """Indicate that this task has been passed to the runner"""
-        log.debug(f'Pending: {self.tid}')
+        log.debug(f'Pending: {self}')
         self.status = 'pending'
         self.state['start_time'] = datetime.now().isoformat()
 
     def fail(self, returncode=None, descendants=True):
         """Indicate that this task has failed"""
-        log.debug(f'Failed: {self.tid}')
+        log.debug(f'Failed: {self}')
         atts = self.state.get('remaining_attempts', 0)
 
         if atts > 0:
@@ -160,7 +160,7 @@ class Task(object):
 
     def complete(self, returncode=None):
         """Indicate that this task is complete"""
-        log.debug(f'Complete: {self.tid}')
+        log.debug(f'Complete: {self}')
         self.status = 'complete'
         self.state['done_at'] = datetime.now().isoformat()
 
