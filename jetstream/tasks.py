@@ -44,7 +44,7 @@ class Task(object):
         :param kwargs: Task directives
         """
         self.workflow = None
-        self.state = dict()
+        self.state = {'status': None}
         self._directives = tuple(kwargs.items())
         self._identity = hash_directives(self._directives)
 
@@ -83,10 +83,10 @@ class Task(object):
         done_dt = datetime.now()
 
         try:
-            starts = self.state['start_time']
-            start_dt = datetime.strptime(starts,'%Y-%m-%dT%H:%M:%S.%f')
+            start = self.state.get('start_time', '')
+            start_dt = datetime.strptime(start,'%Y-%m-%dT%H:%M:%S.%f')
             elapsed = str(done_dt - start_dt)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             elapsed = None
 
         self.state['done_time'] = done_dt.isoformat()
