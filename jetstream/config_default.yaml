@@ -44,6 +44,15 @@ backends:
   slurm:
     (): jetstream.backends.slurm.SlurmBackend
     sacct_frequency: 10
+    sacct_fields:
+      - JobID
+      - JobName
+      - Partition
+      - Account
+      - AllocCPUS
+      - State
+      - ExitCode
+      - MaxRSS
 
 
 # ================================== Pipelines ================================

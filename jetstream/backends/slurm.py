@@ -9,9 +9,11 @@ import subprocess
 import tempfile
 import time
 
-from datetime import datetime, timedelta
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
+from datetime import datetime, timedelta
+
+import jetstream
 from jetstream.backends import BaseBackend
 
 log = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ class SlurmBackend(BaseBackend):
         self.sacct_frequency = sacct_frequency
         self.sbatch_delay = sbatch_delay
         self.jobs = dict()
+        self.sacct_fields = jetstream.settings['backends']['slurm']['sacct_fields'].get()
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
 
@@ -166,12 +169,17 @@ class SlurmBackend(BaseBackend):
         try:
             await event.wait()
 
+            if self.sacct_fields:
+                job_info = {k: v for k, v in job.job_data.items() if
+                            k in self.sacct_fields}
+
+                task.state['slurm'] = job_info
+
             if job.is_ok():
                 log.info(f'Complete: {task}')
                 task.complete(job.returncode())
             else:
                 log.info(f'Failed: {task}')
-                task.state['slurm'] = job.job_data.copy()
                 task.fail(job.returncode())
 
         except asyncio.CancelledError:
