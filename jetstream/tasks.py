@@ -6,8 +6,7 @@ valid_status = ('new', 'pending', 'complete', 'failed')
 
 
 class InvalidTaskStatus(Exception):
-    msg_prefix = "Invalid task status, options: {}: ".format(
-        ', '.join(valid_status))
+    msg_prefix = f"Invalid task status, options: {', '.join(valid_status)}"
 
     def __init__(self, msg=''):
         super(InvalidTaskStatus, self).__init__(self.msg_prefix + msg)
@@ -17,31 +16,32 @@ class Task(object):
     def __init__(self, **kwargs):
         """Tasks are the fundamental units of a workflow.
 
-        Tasks are composed of directives. Directives are key-value pairs given
-        as kwargs when instantiating a new task. Directives are used by:
+        Tasks are composed of directives. Directives are immutable key-value
+        pairs given as kwargs when instantiating a new task. Directives are
+        used by:
 
             Workflow - to build a graph of the task dependencies and ensure
             that tasks are executed in the correct order
 
-            Backends - when executing tasks, directives control how the backend
-            will reserve resources, record outputs, execute the command, etc.
+            Runner/Backends - when executing tasks, directives control how the
+            backend will reserve resources, save outputs, execute the
+            command, etc.
 
-        Tasks also have state attributes. Task.status is used by the workflow
-        to coordinate tasks, while Task.state is meant to store additional data
-        that should not be used to compare the content of two tasks.
+        Tasks also have state attributes, state changes as the task runs.
+        Task.state['status'] is used by the workflow to orchestrate workflow
+        execution, it has a shortcut property Task.status. State does not
+        influence the Task.identity.
 
-        Task identity is computed by sha1 hash of the task directives, it can
-        be accessed with Task.identity (note: this is not the same as the the
-        object identity "id(Task)"). Task directives are immutable. Upon
-        instantiation, they are stored as a tuple, json serialized, and hashed
-        to generate an identity. The task directive tuple can be viewed with
-        Task.identity. But, task directives should not be modified after
-        instantiation, and attempting do so will have unpredictable effects on
-        workflow execution. The ID is used to unambiguously compare tasks when
-        building and combining Workflows.
+        Task identity is computed by sha1 hash of the serialized task
+        directives, it can be accessed with Task.identity (note: this is not
+        the same as the the object identity "id(Task)"). Task directives are
+        immutable. Upon instantiation, they are stored as a tuple, json
+        serialized, and then hashed to generate the task identity. The task
+        directive tuple can be viewed with Task.identity. But, task directives
+        should not be modified after instantiation, and attempting do so will
+        have unpredictable effects on workflow execution.
 
-        :param from_data: Rehydrate the task from existing data.
-        :param kwargs: Generate a new task with the given directives.
+        :param kwargs: Task directives
         """
         self.workflow = None
         self._directives = tuple(kwargs.items())
@@ -56,15 +56,15 @@ class Task(object):
 
     def __eq__(self, other):
         """Tasks can be compared to other Tasks, this also allows querying
-        container objects with "in". Tasks are considered equal if their name
-        is equal. When tasks have no name declared, their directives are used
-        instead. """
+        container objects with "in". Tasks are considered equal if their tids
+        are equal. """
         if isinstance(other, Task):
             return other.tid == self.tid
         else:
             return False
 
     def __hash__(self):
+        """Allows this object to be used in hashed collections"""
         return self.tid.__hash__()
 
     def __repr__(self):
@@ -74,6 +74,22 @@ class Task(object):
             return f'<Task({self.status}:{l}): {self.tid}>'
         else:
             return  f'<Task({self.status}): {self.tid}>'
+
+    def _set_start_time(self):
+        self.state['start_time'] = datetime.now().isoformat()
+
+    def _set_done_time(self):
+        done_dt = datetime.now()
+
+        try:
+            starts = self.state['start_time']
+            start_dt = datetime.strptime(starts,'%Y-%m-%dT%H:%M:%S.%f')
+            elapsed = str(done_dt - start_dt)
+        except (KeyError, ValueError):
+            elapsed = None
+
+        self.state['done_time'] = done_dt.isoformat()
+        self.state['elapsed_time'] = elapsed
 
     @property
     def status(self):
@@ -109,10 +125,6 @@ class Task(object):
         of the need to create a dictionary from the directives."""
         return dict(self._directives)
 
-    def directives_raw(self):
-        """Directives are stored as a tuple so that they're immutable"""
-        return self._directives
-
     def reset(self, descendants=True, clear_state=True):
         """Reset the state of this task"""
         log.debug(f'Reset: {self}')
@@ -127,7 +139,8 @@ class Task(object):
         """Indicate that this task has been passed to the runner"""
         log.debug(f'Pending: {self}')
         self.status = 'pending'
-        self.state['start_time'] = datetime.now().isoformat()
+        self._set_start_time()
+
 
     def fail(self, returncode=None, descendants=True):
         """Indicate that this task has failed"""
@@ -139,19 +152,9 @@ class Task(object):
             self.state['remaining_attempts'] = atts - 1
             return
 
-        donedt = datetime.now()
-
-        try:
-            starts = self.state['start_time']
-            startdt = datetime.strptime(starts,'%Y-%m-%dT%H:%M:%S.%f')
-            elapsed = str(donedt - startdt)
-        except (KeyError, ValueError):
-            elapsed = None
-
         self.status = 'failed'
         self.state['returncode'] = returncode
-        self.state['done_time'] = donedt.isoformat()
-        self.state['elapsed_time'] = elapsed
+        self._set_done_time()
 
         if self.workflow and descendants:
             for dep in self.descendants():
@@ -162,10 +165,10 @@ class Task(object):
         """Indicate that this task is complete"""
         log.debug(f'Complete: {self}')
         self.status = 'complete'
-        self.state['done_at'] = datetime.now().isoformat()
+        self._set_done_time()
 
         if returncode is not None:
-            self.state.update(returncode=returncode)
+            self.state['returncode'] = returncode
 
     # Helpers and shortcut methods
     def is_new(self):
