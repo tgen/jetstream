@@ -78,7 +78,7 @@ def arg_parser(parser):
     parser.add_argument(
         '--reset-method',
         choices=['retry', 'resume', 'reset'],
-        default=None,
+        default='retry',
         help='Method to use when running existing workflows. This parameter '
              'will determine which tasks are reset prior to starting the run.'
     )
