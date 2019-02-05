@@ -44,6 +44,7 @@ class Task(object):
         :param kwargs: Task directives
         """
         self.workflow = None
+        self.state = dict()
         self._directives = tuple(kwargs.items())
         self._identity = hash_directives(self._directives)
 

@@ -52,6 +52,7 @@ backends:
       - AllocCPUS
       - State
       - ExitCode
+      - Elapsed
       - MaxRSS
 
 
