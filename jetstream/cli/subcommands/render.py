@@ -1,7 +1,5 @@
 """Render a template and print the results"""
 import logging
-import jetstream
-from jetstream import settings
 from jetstream.templates import context, render_template
 
 log = logging.getLogger(__name__)
@@ -19,7 +17,6 @@ def main(args):
     log.debug(f'{__name__} {args}')
 
     c = context(
-        constants=settings['constants'].get(dict),
         project=args.project,
         command_args=args.kvargs
     )
