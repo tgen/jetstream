@@ -132,8 +132,11 @@ class Workflow(object):
         # Drop all pending tasks that have completed since the last call
         _temp = list()
         for tid in self._iter_pending:
-            if self.get_task(tid).is_done():
+            t = self.get_task(tid)
+            if t.is_done():
                 self._iter_done.append(tid)
+            elif t.is_new():
+                self._iter_tasks.append(tid)
             else:
                 _temp.append(tid)
         self._iter_pending = _temp
