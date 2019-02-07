@@ -159,7 +159,7 @@ class SlurmBackend(BaseBackend):
         task.state.update(
             label=f'Slurm({job.jid})',
             slurm_job_id=job.jid,
-            slurm_args=job.args
+            slurm_cmd=' '.join(shlex.quote(a) for a in job.args)
         )
         log.info(f'SlurmBackend submitted: {task}')
 
@@ -174,7 +174,7 @@ class SlurmBackend(BaseBackend):
                 job_info = {k: v for k, v in job.job_data.items() if
                             k in self.sacct_fields}
 
-                task.state['slurm'] = job_info
+                task.state['slurm_sacct'] = job_info
 
             if job.is_ok():
                 log.info(f'Complete: {task}')
