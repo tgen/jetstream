@@ -81,6 +81,7 @@ class Runner:
         return self._loop
 
     async def _autosave_coro(self):
+        log.debug('Autosaver started!')
         self._last_save = datetime.now()
         try:
             while 1:
@@ -91,6 +92,7 @@ class Runner:
                 # the minimum interval is reached.
                 time_since_last = datetime.now() - self._last_save
                 delay_for = mn - time_since_last
+                log.debug(f'Autosaver hold for {delay_for}s')
                 await asyncio.sleep(delay_for.seconds)
 
                 # Otherwise, wait for the next future to return and then save
@@ -100,15 +102,21 @@ class Runner:
                 timeout_at = self._last_save + mx
                 timeout_in = (timeout_at - datetime.now()).seconds
 
+                log.debug(f'Autosaver next save in {timeout_in}s')
                 try:
                     await asyncio.wait_for(e.wait(), timeout=timeout_in)
+                    log.debug(f'Autosaver wait cleared by runner')
                 except asyncio.TimeoutError:
+                    log.debug(f'Autosaver wait timed out')
                     pass
 
+                log.debug('Autosaver saving workflow...')
                 self.save_workflow()
                 self._last_save = datetime.now()
         except asyncio.CancelledError:
             pass
+        finally:
+            log.debug('Autosaver stopped!')
 
     def _cleanup_event_loop(self):
         """If the async event loop has outstanding futures, they must be

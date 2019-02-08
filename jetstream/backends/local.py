@@ -34,7 +34,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
         log.debug('Spawn: {}'.format(task))
 
         if 'cmd' not in task.directives():
-            return task.complete(0)
+            return task.complete()
 
         cmd = task.directives()['cmd']
         cpus = task.directives().get('cpus', 0)

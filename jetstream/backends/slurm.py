@@ -56,11 +56,14 @@ class SlurmBackend(BaseBackend):
         log.info('SlurmBackend initialized')
 
     def _bump_next_update(self):
-        d = timedelta(seconds=self.sacct_frequency)
-        self._next_update = datetime.now() + d
-        log.debug(f'Next sacct update at {self._next_update.isoformat()}')
+        self._next_update = datetime.now() + timedelta(seconds=self.sacct_frequency)
+        log.debug(f'Next sacct update bumped to {self._next_update.isoformat()}')
 
     async def wait_for_next_update(self):
+        """This allows the wait time to be bumped up each time a job is
+        submitted. This means that sacct will never be checked immediately
+        after submitting jobs, and it protects against finding data from
+        old jobs with the same job ID in the database"""
         while datetime.now() < self._next_update:
             sleep_delta = self._next_update - datetime.now()
             sleep_seconds = max(0, sleep_delta.total_seconds())
@@ -73,22 +76,24 @@ class SlurmBackend(BaseBackend):
         try:
             while 1:
                 await self.wait_for_next_update()
-                self._bump_next_update()
 
                 if not self.jobs:
                     log.debug('No current jobs to check')
+                    self._bump_next_update()
                     continue
 
                 sacct_data = sacct(*self.jobs, return_data=True)
+                self._bump_next_update()
 
                 for jid, data in sacct_data.items():
                     if jid in self.jobs:
                         job = self.jobs[jid]
                         job.job_data = data
 
-                        if job.is_done():
+                        if job.is_done() and job.event is not None:
                             job.event.set()
                             self.jobs.pop(jid)
+
         except CancelledError:
             if self.jobs:
                 log.info('Requesting scancel for outstanding slurm jobs')
@@ -135,11 +140,9 @@ class SlurmBackend(BaseBackend):
         log.debug(f'Spawn: {task}')
 
         if not task.directives().get('cmd'):
-            return 0
+            return task.complete()
 
         time.sleep(self.sbatch_delay) # sbatch breaks when called too frequently
-
-        self._bump_next_update()
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
@@ -161,19 +164,20 @@ class SlurmBackend(BaseBackend):
             slurm_job_id=job.jid,
             slurm_cmd=' '.join(shlex.quote(a) for a in job.args)
         )
+
+        self._bump_next_update()
         log.info(f'SlurmBackend submitted: {task}')
 
-        event = asyncio.Event(loop=self.runner.loop)
-        job.event = event
+        job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
 
         try:
-            await event.wait()
+            await job.event.wait()
+            log.debug('Job event was set, gathering info and notifying workflow')
 
             if self.sacct_fields:
                 job_info = {k: v for k, v in job.job_data.items() if
                             k in self.sacct_fields}
-
                 task.state['slurm_sacct'] = job_info
 
             if job.is_ok():
@@ -183,10 +187,14 @@ class SlurmBackend(BaseBackend):
                 log.info(f'Failed: {task}')
                 task.fail(job.returncode())
 
+            log.debug('Done notifying workflow')
+
         except asyncio.CancelledError:
             job.cancel()
             task.state['err'] = 'Runner cancelled Backend.spawn'
             task.fail(-15)
+        finally:
+            log.debug(f'Slurmbackend spawn completed for {task}')
 
 
 class SlurmBatchJob(object):
