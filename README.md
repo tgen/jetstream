@@ -649,6 +649,96 @@ We can call the macro like this:
 {{ gatk_whatever(batch=[1,2,3], sample_name='foo') }}
 ```
 
+## Handling whitespace with macros
+
+Macros are a powerful way to create tasks, but handling whitespace can be a pain.
+YAML is whitespace-sensitive and will throw errors if your task content does not
+fit the proper indentation levels after rendering. This example shows a few ways
+of calling macros that can be used to add or remove whitespace depending on your 
+needs:
+
+Here is a template that includes a simple macro and a few calls:
+```
+{% macro foo() %}
+bar
+  bar
+    bar
+  bar
+bar
+{% endmacro %}
+
+Plain call:
+{{ foo() }}
+
+Indented call:
+  {{ foo() }}
+
+Call piped to indent(2):
+{{ foo()|indent(2) }}
+
+Indented call piped to indent(2):
+  {{ foo()|indent(2) }}
+
+Call with the first newline removed:
+{{- foo() }}
+
+Call with the last newline removed:
+{{ foo() -}}
+
+Last line of template
+```
+
+And here are the results of rendering: `jetstream render example.jst`
+```
+
+Plain call:
+bar
+  bar
+    bar
+  bar
+bar
+
+
+Indented call:
+  bar
+  bar
+    bar
+  bar
+bar
+
+
+Call piped to indent(2):
+bar
+    bar
+      bar
+    bar
+  bar
+
+
+Indented call piped to indent(2):
+  bar
+    bar
+      bar
+    bar
+  bar
+
+
+Call with the first newline removed:bar
+  bar
+    bar
+  bar
+bar
+
+
+Call with the last newline removed:
+bar
+  bar
+    bar
+  bar
+bar
+Last line of template
+```
+
 ## Macro-ception
 
 Next is an example of a nested macro: a macro that calls another macro.
