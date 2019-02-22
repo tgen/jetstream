@@ -1,157 +1,136 @@
+import logging
 import os
-import sys
-import json
-import importlib
 import traceback
-from pathlib import Path
+import yaml
 import jetstream
-from jetstream import log
 
-MANIFEST_FILENAME = 'pipeline.json'
-CONSTANTS_FILENAME = 'constants.yaml'
+log = logging.getLogger(__name__)
+MANIFEST_FILENAME = 'pipeline.yaml'
 
-try:
-    JETSTREAM_PIPELINES = Path(os.environ['JETSTREAM_PIPELINES']).resolve()
-    CONSTANTS = JETSTREAM_PIPELINES.joinpath(CONSTANTS_FILENAME)
-except KeyError:
-    JETSTREAM_PIPELINES = None
-    CONSTANTS = None
 
 class InvalidPipeline(Exception):
     pass
 
 
-class ValidationFailed(Exception):
-    pass
-
-
 class Pipeline(object):
-    """Represents a pipeline installed on the system. This will load the
-    manifest and validate the data. To add a new validation, create a method
-    with the name "validate_<field>" where field is the manifest value to
-    validate. It should take one argument the value to validate."""
+    """Represents a pipeline installed on the system."""
     def __init__(self, path):
-        self.path = Path(path).resolve()
-
-        if not self.path.is_dir():
-            raise InvalidPipeline(f'"{path}" is not a directory!')
-
-        self.manifest_file = self.path.joinpath(MANIFEST_FILENAME)
-
-        if self.manifest_file.is_file():
-            with open(self.manifest_file, 'r') as fp:
-                try:
-                    self.manifest = json.load(fp)
-                except json.decoder.JSONDecodeError:
-                    msg = f'Failed to load {self.path} error below:'
-                    log.exception(msg)
-                    raise InvalidPipeline from None
-        else:
-            raise InvalidPipeline(f'Manifest not found: {MANIFEST_FILENAME}')
-
-        self.name = self.manifest['name']
-
-        if not self.name.isidentifier():
-            raise ValidationFailed(f'"{self.name}" is not a valid identifier')
-
-        self.main = self.path.joinpath(self.manifest['main'])
-
-        if 'bin' in self.manifest:
-            self.bin = self.path.joinpath(self.manifest['bin'])
-        else:
-            self.bin = None
+        self.path = os.path.abspath(os.path.expanduser(path))
+        self.manifest = self.load_manifest(self.path)
 
     def __repr__(self):
-        return f'<Pipeline({self.manifest.get("name")}) at {self.path}>'
+        if self.manifest is None:
+            return f'<Pipeline at {self.path}>'
+        else:
+            return f'<Pipeline({self.manifest.get("name")}) at {self.path}>'
+
+    @staticmethod
+    def load_manifest(path):
+        if not os.path.isdir(path):
+            raise InvalidPipeline(f'"{path}" is not a directory!')
+
+        manifest_path = os.path.join(path, MANIFEST_FILENAME)
+
+        try:
+            with open(manifest_path, 'r') as fp:
+                manifest = jetstream.utils.yaml_loads(fp.read())
+        except FileNotFoundError:
+            err = f'Manifest file not found {manifest_path}'
+            raise InvalidPipeline(err) from None
+        except yaml.YAMLError:
+            tb = traceback.format_exc()
+            msg = f'Failed to load {path} error below:\n{tb}'
+            raise InvalidPipeline(msg) from None
+
+        try:
+            name = manifest['name']
+        except KeyError:
+            raise InvalidPipeline(f'manifest missing "name"') from None
+
+        if not name.isidentifier():
+            raise InvalidPipeline(f'"{name}" is not a valid identifier')
+
+        return manifest
 
 
-def ls():
-    if JETSTREAM_PIPELINES is None:
-        raise ValueError('PIPELINES_DIR is not set!')
+def ls(home=None):
+    if home is None:
+        home = jetstream.settings['pipelines']['home'].get()
 
     pipelines = {}
-    for d in os.listdir(str(JETSTREAM_PIPELINES)):
-        path = os.path.join(JETSTREAM_PIPELINES, d)
+    for d in os.listdir(home):
+        path = os.path.join(home, d)
         manifest = os.path.join(path, MANIFEST_FILENAME)
 
         if os.path.isdir(path) and os.path.exists(manifest):
             try:
                 pipeline = Pipeline(path)
             except InvalidPipeline:
-                pass
+                log.exception('Failed to load pipeline!')
 
-            pipelines[pipeline.name] = pipeline
+            pipelines[pipeline.manifest['name']] = pipeline
 
     return pipelines
 
 
-def get(name):
-    pipelines = jetstream.pipelines.ls()
+def lookup(name):
+    home = jetstream.settings['pipelines']['home'].get()
+    pipelines = jetstream.pipelines.ls(home)
 
     try:
-        pipeline = pipelines[name]
+        return pipelines[name]
     except KeyError:
-        manifest = {p.name: p.manifest for p in pipelines.values()}
-        if manifest:
-            msg = f'"{name}" not found.\n\nPipelines available:\n' \
-                  f'{jetstream.utils.yaml_dumps(manifest)}'
-        else:
-            msg = 'No pipelines found!'
-
+        msg = f'Pipeline "{name}" not found!'
         raise ValueError(msg) from None
 
-    if CONSTANTS.exists():
-        return pipeline, CONSTANTS
-    else:
-        return pipelines, None
 
-
-# Tools for loading workflows from a python module
-def _find_modules(instance):
-    def is_mod(attr):
-        if attr.startswith('_'):
-            return False
-
-        try:
-            fn = getattr(instance, attr)
-        except AttributeError:
-            return False
-
-        if not callable(fn):
-            return False
-
-        return getattr(fn, 'is_module', False)
-
-    return filter(is_mod, dir(instance))
-
-
-def _pipeline_module(fn):
-    """Decorator applied to Pipeline methods to make them automatically
-    fire when the pipeline is instantiated"""
-    fn.is_module = True
-    return fn
-
-
-def _load_mod(filepath):
-    dirn = os.path.dirname(filepath)
-    base = os.path.basename(filepath)
-    name, ext = os.path.splitext(base)
-    old_path = sys.path.copy()
-    old_modules = sys.modules.copy()
-
-    try:
-        sys.path.insert(1, dirn)
-        spec = importlib.util.spec_from_file_location(name, filepath)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    finally:
-        sys.path = old_path
-        sys.modules = old_modules
-
-    return mod
-
-
-def _find_tasks(mod):
-    for k, v in mod.__dict__.items():
-        if isinstance(v, jetstream.Task):
-            yield v
+# TODO New feature - load workflows directly from a python module:
+# # Tools for loading workflows from a python module
+# def _find_modules(instance):
+#     def is_mod(attr):
+#         if attr.startswith('_'):
+#             return False
+#
+#         try:
+#             fn = getattr(instance, attr)
+#         except AttributeError:
+#             return False
+#
+#         if not callable(fn):
+#             return False
+#
+#         return getattr(fn, 'is_module', False)
+#
+#     return filter(is_mod, dir(instance))
+#
+#
+# def _pipeline_module(fn):
+#     """Decorator applied to Pipeline methods to make them automatically
+#     fire when the pipeline is instantiated"""
+#     fn.is_module = True
+#     return fn
+#
+#
+# def _load_mod(filepath):
+#     dirn = os.path.dirname(filepath)
+#     base = os.path.basename(filepath)
+#     name, ext = os.path.splitext(base)
+#     old_path = sys.path.copy()
+#     old_modules = sys.modules.copy()
+#
+#     try:
+#         sys.path.insert(1, dirn)
+#         spec = importlib.util.spec_from_file_location(name, filepath)
+#         mod = importlib.util.module_from_spec(spec)
+#         spec.loader.exec_module(mod)
+#     finally:
+#         sys.path = old_path
+#         sys.modules = old_modules
+#
+#     return mod
+#
+#
+# def _find_tasks(mod):
+#     for k, v in mod.__dict__.items():
+#         if isinstance(v, jetstream.Task):
+#             yield v

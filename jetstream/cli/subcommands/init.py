@@ -1,41 +1,26 @@
-"""Create a new project or reinitialize an existing project.
+"""Create or reinitialize a project
 
 This command can be used to create a new Jetstrema project with the
-recommended project folders. If config files are included, they will
-be copied into the project config directory."""
+recommended project folders. If kvargs are given, they will be added to the
+project config file."""
 import os
-import shutil
-import argparse
 import jetstream
 from jetstream import log
 
 
-def arg_parser():
-    """Argument parser for the init action"""
-    parser = argparse.ArgumentParser(
-        prog='jetstream project init',
-        description=__doc__
+def arg_parser(parser):
+    parser.add_argument(
+        'path',
+        nargs='?',
+        default=os.getcwd(),
+        help='Path to a Jetstream project'
     )
-
-    parser.add_argument('path', nargs='?', default=os.getcwd(),
-                        help='Path to a Jetstream project')
-
-    parser.add_argument('-c', '--config', nargs='*', default=list(),
-                        help='Copy files into the new \'<project>/config/\'')
 
     return parser
 
 
-def main(args=None):
-    parser = arg_parser()
-    args = parser.parse_args(args)
-    log.debug('{}: {}'.format(__name__, args))
-
-    os.makedirs(args.path, exist_ok=True)
-    p = jetstream.Project(path=args.path, new=True)
-
-    for file in args.config:
-        log.info('Copying: {} -> {}'.format(file, p.config_dir))
-        shutil.copy(file, p.config_dir)
-
-    log.info('Done')
+def main(args):
+    log.debug(f'{__name__} {args}')
+    p = jetstream.new_project(args.path, config=args.kvargs)
+    # TODO append vs overwrite config and project file for existing projects?
+    log.info(f'Initialized {p}')

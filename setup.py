@@ -34,7 +34,9 @@ setup(
         'networkx',
         'pyyaml',
         'ulid-py',
-        'jinja2'
+        'jinja2',
+        'filelock',
+        'confuse'
     ],
     extras_require={
         'dev': [
@@ -46,7 +48,7 @@ setup(
     },
     scripts=[s for s in glob('scripts/**', recursive=True) if os.path.isfile(s)],
     package_data={
-        'jetstream': ['built_in_templates/*', 'etc/*']
+        'jetstream': ['config_default.yaml']
     },
     entry_points={
         'console_scripts': [

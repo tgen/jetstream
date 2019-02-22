@@ -1,155 +1,67 @@
-"""
-"""
+"""Run a pipeline
+
+Pipelines are Jetstream templates that have been documented with version
+information and added to the jetstream pipelines directory. This command
+allows pipelines to be referenced by name and automatically includes the
+pipeline scripts and constants in the run."""
 import os
 import logging
-import argparse
 import jetstream
-from jetstream.cli import shared
+from jetstream.cli.subcommands.run import main as run_main
+from jetstream.cli.subcommands.run import arg_parser as run_arg_parser
 
 log = logging.getLogger(__name__)
 
 
-def arg_parser():
-    parser = argparse.ArgumentParser(
-        prog='jetstream pipelines',
-        description=__doc__.replace('``', '"'),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+def arg_parser(parser):
+    # This subcommand is just an extension of the run command, so we add all
+    # the arguments from that command to the parser as well.
+    run_arg_parser(parser)
+
+    pipelines = parser.add_argument_group('pipeline options')
+
+    pipelines.add_argument(
+        '--pipelines-home',
+        help='Override path to the pipelines home',
     )
 
-    parser.add_argument(
-        'name',
-        help='Pipeline name'
+    pipelines.add_argument(
+        '--ls',
+        action='store_true',
+        help='Show details about installed pipelines'
     )
-
-    parser.add_argument(
-        '--project',
-        help='Path to a project'
-    )
-
-    parser.add_argument(
-        '--separator',
-        default=':',
-        help='Set an alternate separator for kvargs variables'
-    )
-
-    parser.add_argument(
-        '--pipelines-dir',
-        default=os.environ.get('JETSTREAM_PIPELINES'),
-        help='Override path to the pipelines dir',
-    )
-
-    runner = parser.add_argument_group(
-        title='Runner Configuration'
-    )
-
-    runner.add_argument(
-        '--save-interval',
-        type=int,
-        default=30,
-        help='Frequency, in seconds, that the workflow file will be saved to '
-             'disk. (Default: 3600)')
-
-    runner.add_argument(
-        '--backend',
-        choices=['local', 'slurm', None],
-        default=None,
-        help='Specify the runner backend (Default: $JETSTREAM_BACKEND or local)'
-    )
-
-    runner.add_argument(
-        '--local',
-        dest='backend',
-        action='store_const',
-        const='local'
-    )
-
-    runner.add_argument(
-        '--slurm',
-        dest='backend',
-        action='store_const',
-        const='slurm'
-    )
-
-    runner.add_argument(
-        '--run-id',
-        help='Give this run a specific ID instead of randomly generating one.'
-    )
-
-    runner.add_argument(
-        '--max-forks',
-        default=None,
-        type=int,
-        help='Override the default fork limits of the runner. By default, '
-             'this will be set to a conservative fraction of the total thread '
-             'limit on runner host.')
-
-    runner.add_argument(
-        '--method',
-        choices=['retry', 'resume', 'reset'],
-        default='retry',
-        help='Method to use when running existing workflows. This parameter '
-             'will determine which tasks are reset prior to starting the run.'
-    )
-
-    return parser
 
 
 def main(args=None):
-    parser = arg_parser()
-    args, remaining = parser.parse_known_args(args)
-    log.debug(args)
+    log.debug(f'{__name__} {args}')
 
-    pipeline, constants = jetstream.pipelines.get(args.name)
+    # Make sure pipelines are configured
+    if args.pipelines_home:
+        jetstream.settings['pipelines']['home'] = args.pipelines_home
 
-    if constants is not None:
-        remaining.extend(['--file:constants', str(constants.resolve())])
+    pipelines_home = jetstream.settings['pipelines']['home'].get()
+    if not pipelines_home or not os.path.isdir(pipelines_home):
+        err = 'Pipelines are not configured. Check the application settings.'
+        raise ValueError(err)
+
+    # Ls just prints info about current pipelines
+    if args.ls:
+        installed = jetstream.pipelines.ls(pipelines_home)
+        return print(jetstream.utils.yaml_dumps(installed))
+
+    # If the pipeline has extra constants, add them to the settings constants
+    pipeline = jetstream.pipelines.lookup(args.path)
+    args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
+    jetstream.settings['constants'].set(pipeline.manifest.get('constants', {}))
 
     # If the pipeline has a bin directory, prepend the env PATH
-    if pipeline.bin:
-        bin_path = pipeline.path.joinpath(pipeline.manifest['bin'])
+    if 'bin' in pipeline.manifest:
+        bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
         os.environ['PIPELINE_BIN'] = str(bin_path)
         os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
-    context = shared.load_context(
-        project=args.project,
-        kvargs=remaining,
-        kvarg_separator=args.separator
-    )
+    run_main(args)
 
-    workflow = jetstream.render_template(
-        path=pipeline.main,
-        context=context
-    )
-
-    try:
-        project = jetstream.Project(args.project)
-    except jetstream.NotAProject:
-        project = None
-
-    if project:
-        existing_wf = project.workflow()
-
-        if existing_wf is not None:
-            workflow = jetstream.workflows.mash(existing_wf, workflow)
-
-    if args.method == 'retry':
-        workflow.retry()
-    elif args.method == 'resume':
-        workflow.resume()
-    elif args.method == 'reset':
-        workflow.reset()
-
-    runner = jetstream.Runner(
-        backend=args.backend,
-        max_forks=args.max_forks,
-        autosave=args.save_interval,
-    )
-
-    runner.start(
-        workflow=workflow,
-        project=args.project,
-        run_id=args.run_id,
-    )
 
 if __name__ == '__main__':
     main()

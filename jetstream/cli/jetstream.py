@@ -1,99 +1,125 @@
-import sys
+"""Jetstream pipeline development toolkit
+
+TODO: all arguments following '--' will be ignored by the argument parser
+and used as template rendering data.
+"""
 import argparse
 import logging
-from pkg_resources import get_distribution
-from jetstream import log, logs, settings
-from jetstream.cli import subcommands
+import os
+import pkg_resources
+import sys
+import jetstream as js  # The jetstream.py file here conflicts with package name
+import jetstream.cli as cli
 
-description = """Run a Jetstream command.
-Available commands are:
-{}
-""".format(subcommands.summary)
-
-
-def get_loglevel(value):
-    """Determine logging level numeric value from int or level name"""
-    try:
-        numeric_level = int(value)
-    except ValueError:
-        numeric_level = logging._nameToLevel[value.upper()]
-
-    return numeric_level
+log = logging.getLogger(__name__)
 
 
 def arg_parser():
-    main_parser = argparse.ArgumentParser(
-        description='Available commands are:\n\n{}'.format(
-            subcommands.summary()),
+    parser = argparse.ArgumentParser(
+        prog='jetstream',
+        allow_abbrev=False,
+        description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='Use \'jetstream <subcommand> -h/--help\' for help '
                'with specific commands.',
-        add_help=False)
+        add_help=False,
+    )
 
-    main_parser.add_argument('subcommand', nargs='?',
-                             choices=list(subcommands.__all__),
-                             help=argparse.SUPPRESS)
+    parser.add_argument(
+        'subcommand',
+        nargs='?',
+        choices=list(cli._subcommands.keys())
+    )
 
-    main_parser.add_argument('-v', '--version', action='version',
-                             version=get_distribution('jetstream').version)
+    parser.add_argument(
+        '-k',
+        '--kvargs.separator',
+        metavar='',
+        help='separator for template variable data arguments'
+    )
 
-    main_parser.add_argument('--log-debug', action='store_true',
-                             help='Alias for debug log settings')
+    parser.add_argument(
+        '-l',
+        '--logging',
+        metavar='',
+        help='set the logging profile instead of auto-selecting the '
+             'logger based on terminal type'
+    )
 
-    main_parser.add_argument('--log-verbose', action='store_true',
-                             help='Alias for lowest-level log settings')
+    parser.add_argument(
+        '-p',
+        '--project',
+        help='If the cwd is a project, it will be loaded automatically. '
+             'Otherwise, a path to a project can be specified, and the run '
+             'will start in that project directory.'
+    )
 
-    main_parser.add_argument('--log-format', default=None)
+    parser.add_argument(
+        '-r',
+        '--runner.backend',
+        metavar='',
+        help='set the runner backend used for executing tasks'
+    )
 
-    main_parser.add_argument('--log-filename', default=None)
+    parser.add_argument(
+        '-v',
+        '--version',
+        action='version',
+        version=pkg_resources.get_distribution('jetstream').version
+    )
 
-    main_parser.add_argument('--log-filemode', default='a')
+    parser.add_argument(
+        '-h',
+        '--help',
+        action='store_true'
+    )
 
-    main_parser.add_argument('--log-level', default=None)
-
-    return main_parser
+    return parser
 
 
 def main(args=None):
+    # This forces any arguments following "--" to be completely ignored by
+    # the argparsers so that we can use them for template context
+    args = args or sys.argv[1:]
+    try:
+        i = args.index('--')
+        kvargs = args[i + 1:]
+        args = args[:i]
+    except ValueError:
+        kvargs = []
+
     parser = arg_parser()
-    args, remainder = parser.parse_known_args(args)
+    args, remaining = parser.parse_known_args(args)
+    kvargs = js.kvargs.parse_kvargs(kvargs)
 
-    log_format = args.log_format
-    log_level = get_loglevel(args.log_level or settings.get('log_level') or 20)
-    log_filename = args.log_filename or settings.get('log_filename')
-    log_filemode = args.log_filemode or settings.get('log_filemode')
-
-    if log_filename:
-        file_handler = logging.FileHandler(log_filename, log_filemode)
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter(
-            logs.basic_format,
-            datefmt="%Y-%m-%d %H:%M:%S",
-            style='{'
-        ))
-        logs.log.addHandler(file_handler)
-
-    if args.log_debug:
-        log_level = 10
-        log_format = logs.debug_format
-
-    if args.log_verbose:
-        log_level = 1
-        log_format = logs.debug_format
-
-    logs.start_logging(format=log_format, level=log_level)
-    log.info(f'Version {get_distribution("jetstream")}')
-    log.debug(f'Cmd args: {" ".join(sys.argv)}')
-    log.debug(f'{__name__}: {args}')
+    if args.help:
+        if args.subcommand:
+            remaining.insert(0, '-h')
+        else:
+            return parser.print_help()
 
     if args.subcommand is None:
-        parser.print_help()
-        if '-h' in sys.argv or '--help' in sys.argv:
-            return
-        else:
-            raise ValueError('No subcommand given!')
+        parser.error('the following arguments are required: subcommand')
+
+    js.settings.set_args(args, dots=True)
+    js.start_logging(args.logging)
+
+    log.info(f'{pkg_resources.get_distribution("jetstream")}')
+    log.debug(f'sys.argv: {sys.argv}')
+    log.debug(f'config sources: {js.settings.sources}')
+
+    if args.project:
+        project = js.Project(args.project)
     else:
-        mod = getattr(subcommands, args.subcommand)
-        mod.main(remainder)
+        try:
+            project = js.Project()
+        except js.ProjectInvalid:
+            project = None
 
+    if project:
+        log.info(f'Working in {project}')
+    else:
+        log.info(f'Not working inside of a project!')
 
+    mod = cli.load_submodules()[args.subcommand]
+    mod.launch(remaining, kvargs, project)

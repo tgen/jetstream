@@ -19,16 +19,18 @@ arguments to template.
 
 """
 import os
-import re
-import shutil
 import pickle
 import random
+import re
+import shutil
+from collections import Counter
 from datetime import datetime
+from pkg_resources import get_distribution
+from threading import Lock
+
 import networkx as nx
 from networkx.readwrite import json_graph
-from threading import Lock
-from collections import Counter
-from pkg_resources import get_distribution
+
 import jetstream
 from jetstream import utils, log
 from jetstream.tasks import Task
@@ -36,9 +38,19 @@ from jetstream.tasks import Task
 __version__ = get_distribution('jetstream').version
 
 
+workflow_extensions = {
+    '': 'pickle',
+    '.pickle': 'pickle',
+    '.yaml': 'yaml',
+    '.yml': 'yaml',
+    '.json': 'json',
+}
+
+
 class NotDagError(ValueError):
     """Raised when edges are added that would result in a graph that is not
     a directed-acyclic graph"""
+
 
 class Workflow(object):
     def __init__(self, **kwargs):
@@ -88,8 +100,7 @@ class Workflow(object):
         they are stored in separate lists, and then removed as they are
         completed. When a change to the graph occurs during iteration, these
         lists should be recalculated. """
-        log.verbose('Building workflow iterator...')
-
+        log.debug('Building workflow iterator...')
         self._iter_tasks = list()
         self._iter_pending = list()
         self._iter_done = list()
@@ -121,8 +132,11 @@ class Workflow(object):
         # Drop all pending tasks that have completed since the last call
         _temp = list()
         for tid in self._iter_pending:
-            if self.get_task(tid).is_done():
+            t = self.get_task(tid)
+            if t.is_done():
                 self._iter_done.append(tid)
+            elif t.is_new():
+                self._iter_tasks.append(tid)
             else:
                 _temp.append(tid)
         self._iter_pending = _temp
@@ -165,7 +179,7 @@ class Workflow(object):
         This means that the in-degree of a node represents the number of
         dependencies it has. A node with zero in-edges is a "root" node, or a
         task with no dependencies. """
-        log.verbose('Adding edge: {} -> {}'.format(from_node, to_node))
+        log.debug('Adding edge: {} -> {}'.format(from_node, to_node))
 
         if from_node not in self.graph:
             raise NotDagError(f'{from_node} is not in the workflow!')
@@ -188,9 +202,9 @@ class Workflow(object):
 
         """
         after = task.directives().get('after')
-        log.verbose('"after" directive: {}'.format(after))
 
         if after:
+            log.debug('Adding "after" edges for: {}'.format(task))
             matches = set()
 
             if isinstance(after, str):
@@ -218,9 +232,9 @@ class Workflow(object):
 
         """
         before = task.directives().get('before')
-        log.verbose('"before" directive: {}'.format(before))
 
         if before:
+            log.debug('Adding "before" edges for: {}'.format(task))
             matches = set()
 
             if isinstance(before, str):
@@ -248,9 +262,9 @@ class Workflow(object):
 
         Where target includes an "output" value matching the "input" value."""
         input = task.directives().get('input')
-        log.verbose('"input" directive: {}'.format(input))
 
         if input:
+            log.debug('Adding "input" edges for: {}'.format(task))
             if isinstance(input, str):
                 matches = self.find_by_output(input)
             elif isinstance(input, (list, tuple)):
@@ -272,9 +286,12 @@ class Workflow(object):
                 self._add_edge(from_node=match_tid, to_node=task.tid)
 
     def _format_pattern(self, pat):
+        """Pads a regex pattern so that it only matches exact strings"""
         return re.compile('^{}$'.format(pat))
 
     def ancestors(self, task):
+        """Returns a generator that yields all of the ancestors of a given task
+        object or id. See also Workflow.dependencies() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -314,7 +331,8 @@ class Workflow(object):
         return task
 
     def dependencies(self, task):
-        """Returns a generator that yields the dependencies of a given task"""
+        """Returns a generator that yields all only the direct dependencies of
+        a given task object or id. See also Workflow.ancestors() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -323,7 +341,9 @@ class Workflow(object):
         return (self.get_task(tid) for tid in self.graph.predecessors(task_id))
 
     def dependents(self, task):
-        """Returns a generator that yields the dependents of a given task"""
+        """Returns a generator that yields only the tasks that directly
+        depend upon of a given task object or id. See also
+        Workflow.decendants() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -332,6 +352,8 @@ class Workflow(object):
         return (self.get_task(tid) for tid in self.graph.successors(task_id))
 
     def descendants(self, task):
+        """Returns a generator that yields all the descendants of a given
+        task object or id. See also Workflow.dependents() """
         if isinstance(task, str):
             task_id = task
         else:
@@ -340,25 +362,36 @@ class Workflow(object):
         return (self.get_task(tid) for tid in nx.descendants(self.graph, task_id))
 
     def draw(self, *args, **kwargs):
+        """Attempt to draw the network graph for this workflow. See
+        jetstream.workflows.draw_workflow() for more info."""
         return draw_workflow(self, *args, **kwargs)
 
-    def find(self, pattern, fallback=utils.sentinel):
+    def find(self, pattern, fallback=utils.sentinel, objs=False):
+        """Find tasks by matching the pattern with the task ID. If no matches
+        are found, and fallback is not set, a ValueError will be raised. If
+        fallback is set, it will be returned when no matches are found."""
         log.debug('Find: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
         matches = set([tid for tid in self.graph.nodes() if pat.match(tid)])
 
         if matches:
-            return matches
-
-        if fallback is utils.sentinel:
+            if objs:
+                return set([self.get_task(t) for t in matches])
+            else:
+                return matches
+        elif fallback is utils.sentinel:
             if pattern == '.*':
                 return set()
             raise ValueError('No task names match value: {}'.format(pattern))
         else:
             return fallback
 
-    def find_by_output(self, pattern, fallback=utils.sentinel):
+    def find_by_output(self, pattern, fallback=utils.sentinel, objs=False):
+        """Find tasks where the pattern matches the task output directives. If
+        no matches are found, and fallback is not set, a ValueError will be
+        raised. If fallback is set, it will be returned when no matches are
+        found."""
         pat = self._format_pattern(pattern)
         matches = set()
 
@@ -378,13 +411,17 @@ class Workflow(object):
                     break
 
         if matches:
-            return matches
+            if objs:
+                return set([self.get_task(t) for t in matches])
+            else:
+                return matches
         elif fallback is utils.sentinel:
             raise ValueError('No task outputs match pattern: {}'.format(pattern))
         else:
             return fallback
 
     def get_task(self, task_id):
+        """Return the task object for a given task_id"""
         return self.graph.nodes[task_id]['obj']
 
     def is_locked(self):
@@ -409,15 +446,16 @@ class Workflow(object):
             return True
 
     def list_tasks(self):
+        """Returns all task objects as a list"""
         return list(self.tasks(objs=True))
 
     def mash(self, workflow):
         """Mash this workflow with another."""
         return mash(self, workflow)
 
-    def new_task(self, *args, **kwargs):
+    def new_task(self,  **kwargs):
         """Shortcut to create a new Task object and add to this workflow."""
-        task = Task(*args, **kwargs)
+        task = Task(**kwargs)
         return self.add_task(task)
 
     def remove_task(self, pattern, force=False, descendants=False):
@@ -489,7 +527,8 @@ class Workflow(object):
             for node in data['nodes']:
                 task_data = node['obj']
                 task_data['tid'] = node['id']
-                wf.new_task(from_data=task_data)
+                t = jetstream.tasks.deserialize(task_data)
+                wf.add_task(t)
 
         return wf
 
@@ -530,11 +569,109 @@ class Workflow(object):
 
     def update(self):
         """Recalculate the edges for this workflow"""
-        log.info('Loading workflow DAG...')
+        log.debug('Adding edges...')
         for task in self.tasks(objs=True):
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
+
+
+def draw_workflow(wf, *, figsize=(12, 12), cm=None, filename=None,
+                  interactive=False, **kwargs):
+    """This requires matplotlib setup and graphviz installed. It is not
+    very simple to get these dependencies setup, so they're loaded as needed
+    and not required for package install."""
+    try:
+        import matplotlib
+        if not interactive and os.environ.get('DISPLAY', '') == '':
+            log.critical('No display found. Using non-interactive Agg backend')
+            matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from networkx.drawing.nx_agraph import graphviz_layout
+    except ImportError:
+        log.critical('This feature requires matplotlib and graphviz')
+        raise
+
+    f = plt.figure(figsize=figsize)
+
+    cm = cm or {
+        'new': 'white',
+        'pending': 'yellow',
+        'failed': 'red',
+        'complete': 'green'
+    }
+
+    # labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
+    colors = [cm[node['obj'].status] for id, node in
+              wf.graph.nodes(data=True)]
+
+    nx.draw(
+        wf.graph,
+        pos=graphviz_layout(wf.graph, prog='dot'),
+        ax=f.add_subplot(111),
+        # labels=labels,
+        node_color=colors,
+        linewidths=1,
+        edgecolors='black',
+        with_labels=True,
+        **kwargs
+    )
+
+    if filename is not None:
+        f.savefig(filename)
+
+    return plt
+
+
+# TODO Move these to the config file
+def get_workflow_loaders():
+    return {
+        'pickle': load_workflow_pickle,
+        'yaml': load_workflow_yaml,
+        'json': load_workflow_json
+    }
+
+
+def get_workflow_savers():
+    return {
+        'pickle': save_workflow_pickle,
+        'yaml': save_workflow_yaml,
+        'json': save_workflow_json
+    }
+
+
+def load_workflow(path, format=None):
+    """Load a workflow from a file.
+
+    This helper function will try to choose the correct file format based
+    on the extension of the path, but defaults to pickle for unrecognized
+    extensions. It also sets workflow.save_path to the path"""
+    if format is None:
+        ext = os.path.splitext(path)[1]
+        format = workflow_extensions.get(ext, 'pickle')
+
+    loader_fn = get_workflow_loaders()[format]
+    log.debug(f'Loading workflow from: {path} with: {loader_fn}')
+
+    wf = loader_fn(path)
+    wf.save_path = os.path.abspath(path)
+    return wf
+
+
+def load_workflow_yaml(path):
+    data = utils.load_yaml(path)
+    return Workflow.deserialize(data)
+
+
+def load_workflow_json(path):
+    data = utils.load_json(path)
+    return Workflow.deserialize(data)
+
+
+def load_workflow_pickle(path):
+    with open(path, 'rb') as fp:
+        data = pickle.load(fp)
+    return Workflow.deserialize(data)
 
 
 def mash(G, H):
@@ -614,82 +751,6 @@ def mash(G, H):
     return wf
 
 
-def draw_workflow(wf, *, figsize=(12,12), cm=None, filename=None, **kwargs):
-    """This requires matplotlib setup and graphviz installed. It is not
-    very simple to get these dependencies setup, so they're loaded as needed
-    and not required for package install."""
-    try:
-        import matplotlib
-        if os.environ.get('DISPLAY','') == '':
-            log.critical('No display found. Using non-interactive Agg backend')
-            matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        from networkx.drawing.nx_agraph import graphviz_layout
-    except ImportError:
-        log.critical('This feature requires matplotlib and graphviz')
-        raise
-    
-    f = plt.figure(figsize=figsize)
-
-    cm = cm or {
-        'new': 'white',
-        'pending': 'yellow',
-        'failed': 'red',
-        'complete': 'green'
-    }
-
-    #labels = {id: node['obj'].label for id, node in wf.graph.nodes(data=True)}
-    colors = [cm[node['obj'].status] for id, node in wf.graph.nodes(data=True)]
-
-    nx.draw(
-        wf.graph,
-        pos=graphviz_layout(wf.graph, prog='dot'),
-        ax=f.add_subplot(111),
-       # labels=labels,
-        node_color=colors,
-        linewidths=1,
-        edgecolors='black',
-        with_labels=True,
-        **kwargs
-    )
-
-    if filename is not None:
-        f.savefig(filename)
-
-    return plt
-
-
-def load_workflow(path, format=None):
-    """Load a workflow from a file.
-
-    This helper function will try to choose the correct file format based
-    on the extension of the path, but defaults to pickle for unrecognized
-    extensions. It also sets workflow.save_path to the path"""
-    if format is None:
-        ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
-
-    wf = jetstream.workflow_loaders[format](path)
-    wf.save_path = os.path.abspath(path)
-    return wf
-
-
-def load_workflow_yaml(path):
-    data = utils.load_yaml(path)
-    return Workflow.deserialize(data)
-
-
-def load_workflow_json(path):
-    data = utils.load_json(path)
-    return Workflow.deserialize(data)
-
-
-def load_workflow_pickle(path):
-    with open(path, 'rb') as fp:
-        data = pickle.load(fp)
-    return Workflow.deserialize(data)
-
-
 def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
     """Random workflow generator. The time to generate a random task for a
      workflow scales exponentially, so this can take a very long time for
@@ -724,14 +785,11 @@ def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
             break
 
         tasks = wf.list_tasks()
-        directives = {}
-        directives['name'] = str(added)
-        directives['cmd'] = random.choice(cmds)
-        directives['output'] = random.choice([
-            None,
-            hex(random.getrandbits(32)) + '.txt'
-        ])
-
+        directives = {
+            'name': str(added),
+            'cmd': random.choice(cmds),
+            'output': random.choice([None, hex(random.getrandbits(32)) + '.txt'])
+        }
         if tasks:
             for i in range(random.randint(0, connectedness)):
                 task = random.choice(tasks)
@@ -763,14 +821,15 @@ def save_workflow(workflow, path, format=None):
 
     :param workflow: Workflow instance
     :param path: where to save
+    :param format: format to save
     :return: None
     """
     if format is None:
         ext = os.path.splitext(path)[1]
-        format = jetstream.workflow_extensions.get(ext, 'pickle')
+        format = workflow_extensions.get(ext, 'pickle')
 
     start = datetime.now()
-    jetstream.workflow_savers[format](workflow, path)
+    get_workflow_savers()[format](workflow, path)
     elapsed = datetime.now() - start
 
     log.debug('Workflow saved (after {}): {}'.format(elapsed, path))

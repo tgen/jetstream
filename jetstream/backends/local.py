@@ -1,20 +1,19 @@
+import logging
 import asyncio
-from subprocess import CompletedProcess
+import jetstream
+
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
-from multiprocessing import cpu_count
-from jetstream import log
-from jetstream.backends import BaseBackend
+
+log = logging.getLogger(__name__)
 
 
-def guess_local_cpus(default=1):
-    return cpu_count() or default
-
-
-class LocalBackend(BaseBackend):
-    respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus')
-
-    def __init__(self, runner, cpus=None, blocking_io_penalty=10):
+class LocalBackend(jetstream.backends.BaseBackend):
+    def __init__(self, cpus=None, blocking_io_penalty=None):
         """The LocalBackend executes tasks as processes on the local machine.
+
+        This contains a semaphore that limits tasks by the number of cpus
+        that they require. It requires that self.runner be set to get the
+        event loop, so it's not instantiated until preflight.
 
         :param cpus: If this is None, the number of available CPUs will be
             guessed. This cannot be changed after starting the backend.
@@ -22,17 +21,20 @@ class LocalBackend(BaseBackend):
             prevents a new process from spawning.
         :param max_concurrency: Max concurrency limit
         """
-        super(LocalBackend, self).__init__(runner)
-        self.cpus = cpus or guess_local_cpus()
-        self.blocking_io_penaty = blocking_io_penalty
-        self._cpu_sem = BoundedSemaphore(self.cpus, loop=self.runner.loop)
+        super(LocalBackend, self).__init__()
+        self.cpus = cpus \
+                    or jetstream.settings['backends']['local']['cpus'] \
+                    or jetstream.utils.guess_local_cpus()
+        self.bip = blocking_io_penalty \
+                   or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
+        self._cpu_sem = BoundedSemaphore(self.cpus)
         log.info(f'LocalBackend initialized with {self.cpus} cpus')
 
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
         if 'cmd' not in task.directives():
-            return task.complete(0)
+            return task.complete()
 
         cmd = task.directives()['cmd']
         cpus = task.directives().get('cpus', 0)
@@ -119,7 +121,7 @@ class LocalBackend(BaseBackend):
                 )
                 break
             except BlockingIOError as e:
-                log.warning('System refusing new processes: {}'.format(e))
-                await asyncio.sleep(self.blocking_io_penaty)
+                log.warning(f'System refusing new processes: {e}')
+                await asyncio.sleep(self.bip)
 
         return p

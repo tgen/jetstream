@@ -1,6 +1,6 @@
 from unittest import TestCase
+from jetstream import Workflow, tasks
 from jetstream.tasks import Task
-from jetstream import Workflow
 
 
 class TaskBasics(TestCase):
@@ -17,47 +17,31 @@ class TaskBasics(TestCase):
         t = Task(name='taskA')
         self.assertEqual(t.directives()['name'], 'taskA')
 
-    def test_task_init_kw_or_data(self):
-        self.assertRaises(
-            Exception,
-            Task,
-            from_data={
-            'tid': 'e9e860921f7ca5f33a8f6db90d0cd91924e5a2dc',
-            'directives': {'name': 'taskA'}
-            },
-            name='banana'
-        )
-    
-    def test_task_init2(self):
-        """Task rehydration must be from a valid mapping"""
-        self.assertRaises(Exception, Task, from_data=42)
-        self.assertRaises(Exception, Task, from_data='hello')
-        self.assertRaises(Exception, Task, from_data={'no': 'no'})
-        self.assertRaises(Exception, Task, from_data={'directives': {'cmd': 'no'}})
+    def test_deserialize(self):
+        t1 = tasks.deserialize({
+            'directives': {'name': 'taskA'},
+            'state': {'status': 'new'}
+        })
+        self.assertEqual(t1.tid, 'taskA')
+        self.assertEqual(t1.status, 'new')
 
-    def test_task_init3(self):
-        """Attempts to instantiate tasks from "falsey" data should just
-        return a null task"""
-        self.assertEqual(Task(), Task(from_data={}))
-        self.assertEqual(self.null_task_id, Task(from_data={}).tid)
+    def test_neg_deserialize(self):
+        """Task rehydration must be from a valid mapping"""
+        self.assertRaises(Exception, tasks.deserialize, data=42)
+        self.assertRaises(Exception, tasks.deserialize, data='hello')
+        self.assertRaises(Exception, tasks.deserialize, data={'no': 'no'})
+        self.assertRaises(Exception, tasks.deserialize, data={'directives': {'cmd': 'no'}})
 
     def test_task_identity(self):
         """Tasks should maintain a single identity across instances"""
         self.assertEqual(Task(), Task())
         self.assertEqual(self.null_task_id, Task().tid)
 
-    def test_null_tasks(self):
-        self.assertEqual(Task(), Task(from_data=[]))
-        self.assertEqual(self.null_task_id, Task(from_data=[]).tid)
-        self.assertEqual(Task(), Task())
-        self.assertEqual(self.null_task_id, Task(from_data=0).tid)
-
     def test_equality(self):
         """Rehydrated tasks should be equal to initted tasks"""
-        t1 = Task(from_data={
-            'status': 'new',
+        t1 = tasks.deserialize({
             'directives': {'name': 'taskA'},
-            'state': {}
+            'state': {'status': 'new'}
         })
         t2 = Task(name='taskA')
         self.assertEqual(t1, t2)
