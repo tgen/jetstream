@@ -34,25 +34,22 @@ class Runner:
     def __init__(self, backend_cls=None, backend_params=None,
                  max_concurrency=None, throttle=None, autosave_min=None,
                  autosave_max=None):
-        self.backend = None
-
         if backend_cls is None:
             self.backend_cls, self.backend_params = jetstream.lookup_backend('local')
         else:
             self.backend_cls = backend_cls
             self.backend_params = backend_params
 
+        self.backend = None
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
         self.throttle = throttle or settings['runner']['throttle'].get()
         self.max_concurrency = max_concurrency \
                                or settings['runner']['max_concurrency'].get()
         self._conc_sem = None
+        self._condition = None
         self._errs = False
-        self._events = []
         self._futures = []
-        self._loop = None
-        self._last_save = None
         self._main = None
         self._previous_directory = None
         self._run_started = None
@@ -60,6 +57,7 @@ class Runner:
         self._workflow_len = None
 
         # Properties that should not be modified during a run
+        self._loop = None
         self._run_id = None
         self._workflow = None
         self._project = None
@@ -80,9 +78,20 @@ class Runner:
     def loop(self):
         return self._loop
 
+    # Synchronization methods for events that should wait on tasks to return
+    def notify_waiters(self):
+        return self._condition.notify_all()
+
+    async def _wait_for_next_task_future(self, timeout=None):
+        if self._condition is None:
+            msg = 'Attempt to wait before condition was initialized'
+            raise ValueError(msg)
+
+        return await asyncio.wait_for(self._condition.wait(), timeout=timeout)
+
     async def _autosave_coro(self):
         log.debug('Autosaver started!')
-        self._last_save = datetime.now()
+        last_save = datetime.now()
         try:
             while 1:
                 mn = timedelta(seconds=self.autosave_min)
@@ -90,29 +99,26 @@ class Runner:
 
                 # If the workflow has been saved too recently, wait until
                 # the minimum interval is reached.
-                time_since_last = datetime.now() - self._last_save
+                time_since_last = datetime.now() - last_save
                 delay_for = mn - time_since_last
-                log.debug(f'Autosaver hold for {delay_for}s')
+                log.debug(f'Autosaver hold for {delay_for}')
                 await asyncio.sleep(delay_for.seconds)
 
                 # Otherwise, wait for the next future to return and then save
                 # but do not wait longer than autosave_max
-                e = Event(loop=self.loop)
-                self._events.append(e)
-                timeout_at = self._last_save + mx
+                timeout_at = last_save + mx
                 timeout_in = (timeout_at - datetime.now()).seconds
-
                 log.debug(f'Autosaver next save in {timeout_in}s')
+
                 try:
-                    await asyncio.wait_for(e.wait(), timeout=timeout_in)
-                    log.debug(f'Autosaver wait cleared by runner')
+                    await self._wait_for_next_task_future(timeout=timeout_in)
+                    log.debug('Autosaver wait cleared by runner')
                 except asyncio.TimeoutError:
-                    log.debug(f'Autosaver wait timed out')
-                    pass
+                    log.debug('Autosaver wait timed out')
 
                 log.debug('Autosaver saving workflow...')
                 self.save_workflow()
-                self._last_save = datetime.now()
+                last_save = datetime.now()
         except asyncio.CancelledError:
             pass
         finally:
@@ -161,13 +167,11 @@ class Runner:
         log.debug('Handle: {}'.format(future))
         try:
             future.result()
-            if self._events:
-                for e in self._events:
-                    e.set()
         except Exception:
             log.exception(f'Unhandled exception in a task future: {future}')
             self._halt()
         finally:
+            self.notify_waiters()
             self._conc_sem.release()
             self._futures.remove(future)
 
@@ -230,11 +234,9 @@ class Runner:
         checking the workflow for new tasks. """
         delay = self.throttle * (self._workflow_len or 0)
         log.debug(f'Yield for {delay}s or when next future returns')
-        e = Event(loop=self.loop)
-        self._events.append(e)
 
         try:
-            await asyncio.wait_for(e.wait(), timeout=delay)
+            await self._wait_for_next_task_future(timeout=delay)
         except asyncio.TimeoutError:
             pass
 
@@ -257,7 +259,8 @@ class Runner:
         log.info(f'Starting run: {self.run_id}')
 
     def save_workflow(self):
-        self.workflow.save(self._get_workflow_save_path())
+        path = self._get_workflow_save_path()
+        self.workflow.save(path)
 
     def shutdown(self):
         """Called after shutdown"""
