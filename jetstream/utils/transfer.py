@@ -89,7 +89,7 @@ class RsyncLimitedWrangler(Wrangler):
         return next(self.cycler)
 
 
-def check_load(host, period=2):
+def check_load(host, period=2, timeout=30):
     """Check load on a host machine.
     Period can be any integer between 0 and 2 corresponding to time intervals:
     last 1 minute, last 5 minutes, or last 10 minutes """
@@ -97,32 +97,34 @@ def check_load(host, period=2):
 
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
-    ssh.connect(host)
+    ssh.connect(host, timeout=timeout)
 
-    stdin, stdout, stderr = ssh.exec_command('cat /proc/loadavg')
-    _ = stdout.channel.recv_exit_status()
-    loadavg = stdout.read().decode('utf8').split()
-
-    ssh.close()
+    try:
+        stdin, stdout, stderr = ssh.exec_command('cat /proc/loadavg')
+        _ = stdout.channel.recv_exit_status()
+        loadavg = stdout.read().decode('utf8').split()
+    finally:
+        ssh.close()
 
     load = loadavg[int(max(0, min(period, 2)))]
     return float(load)
 
 
-def check_rsyncs(host):
+def check_rsyncs(host, timeout=30):
     """Check for rsync jobs on a host machine."""
     log.info('Checking rsyncs on: {}'.format(host))
 
     ssh = paramiko.SSHClient()
     ssh.load_system_host_keys()
-    ssh.connect(host)
+    ssh.connect(host, timeout=timeout)
 
-    stdin, stdout, stderr = ssh.exec_command('ps aux | grep rsync')
-    _ = stdout.channel.recv_exit_status()
-    rsync_lines = stdout.read().decode('utf8').splitlines()
-    n_rsyncs = max(len(rsync_lines) - 2, 0)  # Adjust for the current grep and ssh
-
-    ssh.close()
+    try:
+        stdin, stdout, stderr = ssh.exec_command('ps aux | grep rsync')
+        _ = stdout.channel.recv_exit_status()
+        rsync_lines = stdout.read().decode('utf8').splitlines()
+        n_rsyncs = max(len(rsync_lines) - 2, 0)  # Adjust for the procs we started
+    finally:
+        ssh.close()
 
     log.info(f'{n_rsyncs} rsyncs on {host}!')
     return n_rsyncs
