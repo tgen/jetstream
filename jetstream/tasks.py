@@ -44,7 +44,8 @@ class Task(object):
         :param kwargs: Task directives
         """
         self.workflow = None
-        self.state = {'status': None}
+        self.description = kwargs.pop('description', {})
+        self.state = kwargs.pop('state', {'status': None})
         self._directives = tuple(kwargs.items())
         self._identity = hash_directives(self._directives)
 
@@ -122,8 +123,11 @@ class Task(object):
         }
 
     def directives(self):
-        """Access the directives as a dictionary, this is kinda slow because
-        of the need to create a dictionary from the directives."""
+        """Access the directives as a dictionary.
+
+        This is intentionally left as a method, rather than a property, to
+        emphasize the fact that it references a part of the task that should
+        not be changed. """
         return dict(self._directives)
 
     def reset(self, descendants=True, clear_state=True):
@@ -137,14 +141,20 @@ class Task(object):
                 dep.reset(descendants=False)
 
     def pending(self):
-        """Indicate that this task has been passed to the runner"""
+        """Set task status to pending
+        Pending status indicates that the task has been passed to the runner
+        and will be started soon. """
         log.debug(f'Pending: {self}')
         self.status = 'pending'
         self._set_start_time()
 
-
     def fail(self, returncode=None, descendants=True):
-        """Indicate that this task has failed"""
+        """Set task status to failed
+
+        :param returncode: Return code will be added to task.state
+        :param descendants: Also fails any descendants of this task
+        :return:
+        """
         log.debug(f'Failed: {self}')
         atts = self.state.get('remaining_attempts', 0)
 
@@ -232,6 +242,7 @@ class Task(object):
 
 
 def copy(task):
+    """Dirty hack to create a new task instance"""
     return deserialize(serialize(task))
 
 
@@ -239,7 +250,8 @@ def deserialize(data):
     """Restores a task object that was previously exported as a dictionary with
     jetstream.tasks.serialize()"""
     task = Task(**data['directives'])
-    task.state.update(data['state'])
+    task.state.update(data.get('state', {}))
+    task.description.update(data.get('description', {}))
     return task
 
 
@@ -267,5 +279,6 @@ def serialize(task):
     return {
         'tid': task.tid,
         'state': task.state,
+        'description': task.description,
         'directives': task.directives(),
     }
