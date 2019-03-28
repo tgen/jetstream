@@ -106,7 +106,8 @@ def check_load(host, period=2, timeout=30):
     finally:
         ssh.close()
 
-    load = loadavg[int(max(0, min(period, 2)))]
+    period = int(max(0, min(period or 0, 2)))  # Coerce to int between 0 and 2
+    load = loadavg[period]
     return float(load)
 
 
