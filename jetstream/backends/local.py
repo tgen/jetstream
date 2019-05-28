@@ -76,14 +76,14 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 stderr=stderr_fp
             )
 
-            log.info(f'LocalBackend spawned({p.pid}): {task.tid}')
+            log.info(f'LocalBackend spawned({p.pid}): {task.name}')
             rc = await p.wait()
 
             if rc != 0:
-                log.info(f'Failed: {task.tid}')
+                log.info(f'Failed: {task.name}')
                 return task.fail(p.returncode)
             else:
-                log.info(f'Complete: {task.tid}')
+                log.info(f'Complete: {task.name}')
                 return task.complete(p.returncode)
         except CancelledError:
             task.state['err'] = 'Runner cancelled Backend.spawn()'

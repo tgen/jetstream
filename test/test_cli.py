@@ -4,9 +4,8 @@ import jetstream
 from unittest import TestCase
 from contextlib import redirect_stdout
 from io import StringIO
-from jetstream.cli.jetstream import main as cli_main
+from jetstream.cli import main as cli_main
 
-CMD_ARGS = ['--logging', 'silent']
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
 TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
@@ -15,7 +14,7 @@ TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
 class TestCliExt(TestCase):
     """Tests that run workflow templates stored externally in
     test/test_templates """
-    longMessage = True
+    #longMessage = True
 
     def setUp(self):
         """ All of these tests take place in the context of a project
@@ -37,13 +36,7 @@ class TestCliExt(TestCase):
             t = os.path.join(templates_dir, f)
 
             with self.subTest(msg=t):
-                args = CMD_ARGS + [
-                    'run',
-                    t,
-                    '--',
-                    '--globals', TEST_VARIABLES
-                ]
-
+                args = ['run', '-l', 'silent', t, '-C', TEST_VARIABLES]
                 cli_main(args)
 
 
@@ -61,35 +54,28 @@ class TestCli(TestCase):
         self.temp_dir.cleanup()
 
     def test_init(self):
-        args = CMD_ARGS +[
-            'init',
-        ]
-
+        args = ['init', '-l', 'silent']
         cli_main(args)
 
     def test_run(self):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = CMD_ARGS + [
-            'run',
-            'testwf.jst',
-        ]
-
+        args = ['run', '-l', 'silent', 'testwf.jst',]
         cli_main(args)
 
     def test_run_w_vars(self):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null\n')
 
-        args = CMD_ARGS + [
+        args = [
             'run',
             'testwf.jst',
-            '--',
-            '--str:name', 'Philip J. Fry',
-            '--bool:ok', 'true',
-            '--int:number', '42',
-            '--float:number2', '3.14'
+            '-l', 'silent',
+            '-c', 'str:name', 'Philip J. Fry',
+            '-c', 'bool:ok', 'true',
+            '-c', 'int:number', '42',
+            '-c', 'float:number2', '3.14'
         ]
 
         cli_main(args)
@@ -98,26 +84,17 @@ class TestCli(TestCase):
         p = jetstream.new_project()
 
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: true\n  stdout: /dev/null\n')
+            fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = CMD_ARGS + [
-            'run',
-            'testwf.jst',
-            '--project', p.path
-        ]
-
+        args = ['run', 'testwf.jst', '-l', 'silent', '--project', p.path]
         cli_main(args)
 
-        args = CMD_ARGS + [
-            'tasks',
-            '--project', p.path
-        ]
-
+        args = ['tasks', '--project', p.path]
         with redirect_stdout(StringIO()):
             cli_main(args)
 
     def test_render(self):
-        render_test = """
+        render_test = """{% for i in range(tasks) %} 
                                                                         
                               ##//#/##/##                            
                             ###//##/###//##                          
@@ -154,32 +131,23 @@ class TestCli(TestCase):
                            ##///##///###//## 
                            ##///##///###//##  
                            ##///##///###//##                         
-                           ##///##///###//##                    
+                           ##///##///###//##
+                            
+        {% endfor %}
         """
         with open('testwf.jst', 'w') as fp:
             fp.write(render_test)
 
-        args = CMD_ARGS + [
-            'render',
-            'testwf.jst'
-        ]
-
+        args = ['render', 'testwf.jst', '-C', TEST_VARIABLES]
         cli_main(args)
 
     def test_build(self):
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: true\n  stdout: /dev/null\n')
+            fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = CMD_ARGS + [
-            'build',
-            'testwf.jst'
-        ]
-
+        args = ['build', 'testwf.jst']
         cli_main(args)
 
     def test_settings(self):
-        args = CMD_ARGS + [
-            'settings',
-        ]
-
+        args = ['settings', ]
         cli_main(args)

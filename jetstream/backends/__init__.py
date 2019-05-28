@@ -26,7 +26,7 @@ class BaseBackend(object):
             if 'stdout' in task.directives():
                 stdout = task.directives()['stdout']
             else:
-                filename = f'{task.tid}.log'
+                filename = f'{task.name}.log'
                 stdout = os.path.join(self.runner.project.logs_dir, filename)
 
             if 'stderr' in task.directives():

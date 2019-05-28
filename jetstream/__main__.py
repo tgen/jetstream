@@ -2,4 +2,4 @@
 import jetstream.cli
 
 if __name__ == '__main__':
-    jetstream.cli.jetstream.main()
+    jetstream.cli.main()

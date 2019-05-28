@@ -95,14 +95,14 @@ def tasks(args):
     if args.tasks:
         for task_name in args.tasks:
             tasks = wf.find(task_name, objs=True)
-            info = [task.serialize() for task in tasks]
+            info = [task.to_dict() for task in tasks]
             jetstream.utils.yaml_dump(info, sys.stdout)
     else:
-        tasks = {t.tid: t for t in wf.tasks(objs=True)}
+        tasks = {t.name: t for t in wf.tasks(objs=True)}
 
         print('\t'.join(('task_id', 'status',)))
         for t in tasks.values():
-            print('\t'.join((t.tid, t.status,)))
+            print('\t'.join((t.name, t.status,)))
 
 
 def remove(args):
@@ -119,8 +119,8 @@ def reset(args):
 
     for name in args.task_name:
         task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).reset()
+        for name in task_ids:
+            wf.get_task(name).reset()
 
     wf.save()
 
@@ -130,8 +130,8 @@ def complete(args):
 
     for name in args.task_name:
         task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).complete()
+        for name in task_ids:
+            wf.get_task(name).complete()
 
     wf.save()
 
@@ -141,8 +141,8 @@ def fail(args):
 
     for name in args.task_name:
         task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).fail()
+        for name in task_ids:
+            wf.get_task(name).fail()
 
     wf.save()
 
@@ -155,7 +155,7 @@ def main(args):
     else:
         if args.project is None:
             raise ValueError('No workflow given and not working in a project')
-        args.workflow = args.project.workflow
+        args.workflow = args.project.get_workflow()
 
     if args.func is main:
         tasks(args)

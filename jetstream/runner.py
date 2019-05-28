@@ -80,14 +80,11 @@ class Runner:
 
     # Synchronization methods for events that should wait on tasks to return
     def notify_waiters(self):
-        return self._condition.notify_all()
+        self._event.set()
 
-    async def _wait_for_next_task_future(self, timeout=None):
-        if self._condition is None:
-            msg = 'Attempt to wait before condition was initialized'
-            raise ValueError(msg)
-
-        return await asyncio.wait_for(self._condition.wait(), timeout=timeout)
+    async def wait_for_next_task_future(self, timeout=None):
+        self._event.clear()
+        await asyncio.wait_for(self._event.wait(), timeout=timeout)
 
     async def _autosave_coro(self):
         log.debug('Autosaver started!')
@@ -111,7 +108,7 @@ class Runner:
                 log.debug(f'Autosaver next save in {timeout_in}s')
 
                 try:
-                    await self._wait_for_next_task_future(timeout=timeout_in)
+                    await self.wait_for_next_task_future(timeout=timeout_in)
                     log.debug('Autosaver wait cleared by runner')
                 except asyncio.TimeoutError:
                     log.debug('Autosaver wait timed out')
@@ -128,7 +125,7 @@ class Runner:
         """If the async event loop has outstanding futures, they must be
         cancelled, and results collected, prior to exiting. Otherwise, lots of
         ugly error messages will be shown to the user. """
-        futures = asyncio.Task.all_tasks(self.loop)
+        futures = asyncio.all_tasks(self.loop)
 
         if futures:
             for task in futures:
@@ -224,6 +221,7 @@ class Runner:
 
         self._loop = asyncio.events.new_event_loop()
         asyncio.events.set_event_loop(self._loop)
+        self._event = Event()
 
     async def _yield(self):
         """Since the workflow is a simple synchronous class, it will just
@@ -236,7 +234,7 @@ class Runner:
         log.debug(f'Yield for {delay}s or when next future returns')
 
         try:
-            await self._wait_for_next_task_future(timeout=delay)
+            await self.wait_for_next_task_future(timeout=delay)
         except asyncio.TimeoutError:
             pass
 
@@ -288,7 +286,7 @@ class Runner:
         self._project = project
         self._workflow = workflow
         self._workflow_len = len(workflow)
-        self._run_id = run_id or jetstream.run_id()
+        self._run_id = run_id or jetstream.guid()
         self._run_started = datetime.now()
         self._previous_directory = os.getcwd()
         self._errs = False

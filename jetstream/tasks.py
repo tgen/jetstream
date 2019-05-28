@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime
 from hashlib import sha1
-from jetstream import utils, log
+import jetstream
 
+log = logging.getLogger(__name__)
 valid_status = ('new', 'pending', 'complete', 'failed')
 
 
@@ -13,7 +15,8 @@ class InvalidTaskStatus(Exception):
 
 
 class Task(object):
-    def __init__(self, **kwargs):
+    def __init__(self, *, name=None, status='new', state=None, description=None,
+                 **kwargs):
         """Tasks are the fundamental units of a workflow.
 
         Tasks are composed of directives. Directives are immutable key-value
@@ -43,39 +46,35 @@ class Task(object):
 
         :param kwargs: Task directives
         """
-        self.workflow = None
-        self.description = kwargs.pop('description', {})
-        self.state = kwargs.pop('state', {'status': None})
         self._directives = tuple(kwargs.items())
         self._identity = hash_directives(self._directives)
-
-        try:
-            self.tid = kwargs['name']
-        except KeyError:
-            self.tid = self.identity
-
-        self.clear_state()
+        self._status = None
+        self.name = name or self.identity
+        self.status = status
+        self.state = state or dict()
+        self.description = description or dict()
+        self.workflow = None
 
     def __eq__(self, other):
         """Tasks can be compared to other Tasks, this also allows querying
-        container objects with "in". Tasks are considered equal if their tids
+        container objects with "in". Tasks are considered equal if their names
         are equal. """
         if isinstance(other, Task):
-            return other.tid == self.tid
+            return other.name == self.name
         else:
             return False
 
     def __hash__(self):
         """Allows this object to be used in hashed collections"""
-        return self.tid.__hash__()
+        return self.name.__hash__()
 
     def __repr__(self):
         l = self.state.get("label")
 
         if l:
-            return f'<Task({self.status}:{l}): {self.tid}>'
+            return f'<Task({self.status}:{l}): {self.name}>'
         else:
-            return  f'<Task({self.status}): {self.tid}>'
+            return f'<Task({self.status}): {self.name}>'
 
     def _set_start_time(self):
         self.state['start_time'] = datetime.now().isoformat()
@@ -95,7 +94,7 @@ class Task(object):
 
     @property
     def status(self):
-        return self.state['status']
+        return self._status
 
     @status.setter
     def status(self, value):
@@ -103,7 +102,7 @@ class Task(object):
         if value not in valid_status:
             raise InvalidTaskStatus(value)
 
-        self.state['status'] = value
+        self._status = value
 
     @property
     def identity(self):
@@ -112,15 +111,7 @@ class Task(object):
 
     def clear_state(self):
         log.debug(f'Clear state: {self}')
-        directives = self.directives()
-
-        # Retry is state-ish but provided in a directive. Each time the task is
-        # instantiated, the remaining attempts are loaded into state again.
-        # This means that retries will not persist across run instances.
-        self.state = {
-            'status': 'new',
-            'remaining_attempts': directives.get('retry', 0)
-        }
+        self.state = {}
 
     def directives(self):
         """Access the directives as a dictionary.
@@ -133,6 +124,8 @@ class Task(object):
     def reset(self, descendants=True, clear_state=True):
         """Reset the state of this task"""
         log.debug(f'Reset: {self}')
+        self.status = 'new'
+
         if clear_state:
             self.clear_state()
 
@@ -148,20 +141,25 @@ class Task(object):
         self.status = 'pending'
         self._set_start_time()
 
-    def fail(self, returncode=None, descendants=True):
+    def fail(self, returncode=None, descendants=True, force=False):
         """Set task status to failed
 
         :param returncode: Return code will be added to task.state
         :param descendants: Also fails any descendants of this task
+        :param force: Ignore any remaining retry attempts
         :return:
         """
         log.debug(f'Failed: {self}')
-        atts = self.state.get('remaining_attempts', 0)
 
-        if atts > 0:
-            self.reset(descendants=False)
-            self.state['remaining_attempts'] = atts - 1
-            return
+        if not force:
+            if '_remaining_attempts' not in self.state:
+                atts = self.directives().get('retry', 0)
+                self.state['_remaining_attempts'] = atts
+
+            if self.state['_remaining_attempts'] > 0:
+                self.reset(descendants=False)
+                self.state['_remaining_attempts'] -= 1
+                return
 
         self.status = 'failed'
         self.state['returncode'] = returncode
@@ -169,8 +167,8 @@ class Task(object):
 
         if self.workflow and descendants:
             for dep in self.descendants():
-                dep.state.update(dependency_failed=self.tid)
-                dep.fail(descendants=False)
+                dep.state.update(dependency_failed=self.name)
+                dep.fail(descendants=False, force=True)
 
     def complete(self, returncode=None):
         """Indicate that this task is complete"""
@@ -181,7 +179,6 @@ class Task(object):
         if returncode is not None:
             self.state['returncode'] = returncode
 
-    # Helpers and shortcut methods
     def is_new(self):
         if self.status == 'new':
             return True
@@ -227,58 +224,50 @@ class Task(object):
     def descendants(self):
         return self.workflow.descendants(self)
 
-    def serialize(self):
-        return serialize(self)
+    def to_dict(self):
+        return to_dict(self)
 
     @staticmethod
-    def deserialize(data):
-        return deserialize(data)
+    def from_dict(data):
+        return from_dict(data)
 
     def copy(self):
         return copy(self)
 
-    def flatten(self):
-        return flatten(self)
-
 
 def copy(task):
     """Dirty hack to create a new task instance"""
-    return deserialize(serialize(task))
+    return from_dict(to_dict(task))
 
 
-def deserialize(data):
+def from_dict(data):
     """Restores a task object that was previously exported as a dictionary with
-    jetstream.tasks.serialize()"""
-    task = Task(**data['directives'])
-    task.state.update(data.get('state', {}))
-    task.description.update(data.get('description', {}))
+    jetstream.tasks.to_dict"""
+    task = Task(**data)
     return task
 
 
-def flatten(task):
-    """Returns a flat dict representation of a task that may be useful for
-    graph libraries that don't support complex node attributes."""
-    res = {'tid': task.tid}
-
-    for k, v in task.directives().items():
-        res['directive_' + k] = v
-
-    for k, v in task.state.items():
-        res['state_' + k] = v
-
-    return res
-
-
 def hash_directives(directives):
-    directives = utils.json_dumps(directives, sort_keys=True)
+    directives = jetstream.utils.json_dumps(directives, sort_keys=True)
     return sha1(directives.encode('utf-8')).digest().hex()
 
 
-def serialize(task):
+def random_task(name=None, input=None):
+    if name is None:
+        name = jetstream.guid(formatter='random_task_{id}')
+    cmd = 'set -ue\n\nhostname\n\n\date\necho {} is running'
+    output = name + '.txt'
+    return Task(name=name, cmd=cmd, input=input, output=output)
+
+
+def to_dict(task):
     """Returns a task as a dictionary that can be easily dumped to YAML/json"""
-    return {
-        'tid': task.tid,
+    res = task.directives()
+    res.update({
+        'name': task.name,
+        'status': task.status,
         'state': task.state,
         'description': task.description,
-        'directives': task.directives(),
-    }
+    })
+
+    return res

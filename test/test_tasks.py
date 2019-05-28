@@ -5,7 +5,7 @@ from jetstream.tasks import Task
 
 class TaskBasics(TestCase):
     null_task_id_mac = '97d170e1550eee4afc0af065b78cda302a97674c'
-    null_task_id = Task().tid
+    null_task_id = Task().name
 
     def test_null_task_id(self):
         """This task will fail if the task identity hashing changes, or
@@ -15,37 +15,39 @@ class TaskBasics(TestCase):
     
     def test_task_init(self):
         t = Task(name='taskA')
-        self.assertEqual(t.directives()['name'], 'taskA')
+        self.assertEqual(t.name, 'taskA')
 
     def test_deserialize(self):
-        t1 = tasks.deserialize({
-            'directives': {'name': 'taskA'},
-            'state': {'status': 'new'}
+        t1 = tasks.from_dict({
+            'name': 'taskA',
+            'directives': {},
+            'status': 'new'
         })
-        self.assertEqual(t1.tid, 'taskA')
+        self.assertEqual(t1.name, 'taskA')
         self.assertEqual(t1.status, 'new')
 
     def test_neg_deserialize(self):
         """Task rehydration must be from a valid mapping"""
-        self.assertRaises(Exception, tasks.deserialize, data=42)
-        self.assertRaises(Exception, tasks.deserialize, data='hello')
-        self.assertRaises(Exception, tasks.deserialize, data={'no': 'no'})
-        self.assertRaises(Exception, tasks.deserialize, data={'directives': {'cmd': 'no'}})
+        self.assertRaises(Exception, tasks.from_dict, data=42)
+        self.assertRaises(Exception, tasks.from_dict, data='hello')
+        self.assertRaises(Exception, tasks.from_dict, data=None)
+        self.assertRaises(Exception, tasks.from_dict, data=[])
+        self.assertRaises(Exception, tasks.from_dict, data=str)
 
     def test_task_identity(self):
         """Tasks should maintain a single identity across instances"""
         self.assertEqual(Task(), Task())
-        self.assertEqual(self.null_task_id, Task().tid)
+        self.assertEqual(self.null_task_id, Task().name)
 
     def test_equality(self):
         """Rehydrated tasks should be equal to initted tasks"""
-        t1 = tasks.deserialize({
-            'directives': {'name': 'taskA'},
+        t1 = tasks.from_dict({
+            'name': 'taskA',
             'state': {'status': 'new'}
         })
         t2 = Task(name='taskA')
         self.assertEqual(t1, t2)
-        self.assertEqual(t1.tid, t2.tid)
+        self.assertEqual(t1.name, t2.name)
     
     def test_equality2(self):
         """State should not change equality"""
@@ -53,7 +55,7 @@ class TaskBasics(TestCase):
         t2 = Task(name='taskA')
         t1.complete()
         self.assertEqual(t1, t2)
-        self.assertEqual(t1.tid, t2.tid)
+        self.assertEqual(t1.name, t2.name)
         
     def test_contains(self):
         """Equality handling means we can test for contains"""
@@ -127,7 +129,7 @@ class TaskBasics(TestCase):
 
     def test_task_serializedeserialze(self):
         t1 = Task(name='task1', cmd='echo hello world', before='foo')
-        t2 = Task.deserialize(t1.serialize())
+        t2 = Task.from_dict(t1.to_dict())
 
         self.assertEqual(t1, t2)
 

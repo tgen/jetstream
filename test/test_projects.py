@@ -32,7 +32,7 @@ class ProjectBasics(TestCase):
             }
         }
         p = jetstream.new_project(config=test_data)
-        self.assertEqual(p.config, test_data)
+        self.assertEqual(p.get_config(), test_data)
 
     def test_project_run(self):
         wf = jetstream.Workflow()

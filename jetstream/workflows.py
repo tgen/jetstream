@@ -19,25 +19,26 @@ arguments to template.
 
 """
 import os
+import logging
 import pickle
 import random
 import re
 import shutil
-from collections import Counter
+import textwrap
+import traceback
+from collections import Counter, deque
 from datetime import datetime
-from pkg_resources import get_distribution
 from threading import Lock
 
 import networkx as nx
 from networkx.readwrite import json_graph
 
 import jetstream
-from jetstream import utils, log
+from jetstream import utils
 from jetstream.tasks import Task
 
-__version__ = get_distribution('jetstream').version
 
-
+log = logging.getLogger(__name__)
 workflow_extensions = {
     '': 'pickle',
     '.pickle': 'pickle',
@@ -53,30 +54,38 @@ class NotDagError(ValueError):
 
 
 class Workflow(object):
-    def __init__(self, **kwargs):
-        built_w_version = kwargs.pop('jetstream_version', __version__)
+    def __init__(self, tasks=None, **kwargs):
+        built_w_version = kwargs.pop('jetstream_version', jetstream.__version__)
+        current_version = jetstream.__version__
 
-        if built_w_version != __version__:
-            # TODO Only warn if built_w_version is higher than current
-            log.warning('This workflow was built with a different version')
+        if built_w_version != current_version:
+            # TODO Only warn if built_w_version is higher than current?
+            msg = f'This workflow was built with a different jetstream ' \
+                  f'version:\n' \
+                  f'current: {current_version}\n' \
+                  f'workflow: {built_w_version}'
+            log.warning(msg)
 
-        self.graph = nx.DiGraph(jetstream_version=__version__, **kwargs)
+        self.graph = nx.DiGraph(jetstream_version=current_version, **kwargs)
         self.save_path = None
         self._lock = Lock()
         self._cm_stack = list()
         self._iter_tasks = list()
         self._iter_pending = list()
 
+        if tasks:
+            self.add_tasks(tasks)
+
     def __contains__(self, item):
         if isinstance(item, Task):
-            return self.graph.__contains__(item.tid)
+            return self.graph.__contains__(item.name)
         return self.graph.__contains__(item)
 
     def __enter__(self):
         """Workflows can be edited in a transaction using the context manager
         statement "with". This allows multiple task additions to take place
         with only a single update to the workflow edges. """
-        self._lock.acquire()
+        self.lock()
         self._cm_stack = list()
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -93,7 +102,7 @@ class Workflow(object):
             raise NotDagError
 
         self._cm_stack = list()
-        self._lock.release()
+        self.unlock()
 
     def __iter__(self):
         """In order to reduce the search time for the next available task,
@@ -105,13 +114,13 @@ class Workflow(object):
         self._iter_pending = list()
         self._iter_done = list()
 
-        for tid in nx.topological_sort(self.graph):
-            if self.get_task(tid).is_new():
-                self._iter_tasks.append(tid)
-            elif self.get_task(tid).is_pending():
-                self._iter_pending.append(tid)
+        for name in nx.topological_sort(self.graph):
+            if self.get_task(name).is_new():
+                self._iter_tasks.append(name)
+            elif self.get_task(name).is_pending():
+                self._iter_pending.append(name)
             else:
-                self._iter_done.append(tid)
+                self._iter_done.append(name)
 
         return self
 
@@ -131,30 +140,30 @@ class Workflow(object):
 
         # Drop all pending tasks that have completed since the last call
         _temp = list()
-        for tid in self._iter_pending:
-            t = self.get_task(tid)
+        for name in self._iter_pending:
+            t = self.get_task(name)
             if t.is_done():
-                self._iter_done.append(tid)
+                self._iter_done.append(name)
             elif t.is_new():
-                self._iter_tasks.append(tid)
+                self._iter_tasks.append(name)
             else:
-                _temp.append(tid)
+                _temp.append(name)
         self._iter_pending = _temp
         
         # Start search for next task
         for i in reversed(range(len(self._iter_tasks))):
-            tid = self._iter_tasks[i]
-            task = self.get_task(tid)
+            name = self._iter_tasks[i]
+            task = self.get_task(name)
 
             if task.is_done():
                 self._iter_tasks.pop(i)
-                self._iter_done.append(tid)
+                self._iter_done.append(name)
             elif task.is_pending():
                 self._iter_tasks.pop(i)
-                self._iter_pending.append(tid)
+                self._iter_pending.append(name)
             elif task.is_ready():
                 self._iter_tasks.pop(i)
-                self._iter_pending.append(tid)
+                self._iter_pending.append(name)
                 task.pending()
                 return task
         
@@ -218,11 +227,11 @@ class Workflow(object):
             else:
                 raise ValueError(f'Unsupported "after" type in {task}')
 
-            if task.tid in matches:
-                matches.remove(task.tid)
+            if task.name in matches:
+                matches.remove(task.name)
 
-            for match_tid in matches:
-                self._add_edge(from_node=match_tid, to_node=task.tid)
+            for match_name in matches:
+                self._add_edge(from_node=match_name, to_node=task.name)
 
     def _make_edges_before(self, task):
         """Generate edges for "before" directives of a task
@@ -248,11 +257,11 @@ class Workflow(object):
             else:
                 raise ValueError(f'Unsupported "before" type in {task}')
 
-            if task.tid in matches:
-                matches.remove(task.tid)
+            if task.name in matches:
+                matches.remove(task.name)
 
-            for match_tid in matches:
-                self._add_edge(from_node=task.tid, to_node=match_tid)
+            for match_name in matches:
+                self._add_edge(from_node=task.name, to_node=match_name)
 
     def _make_edges_input(self, task):
         """Generate edges for "input" directives of a task
@@ -270,8 +279,8 @@ class Workflow(object):
             elif isinstance(input, (list, tuple)):
                 matches = set()
                 for target in input:
-                    for tid in self.find_by_output(target):
-                        matches.add(tid)
+                    for name in self.find_by_output(target):
+                        matches.add(name)
             elif isinstance(input, dict) and 're' in input:
                 # Inputs must be searched for in all nodes, but this allows
                 # the syntax to match before/after directives.
@@ -279,15 +288,22 @@ class Workflow(object):
             else:
                 raise ValueError(f'Unsupported "input" type in {task}')
 
-            if task.tid in matches:
-                matches.remove(task.tid)
+            if task.name in matches:
+                matches.remove(task.name)
 
-            for match_tid in matches:
-                self._add_edge(from_node=match_tid, to_node=task.tid)
+            for match_name in matches:
+                self._add_edge(from_node=match_name, to_node=task.name)
 
     def _format_pattern(self, pat):
         """Pads a regex pattern so that it only matches exact strings"""
         return re.compile('^{}$'.format(pat))
+
+    def _remove_node(self, name):
+        """Directly remove nodes from the workflow graph. This can easily
+        result in a corrupted workflow by leaving orphaned dependencies behind.
+        Use Workflow.remove_tasks() instead."""
+        log.debug(f'Removing node: {name}')
+        self.graph.remove_node(name)
 
     def ancestors(self, task):
         """Returns a generator that yields all of the ancestors of a given task
@@ -295,21 +311,21 @@ class Workflow(object):
         if isinstance(task, str):
             task_id = task
         else:
-            task_id = task.tid
+            task_id = task.name
 
-        return (self.get_task(tid) for tid in nx.ancestors(self.graph, task_id))
+        return (self.get_task(name) for name in nx.ancestors(self.graph, task_id))
 
-    def add_task(self, task):
+    def add_task(self, task=None, **kwargs):
         """Add a node to the graph and calculate any dependencies.
 
         Nodes are expected to be an instance of Jetstream.Task. If the workflow
         is not locked (via "with" statement) this will trigger Workflow.update.
         """
-        if not isinstance(task, Task):
-            raise ValueError('task must be instance of {}'.format(Task))
+        if task is None:
+            task = Task(**kwargs)
 
-        if task.tid in self.graph:
-            raise ValueError('Duplicate task ID: {}'.format(task.tid))
+        if task.name in self.graph:
+            raise ValueError('Duplicate task ID: {}'.format(task.name))
 
         log.debug('Adding task: {}'.format(task))
 
@@ -317,18 +333,39 @@ class Workflow(object):
             task = task.copy()
 
         task.workflow = self
-        self.graph.add_node(task.tid, obj=task)
+        self.graph.add_node(task.name, obj=task)
 
         if self.is_locked():
-            self._cm_stack.append(task.tid)
+            self._cm_stack.append(task.name)
         else:
             try:
                 self.update()
             except Exception as e:
-                self.graph.remove_node(task.tid)
+                self.graph.remove_node(task.name)
                 raise e
 
         return task
+
+    def add_tasks(self, tasks):
+        with self:
+            for task in tasks:
+                try:
+                    if isinstance(task, Task):
+                        self.add_task(task)
+                    else:
+                        self.add_task(**task)
+                except Exception:
+                    tb = traceback.format_exc()
+                    txt = textwrap.shorten(str(task), 42)
+                    msg = f'Error with loading task: {txt}\n\n' \
+                          f'{textwrap.indent(tb, "  ")}\n'
+                    raise ValueError(msg) from None
+
+    def complete_tasks(self, pattern, *args, **kwargs):
+        log.debug(f'Complete tasks: {pattern}')
+
+        for task in self.find(pattern, objs=True):
+            task.complete(*args, **kwargs)
 
     def dependencies(self, task):
         """Returns a generator that yields all only the direct dependencies of
@@ -336,9 +373,9 @@ class Workflow(object):
         if isinstance(task, str):
             task_id = task
         else:
-            task_id = task.tid
+            task_id = task.name
 
-        return (self.get_task(tid) for tid in self.graph.predecessors(task_id))
+        return (self.get_task(name) for name in self.graph.predecessors(task_id))
 
     def dependents(self, task):
         """Returns a generator that yields only the tasks that directly
@@ -347,9 +384,9 @@ class Workflow(object):
         if isinstance(task, str):
             task_id = task
         else:
-            task_id = task.tid
+            task_id = task.name
 
-        return (self.get_task(tid) for tid in self.graph.successors(task_id))
+        return (self.get_task(name) for name in self.graph.successors(task_id))
 
     def descendants(self, task):
         """Returns a generator that yields all the descendants of a given
@@ -357,9 +394,9 @@ class Workflow(object):
         if isinstance(task, str):
             task_id = task
         else:
-            task_id = task.tid
+            task_id = task.name
 
-        return (self.get_task(tid) for tid in nx.descendants(self.graph, task_id))
+        return (self.get_task(name) for name in nx.descendants(self.graph, task_id))
 
     def draw(self, *args, **kwargs):
         """Attempt to draw the network graph for this workflow. See
@@ -373,7 +410,7 @@ class Workflow(object):
         log.debug('Find: {}'.format(pattern))
 
         pat = self._format_pattern(pattern)
-        matches = set([tid for tid in self.graph.nodes() if pat.match(tid)])
+        matches = set([name for name in self.graph.nodes() if pat.match(name)])
 
         if matches:
             if objs:
@@ -424,6 +461,9 @@ class Workflow(object):
         """Return the task object for a given task_id"""
         return self.graph.nodes[task_id]['obj']
 
+    def lock(self):
+        self._lock.acquire()
+
     def is_locked(self):
         """Returns True if this workflow is locked.
         A locked workflow will not automatically trigger edge updates when
@@ -458,79 +498,93 @@ class Workflow(object):
         task = Task(**kwargs)
         return self.add_task(task)
 
-    def remove_task(self, pattern, force=False, descendants=False):
+    def remove_tasks(self, pattern, *, descendants=False, force=False):
         """Remove task(s) from the workflow.
-        This will find tasks by name and call remove_task_id for each match. """
-        log.debug(f'Remove task: {pattern}')
-        matches = self.find(pattern)
+        This will find tasks by name and remove each match. """
+        log.debug(f'Remove tasks: {pattern}')
 
-        for task_id in matches:
+        for task in self.find(pattern, objs=True):
             try:
-                dep = next(self.dependents(task_id))
+                has_deps = next(task.dependents())
             except StopIteration:
-                dep = None
+                has_deps = False
 
-            if dep:
+            if has_deps:
                 if descendants:
-                    for d in self.descendants(task_id):
-                        log.info(f'Removing {d}')
-                        self.graph.remove_node(d.tid)
-                    log.info(f'Removing {task_id}')
-                    self.graph.remove_node(task_id)
+                    for d in task.descendants():
+                        self._remove_node(d.name)
+                    self._remove_node(task.name)
                 elif force:
-                    self.graph.remove_node(task_id)
+                    self._remove_node(task.name)
                 else:
-                    raise ValueError('Task has dependents!')
+                    err = f'{task} has decendants that would be orphaned if ' \
+                          'it were removed. Use "descendants=True" to remove' \
+                          'this task and any descendants.'
+                    raise ValueError(err)
             else:
-                log.info(f'Removing task: {task_id}')
-                self.graph.remove_node(task_id)
+                self._remove_node(task.name)
 
-    def reset(self):
-        """Resets all tasks state."""
-        log.critical('Resetting state for all tasks...')
+    def reset_tasks(self, pattern, *args, **kwargs):
+        log.debug(f'Reset tasks: {pattern}')
+
+        for task in self.find(pattern, objs=True):
+            task.reset(*args, **kwargs)
+
+    def fail_tasks(self, pattern, *args, **kwargs):
+        log.debug(f'Fail tasks: {pattern}')
+
+        for task in self.find(pattern, objs=True):
+            task.reset(*args, **kwargs)
+
+    def reset(self, method):
+        """Resets state for tasks in this workflow
+        Resetting tasks allows workflows that were stopped prior to completion
+        to be rerun. Or tasks that failed due to external state can be retried:
+
+        all - Resets state for all tasks
+        resume - Resets state for all "pending" tasks
+        retry - Resets state for all "pending" and "failed" tasks
+        """
+        if method == 'retry':
+            self.retry()
+        elif method == 'resume':
+            self.resume()
+        elif method == 'all':
+            self.reset_all()
+        else:
+            err = f'Unrecognized workflow reset method: {method} Choose one ' \
+                  f'of all, retry, resume'
+            raise ValueError(err)
+
+    def reset_all(self):
+        """Resets state for all tasks"""
+        log.critical('Reset: Resetting state for all tasks...')
         for task in self.tasks(objs=True):
             task.reset(descendants=False)
 
     def resume(self):
-        """Resets all "pending" tasks state."""
-        log.info('Resetting state for all pending tasks...')
+        """Resets state for all "pending" tasks """
+        log.info('Resume: Resetting state for all pending tasks...')
         for task in self.tasks(objs=True):
             if task.status == 'pending':
                 task.reset(descendants=False)
 
     def retry(self):
-        """Resets all "pending" and "failed" tasks state."""
-        log.info('Resetting state for all pending and failed tasks...')
+        """Resets state for all "pending" and "failed" tasks """
+        log.info('Retry: Resetting state for all pending and failed tasks...')
         for task in self.tasks(objs=True):
             if task.status in ('pending', 'failed'):
                 task.reset(descendants=False)
 
-    def serialize(self):
+    def to_dict(self):
         """Convert the workflow to a node-link formatted object that can
         be easily dumped to JSON/YAML """
-        log.debug('Converting to node link data...')
-        data = json_graph.node_link_data(self.graph)
-
-        log.debug('Serializing nodes...')
-        for node in data['nodes']:
-            node['obj'] = node['obj'].serialize()
-            node['obj'].pop('tid')
-
-        return data
+        return to_dict(self)
 
     @staticmethod
-    def deserialize(data):
-        """Given node-link data, generate a workflow object"""
-        wf = Workflow(**data['graph'])
-
-        with wf:
-            for node in data['nodes']:
-                task_data = node['obj']
-                task_data['tid'] = node['id']
-                t = jetstream.tasks.deserialize(task_data)
-                wf.add_task(t)
-
-        return wf
+    def from_dict(data):
+        """Given node-link dictionary, generate a workflow object"""
+        return from_dict(data)
 
     def save(self, path=None, *args, **kwargs):
         """Shortcut to :func:`jetstream.save_workflow`"""
@@ -548,7 +602,7 @@ class Workflow(object):
 
     def tasks(self, objs=True):
         """Access the tasks in this workflow.
-        If objs is False, only the tids will be returned."""
+        If objs is False, only the names will be returned."""
         if objs:
             return (t['obj'] for i, t in self.graph.nodes(data=True))
         else:
@@ -558,12 +612,12 @@ class Workflow(object):
         """Returns JSON string representation of this workflow"""
         log.debug('Dumping to json...')
         return utils.json_dumps(
-            self.serialize(), indent=indent, sort_keys=sort_keys
+            self.to_dict(), indent=indent, sort_keys=sort_keys
         )
 
     def to_yaml(self):
         """Returns YAML string representation of this workflow"""
-        s = self.serialize()
+        s = self.to_dict()
         log.debug('Dumping to yaml...')
         return utils.yaml_dumps(s)
 
@@ -574,6 +628,34 @@ class Workflow(object):
             self._make_edges_after(task)
             self._make_edges_before(task)
             self._make_edges_input(task)
+
+    def unlock(self):
+        self._lock.release()
+
+
+def to_dict(workflow):
+    log.debug('Converting to node link data...')
+    data = json_graph.node_link_data(workflow.graph)
+
+    log.debug('Serializing nodes...')
+    for node in data['nodes']:
+        node['obj'] = node['obj'].to_dict()
+        node['obj'].pop('name')
+
+    return data
+
+
+def from_dict(data):
+    wf = Workflow(**data['graph'])
+
+    with wf:
+        for node in data['nodes']:
+            task_data = node['obj']
+            task_data['name'] = node['id']
+            t = jetstream.tasks.from_dict(task_data)
+            wf.add_task(t)
+
+    return wf
 
 
 def draw_workflow(wf, *, figsize=(12, 12), cm=None, filename=None,
@@ -660,18 +742,18 @@ def load_workflow(path, format=None):
 
 def load_workflow_yaml(path):
     data = utils.load_yaml(path)
-    return Workflow.deserialize(data)
+    return Workflow.from_dict(data)
 
 
 def load_workflow_json(path):
     data = utils.load_json(path)
-    return Workflow.deserialize(data)
+    return Workflow.from_dict(data)
 
 
 def load_workflow_pickle(path):
     with open(path, 'rb') as fp:
         data = pickle.load(fp)
-    return Workflow.deserialize(data)
+    return Workflow.from_dict(data)
 
 
 def mash(G, H):
@@ -713,7 +795,7 @@ def mash(G, H):
         for task in H.tasks(objs=True):
             # Identify tasks in H that are not in G yet
             try:
-                existing_task = wf.get_task(task.tid)
+                existing_task = wf.get_task(task.name)
             except KeyError:
                 t = wf.add_task(task)
                 new.add(t)
@@ -721,7 +803,7 @@ def mash(G, H):
 
             # For tasks in H that are also in G replace if they've been modified
             if task.identity != existing_task.identity:
-                wf.remove_task(existing_task.tid, force=True)
+                wf.remove_tasks(existing_task.name, force=True)
                 t = wf.add_task(task)
                 modified.add(t)
 
@@ -731,10 +813,10 @@ def mash(G, H):
     temp_graph = wf.graph.copy()
 
     for t in new_u_modified:
-        if t.tid not in temp_graph:
+        if t.name not in temp_graph:
             continue
 
-        for d in nx.descendants(temp_graph, t.tid):
+        for d in nx.descendants(temp_graph, t.name):
             to_reset.add(d)
             temp_graph.remove_node(d)
 
@@ -751,7 +833,7 @@ def mash(G, H):
     return wf
 
 
-def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
+def random_workflow(n=50, timeout=None, connectedness=3, trail=10):
     """Random workflow generator. The time to generate a random task for a
      workflow scales exponentially, so this can take a very long time for
      large numbers of tasks.
@@ -768,12 +850,12 @@ def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
         raise ValueError('Must set n or timeout')
 
     wf = Workflow()
-    cmds = (None, 'echo', 'hostname', 'ls', 'date', 'who', 'sleep 1')
+    added = 0
     start = datetime.now()
-    added = start_numbering
-
-    if n:
-        n = start_numbering + n
+    task = jetstream.tasks.random_task()
+    queue = deque(maxlen=trail)
+    wf.add_task(task)
+    queue.append(task)
 
     while 1:
         if n and added >= n:
@@ -784,26 +866,17 @@ def random_workflow(n=50, timeout=None, connectedness=3, start_numbering=0):
             log.critical('Timeout reached!')
             break
 
-        tasks = wf.list_tasks()
-        directives = {
-            'name': str(added),
-            'cmd': random.choice(cmds),
-            'output': random.choice([None, hex(random.getrandbits(32)) + '.txt'])
-        }
-        if tasks:
-            for i in range(random.randint(0, connectedness)):
-                task = random.choice(tasks)
-                name = task.directives().get('name')
-                output = task.directives().get('output')
-
-                if random.random() > 0.5:
-                    if output is not None:
-                        directives['input'] = output
-                else:
-                    directives['after'] = name
+        conns = random.randint(0, connectedness)
+        inputs = []
+        for i in range(conns):
+            task = random.choice(queue)
+            output = task.directives().get('output')
+            inputs.append(output)
 
         try:
-            wf.new_task(**directives)
+            task = jetstream.tasks.random_task(input=inputs)
+            wf.add_task(task)
+            queue.append(task)
             log.info('{} tasks added!'.format(added))
             added += 1
         except Exception as e:
@@ -840,7 +913,7 @@ def save_workflow_yaml(workflow, path):
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
-        utils.yaml_dump(workflow.serialize(), fp)
+        utils.yaml_dump(workflow.to_dict(), fp)
 
     shutil.move(lock_path, path)
 
@@ -850,7 +923,7 @@ def save_workflow_json(workflow, path):
     lock_path = path + '.lock'
 
     with open(lock_path, 'w') as fp:
-        utils.json_dump(workflow.serialize(), fp)
+        utils.json_dump(workflow.to_dict(), fp)
 
     shutil.move(lock_path, path)
 
@@ -860,7 +933,7 @@ def save_workflow_pickle(workflow, path):
     lock_path = path + '.lock'
 
     with open(lock_path, 'wb') as fp:
-        pickle.dump(workflow.serialize(), fp)
+        pickle.dump(workflow.to_dict(), fp)
 
     shutil.move(lock_path, path)
 

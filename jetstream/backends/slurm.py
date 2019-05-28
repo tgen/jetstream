@@ -121,7 +121,7 @@ class SlurmBackend(BaseBackend):
         comment = {
             'run': self.runner.run_id,
             'task': {
-                'tid': task.tid,
+                'name': task.name,
                 'tags': tags,
                 }
             }
@@ -130,7 +130,7 @@ class SlurmBackend(BaseBackend):
 
         if len(comment_string) > 1024:
             return json.dumps({
-                'tid': task.tid,
+                'name': task.name,
                 'err': 'Job comment too long!'
             }, sort_keys=True)
         else:

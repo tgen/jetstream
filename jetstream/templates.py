@@ -1,69 +1,73 @@
-"""Initiate a Jinja environment with template loaders that search
+"""Initiate a Jinja2 environment with template loaders that search
 locations set by arguments or environment variables. """
 import json
 import hashlib
 import logging
 import os
-import traceback
-import confuse
-from datetime import datetime
+import urllib.parse
+import textwrap
 import jetstream
 from jinja2 import (
     Environment,
     StrictUndefined,
     Undefined,
-    evalcontextfilter,
+    contextfunction,
     FileSystemLoader
 )
 
 log = logging.getLogger(__name__)
 
 
-@evalcontextfilter
-def raise_helper(eval_ctx, msg):
+@contextfunction
+def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
-    raise Exception(msg)
+    raise Exception(f'{ctx.name}: {msg}')
 
 
-@evalcontextfilter
-def basename(eval_ctx, path):
-    """Allow "basename(<path>)" to be used in templates"""
-    if isinstance(path, str):
-        return os.path.basename(path)
-    else:
-        return [os.path.basename(p) for p in path]
+@contextfunction
+def log_helper(ctx, msg):
+    """Allow "raise('msg')" to be used in templates"""
+    log.critical(f'{ctx.name}: {msg}')
+    return ''
+
+@contextfunction
+def this_helper(ctx):
+    return ctx
 
 
-@evalcontextfilter
-def dirname(eval_ctx, path):
-    """Allow "dirname(<path>)" to be used in templates"""
-    # TODO Make this work on sequences of paths
-    if isinstance(path, str):
-        return os.path.dirname(path)
-    else:
-        return [os.path.dirname(p) for p in path]
+def basename(path):
+    """Allow "{{ path|basename }}" to be used in templates"""
+    return os.path.basename(path)
 
 
-@evalcontextfilter
-def sha256(eval_ctx, value):
-    """Allow "sha256(<value>)" to be used in templates"""
+def dirname(path):
+    """Allow "{{ path|dirname }}" to be used in templates"""
+    return os.path.dirname(path)
+
+
+def urlparse(value):
+    """Allow "{{ value|urlparse }}" to be used in templates. The return
+    value of this filter is a named tuple that can be used to access parts
+    of a qualified URL. eg: {{ path|urlparse|attr("netloc") }}"""
+    return urllib.parse.urlparse(value)
+
+
+def sha256(value):
+    """Allow "{{ value|sha256 }}" to be used in templates"""
     h = hashlib.sha256(value.encode())
     return h.hexdigest()
 
 
-@evalcontextfilter
-def fromjson(eval_ctx, value):
-    """Allow "fromjson(<value>)" to be used in templates"""
+def fromjson(value):
+    """Allow "{{ value|fromjson }}" to be used in templates"""
     return json.loads(value)
 
 
 def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
                 searchpath=None):
-    """Start a Jinja2 Environment with the given template directories.
-
-    Templates are loaded by a Jinja2 FilesystemLoader that includes built-in
-    templates by default. The search path is also extended to include any
-    directories in template_dirs."""
+    """Starts a Jinja2 Environment with a FileSystemLoader on the given search
+    path. This adds several features to the standard template processor.
+    """
     if strict:
         undefined_handler = StrictUndefined
     else:
@@ -81,129 +85,86 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     )
 
     env.globals['raise'] = raise_helper
+    env.globals['log'] = log_helper
+    env.globals['this'] = this_helper
     env.filters['fromjson'] = fromjson
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
+    env.filters['urlparse'] = urlparse
     env.filters['sha256'] = sha256
     return env
 
 
-def context(*, project=None, command_args=None, settings=True):
-    """Enforces the correct priority order for loading data sources when
-    rendering templates"""
+class TemplateContext(object):
+    """Enforces the correct priority order for loading config data sources when
+    rendering templates:
 
-    # Template rendering config stack
-    #
-    #
-    # constants:
-    #   command args "constants" key
-    #   pipeline manifest "constants" section (if using pipelines)
-    #   settings file "constants" section
-    #
-    # <globals>: <values>
-    #   command args
-    #   project config file (if working in a project)
-    #
-    #
-    #Constants load order: Config files > Pipeline manifest (pipelines only) > command args???"""]
-    # Load constants
-    stack = []
+    low priority  --> 1) Project: jetstream/config.yaml
+                      2) Pipeline: pipeline.yaml: template_config_data section
+    high priority --> 3) Command Args: -c/--config and -C/--config-file options
 
-    if settings:
-        sc = jetstream.settings.flatten().get('constants')
-        if sc:
-            stack.append(sc)
-
-    if command_args:
-        cc = command_args.get('constants', {})
-        if cc:
-            stack.append(cc)
-
-    a = {'constants': jetstream.utils.config_stack(*stack)}
-
-    # Load globals
-    stack = []
-
-    if project:
-        stack.append(project.config)
-
-    if command_args:
-        stack.append(command_args)
-
-    b = jetstream.utils.config_stack(*stack)
-
-    # Mash them all together
-    return jetstream.utils.config_stack(a, b)
-
-
-def render_template(path, context=None, env=None, render_only=False):
-    """Load and render a template.
-
-    :param context: Mapping object with data used to render template
-    :param env: A preconfigured Jinja Environment
-    :param render_only: Return the rendered template instead of a workflow
-    :return: jetstream.Workflow
     """
-    log.info('Rendering template...')
-    started = datetime.now()
+    def __init__(self, *, project=None, pipeline=None, command_args=None):
+       self.stack = (project.get_config, pipeline.config, command_args)
+
+    def __repr__(self):
+        sources = ' -> '.join((s for s in self.stack if s))
+        return '<TemplateContext '
+
+    def flatten(self):
+        """Returns a single config object created by flattening the sources
+        in """
+        log.debug('Flattening template context stack...')
+        stack = []
+
+        if self.project:
+            log.debug(f'Including project: {self.project.name}')
+            stack.append(self.project.get_config())
+
+        if self.pipeline:
+            log.debug(f'Including pipeline: {self.pipeline.name}')
+            stack.append(self.pipeline.get_config())
+
+        if self.command_args:
+            cmd_args = textwrap.shorten(str(self.command_args), 24)
+            log.debug(f'Including cmd args: {cmd_args}')
+            stack.append(self.command_args)
+
+        return jetstream.utils.config_stack(*stack)
+
+
+def render_template_file(path, env=None, **kwargs):
+    """Using Jinja2 environment, loads a template from a filepath, then renders
+    with the given context. See render_template for more info"""
+    template_dir = os.path.dirname(path)
+    template_basename = os.path.basename(path)
 
     if env is None:
-        env = environment(searchpath=[os.getcwd(), os.path.dirname(path)])
+        env = environment(searchpath=[template_dir, ])
 
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
+    template = env.get_template(template_basename)
+    return render_template(template, **kwargs)
 
-    if os.path.isdir(path):
-        raise FileNotFoundError(f'{path} is a directory!')
 
-    with open(path, 'r') as fp:
-        data = fp.read()
+def render_template_string(s, env=None, **kwargs):
+    """Using Jinja2 environment, loads a template from a string, then renders
+    with the given context. See render_template for more info"""
+    if env is None:
+        env = environment(searchpath=[os.getcwd(),])
 
-    log.debug(f'Template render context:\n{context}')
-    template = env.from_string(data)
-    render = template.render(**context)
+    template = env.from_string(s)
+    return render_template(template, **kwargs)
 
-    if render_only:
-        return render
 
-    log.debug(f'Rendered template:\n{render}')
-    log.info('Parsing template...')
-
-    try:
-        parsed_tasks = jetstream.utils.yaml_loads(render)
-    except jetstream.utils.yaml.YAMLError:
-        log.critical(f'Error parsing rendered template:\n{render}')
-        tb = traceback.format_exc()
-        log.critical(f'Parser Traceback:\n{tb}\n')
-        msg = (
-            f'The template was rendered successfully, but failed to parse with'
-            f'the YAML loader. See the parser traceback above for more details.'
-        )
-        raise ValueError(msg) from None
-
-    if not isinstance(parsed_tasks, list):
-        log.warning(f'Error loading rendered template:\n{render}')
-        msg = (
-            f'The template was rendered and parsed successfully, but the '
-            f'resulting data structure was a {type(parsed_tasks)} . Templates '
-            f'should always produce a list of tasks.'
-        )
-        raise ValueError(msg)
-
-    # log.debug(f'Parsed template:\n{parsed_tasks}')
-    log.info('Building workflow...')
-
-    workflow = jetstream.Workflow()
-    with workflow:
-        for task in parsed_tasks:
-            if not isinstance(task, dict):
-                msg = f'Error with task:\n{task}' \
-                      f'The template was rendered and parsed successfully, ' \
-                      f'but encountered a task that was not a mapping type.'
-                raise ValueError(msg)
-
-            workflow.new_task(**task)
-
-    elapsed = datetime.now() - started
-    log.info(f'Workflow ready (after {elapsed}): {workflow}')
-    return workflow
+def render_template(template, project=None, pipeline=None, command_args=None):
+    """Render a template with the given context data sources"""
+    log.info('Rendering template...')
+    context = TemplateContext(
+        project=project,
+        pipeline=pipeline,
+        command_args=command_args
+    )
+    log.debug(f'Template render context: {context}')
+    ctx = context.flatten()
+    render = template.render(**ctx)
+    return render

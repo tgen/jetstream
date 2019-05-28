@@ -31,6 +31,15 @@ def arg_parser(parser):
         help='Show details about installed pipelines'
     )
 
+# TODO Arg parser upgrades?
+# All these share an arg parser:
+# jetstream pipelines name
+# jetstream build name / jetstream run name / jetstream render name
+# the value "name" should be optional positional, then:
+# jetstream build <args> == jetstream run --build-only <args>
+# jetstream render <args> == jetstream run --render-only <args>
+# jetstream pipelines name == jetstream run -t pipeline/main.jst <args>
+# jetstream pipelines
 
 def main(args=None):
     log.debug(f'{__name__} {args}')
@@ -39,28 +48,23 @@ def main(args=None):
     if args.pipelines_home:
         jetstream.settings['pipelines']['home'] = args.pipelines_home
 
-    pipelines_home = jetstream.settings['pipelines']['home'].get()
-    if not pipelines_home or not os.path.isdir(pipelines_home):
-        err = 'Pipelines are not configured. Check the application settings.'
-        raise ValueError(err)
+    pipelines_home = jetstream.settings['pipelines']['home'].get(str)
 
-    # Ls just prints info about current pipelines
+    # ls just prints info about current pipelines
     if args.ls:
         installed = jetstream.pipelines.ls(pipelines_home)
-        return print(jetstream.utils.yaml_dumps(installed))
+        print(jetstream.utils.yaml_dumps(installed))
+    else:
+        args.pipeline = pipeline = jetstream.pipelines.lookup(args.path)
+        args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
 
-    # If the pipeline has extra constants, add them to the settings constants
-    pipeline = jetstream.pipelines.lookup(args.path)
-    args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
-    jetstream.settings['constants'].set(pipeline.manifest.get('constants', {}))
+        # If the pipeline has a bin directory, prepend the env PATH
+        if 'bin' in pipeline.manifest:
+            bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
+            os.environ['PIPELINE_BIN'] = str(bin_path)
+            os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
-    # If the pipeline has a bin directory, prepend the env PATH
-    if 'bin' in pipeline.manifest:
-        bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
-        os.environ['PIPELINE_BIN'] = str(bin_path)
-        os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
-
-    run_main(args)
+        run_main(args)
 
 
 if __name__ == '__main__':

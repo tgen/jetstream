@@ -2,14 +2,15 @@
 # Set the logging style. If this is null, the best logger will be chosen from
 # the logging profiles below. You can also define custom profiles, see more
 # info below.
+
+# Choose the logging profile, if this is null the profile will be chosen based
+# on stderr properties (pretty and colorful for ttys, otherwise plain text).
+# Choose from options under settings.logging_profiles
 log: null
 
 # Set the default backend. Choose from the options listed in settings.backends
 backend: local
 
-# Controls the amount of time that the Project object will wait for a project
-# to be unlocked
-lock_timeout: 60
 
 # If this is set to false, utils.dynamic_import will only search builtins when
 # loading functions
@@ -28,14 +29,28 @@ load_file:
 
 
 # =================================== Runner ==================================
+# These settings modify the workflow runner internal behaviors and can result
+# in cpu over-utilization or deadlock of the runner. They are not documented
+# well and should be modified with caution.
 runner:
+  id_format: js{id}
   max_concurrency: null
   throttle: 0.1
   autosave_min: 5
   autosave_max: 60
 
 
+# ================================== Projects =================================
+projects:
+  id_format: p{id}
+  lock_timeout: 60
+  max_tries_history: 10
+  filename_format_history: %Y-%m-%dT%H-%M-%SZ.yaml
+
+
 # ================================== Backends =================================
+# Backends handle the tasks when they are ready to be executed. Each backend
+# has its own set of properties that can be modified here.
 backends:
   local:
     (): jetstream.backends.local.LocalBackend
@@ -57,7 +72,10 @@ backends:
 
 
 # ================================== Pipelines ================================
-# Change pipelines:home in order to use the pipelines feature
+# Pipelines are a collection of pre-built workflows that are installed in the
+# pipelines:home directory. They can be run by name using the jetstream
+# pipelines command. Users will need to change pipelines:home in order to use
+# the pipelines command
 pipelines:
   home: null
 
@@ -79,10 +97,6 @@ pipelines:
 #
 # If allow_dynamic_import is true, loaders will imported dynamically.
 # Otherwise, only the builtins module will be searched for a loader function.
-#
-constants:
-  foo: bar
-
 kvargs:
   allow_dynamic_import: true
   separator: ":"
@@ -118,7 +132,7 @@ kvargs:
 #      # Everything below here follows the Python logging dict config schema
 #      formatters:
 #        f:
-#          format: "[{module}] {asctime}: {message}"
+#          format: "[{name}] {asctime}: {message}"
 #          datefmt: "%Y-%m-%d %H:%M:%S"
 #          style: "{"
 #      handlers:
@@ -134,11 +148,11 @@ kvargs:
 logging_profiles:
   silent:
     version: 1
-  default:
+  basic:
     version: 1
     formatters:
       f:
-        format: '[{module}] {asctime}: {message}'
+        format: '[{asctime}]: {message}'
         datefmt: '%Y-%m-%d %H:%M:%S'
         style: '{'
     handlers:
@@ -154,7 +168,7 @@ logging_profiles:
     version: 1
     formatters:
       f:
-        format: '{module}:{lineno} {levelname} {asctime}:{message}'
+        format: '{name}:{lineno} {levelname} {asctime}: {message}'
         datefmt: '%Y-%m-%d %H:%M:%S'
         style: '{'
     handlers:
@@ -170,7 +184,7 @@ logging_profiles:
     version: 1
     formatters:
       f:
-        format: "[\x1b[4m\x1b[92m\U0001F335 {module:>10}\x1b[0m] {asctime}: {message}"
+        format: "[\x1b[4m\x1b[92m\U0001F335 {name}\x1b[0m] {asctime} {message}"
         datefmt: '%Y-%m-%d %H:%M:%S'
         style: '{'
     handlers:

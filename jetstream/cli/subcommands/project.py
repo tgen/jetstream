@@ -14,8 +14,8 @@ def arg_parser(parser):
 def main(args):
     log.debug(f'{__name__} {args}')
     p = {
-        'config': args.project.config,
-        'info': args.project.info,
-        'workflow': str(args.project.workflow)
+        'config': args.project.get_config(),
+        'info': args.project.get_info(),
+        'workflow': str(args.project.get_workflow())
     }
     print(jetstream.utils.yaml_dumps(p))

@@ -44,7 +44,7 @@ class WorkflowBasics(TestCase):
     def test_get_task(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task')
-        t2 = wf.get_task(t1.tid)
+        t2 = wf.get_task(t1.name)
 
         self.assertIs(t1, t2)
 
@@ -52,7 +52,7 @@ class WorkflowBasics(TestCase):
         wf = jetstream.Workflow()
         cmd = 'echo hello world'
         t1 = wf.new_task(name='task', cmd=cmd)
-        t2 = wf.get_task(t1.tid)
+        t2 = wf.get_task(t1.name)
         
         self.assertEqual(t1, t2)
         self.assertIs(t1, t2)
@@ -106,7 +106,7 @@ class WorkflowBasics(TestCase):
         wf = jetstream.Workflow()
         t = wf.new_task(name='task')
 
-        self.assertEqual(wf.find('t.*'), {t.tid,})
+        self.assertEqual(wf.find('t.*'), {t.name,})
 
     def test_find_by_id_fallback(self):
         wf = jetstream.Workflow()
@@ -122,7 +122,7 @@ class WorkflowBasics(TestCase):
         t = wf.new_task(name='task', output='log.txt')
         matches = wf.find_by_output('log.txt')
 
-        self.assertEqual(matches, {t.tid,})
+        self.assertEqual(matches, {t.name,})
 
     def test_find_by_output_fallback(self):
         wf = jetstream.Workflow()
