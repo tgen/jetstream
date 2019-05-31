@@ -113,54 +113,52 @@ class SlurmBackend(BaseBackend):
         """Slurm jobs will receive a comment that contains details about the
         task, run id, and tags taken from the task directives. If tags are a
         string, they will be converted to a list with shlex.split"""
-        tags = task.directives().get('tags', [])
-
+        tags = task.directives.get('tags', [])
         if isinstance(tags, str):
             tags = shlex.split(tags)
 
         comment = {
-            'run': self.runner.run_id,
-            'task': {
-                'name': task.name,
-                'tags': tags,
-                }
-            }
+            'wf': self.runner.workflow.id,
+            'id': task.identity,
+            'tags': tags
+        }
+
+        # TODO long tags here could cause an sbatch submission error, but
+        # we still have about ~1000 characters before that happens so the
+        # chance is pretty small. Limiting the tag length is non-trivial
+        # but possible. It would probably be best to enforce this limit at
+        # the Task level though.
 
         comment_string = json.dumps(comment, sort_keys=True)
-
-        if len(comment_string) > 1024:
-            return json.dumps({
-                'name': task.name,
-                'err': 'Job comment too long!'
-            }, sort_keys=True)
-        else:
-            return comment_string
+        return comment_string
 
     async def spawn(self, task):
         log.debug(f'Spawn: {task}')
 
-        if not task.directives().get('cmd'):
+        if not task.directives.get('cmd'):
             return task.complete()
 
         time.sleep(self.sbatch_delay) # sbatch breaks when called too frequently
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
-            cmd=task.directives()['cmd'],
-            name=self.slurm_job_name(task),
+            cmd=task.directives['cmd'],
+            name=task.name,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             comment=self.slurm_job_comment(task),
-            cpus_per_task=task.directives().get('cpus'),
-            mem=task.directives().get('mem'),
-            walltime=task.directives().get('walltime'),
-            additional_args=task.directives().get('sbatch_args'),
+            cpus_per_task=task.directives.get('cpus'),
+            mem=task.directives.get('mem'),
+            walltime=task.directives.get('walltime'),
+            additional_args=task.directives.get('sbatch_args'),
             sbatch_executable=self.sbatch_executable
         )
 
         task.state.update(
             label=f'Slurm({job.jid})',
+            stdout_path=stdout,
+            stderr_path=stderr,
             slurm_job_id=job.jid,
             slurm_cmd=' '.join(shlex.quote(a) for a in job.args)
         )
