@@ -164,7 +164,6 @@ def arg_parser():
     # the main function with the parsed Namespace.
     subparser = parser.add_subparsers(
         dest='subcommand',
-        required=True,
         help=jetstream.cli.subcommands.__doc__
     )
 
@@ -202,3 +201,5 @@ def main(args=None):
 
     if args.func:
         args.func(args)
+    else:
+        parser.error('the following arguments are required: subcommand')
