@@ -5,6 +5,7 @@ import argparse
 import importlib
 import json
 import logging
+import os
 import pkg_resources
 import sys
 import textwrap
@@ -23,7 +24,6 @@ _subcommands = OrderedDict(
     run='jetstream.cli.subcommands.run',
     build='jetstream.cli.subcommands.build',
     render='jetstream.cli.subcommands.render',
-    draw='jetstream.cli.subcommands.draw',
     tasks='jetstream.cli.subcommands.tasks',
     project='jetstream.cli.subcommands.project',
     pipelines='jetstream.cli.subcommands.pipelines',
@@ -41,10 +41,15 @@ class ConfigAction(argparse.Action):
         'int': int,
         'float': float,
         'bool': lambda x: x.lower() == 'true',
-        'json': json.loads
+        'json': json.loads,
+        'file': jetstream.utils.load_file,
+        'file:json': jetstream.utils.load_json,
+        'file:yaml': jetstream.utils.load_yaml,
+        'file:tsv': jetstream.utils.load_table,
+        'file:csv': jetstream.utils.load_table
     }
 
-    def __init__(self, delim=':', loaders=None, metavar=None, nargs=2,
+    def __init__(self, delim=':', loaders=None, nargs=2,
                  *args, **kwargs):
         self.delim = delim
 
@@ -53,13 +58,10 @@ class ConfigAction(argparse.Action):
         else:
             self.loaders = loaders
 
-        if metavar is None:
-            self.metavar = (f'[type{self.delim}]key', 'value')
-
         if nargs != 2:
             raise ValueError('nargs should always be 2 for ConfigAction')
 
-        super(ConfigAction, self).__init__(*args, nargs=2,  **kwargs)
+        super(ConfigAction, self).__init__(*args, nargs=2, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None, **kwargs):
         # If this is the first use of the arg, the namespace dest needs
@@ -94,27 +96,31 @@ class ConfigAction(argparse.Action):
 
 def add_config_options_to_parser(parser):
     """Adds the -c/--config and -C/--config-file options to an arg parser"""
-
+    config = parser.add_argument_group(
+        'template variables',
+        description='These options are used to add data that is available for '
+                    'rendering templates. These arguments should follow the '
+                    'syntax "-c <[type:]key> <value>". They can be used '
+                    'multiple times.'
+    )
     # These options indicate an addition to the args.config object.
-    parser.add_argument(
+    config.add_argument(
         '-c', '--config',
         action=ConfigAction,
-        # Paramters seen in ConfigAction.__init__ can also be given here:
-        # delim=':'
-        help='Add configuration data items individually. These arguments '
-             'should follow the syntax "-c <[type:]key> <value>". '
-             'This argument can be used multiple times.',
+        metavar=('TYPE:KEY', 'VALUE'),
+        help='add a single template variable'
     )
 
     # This option allows an monolithic config file to be loaded and stored and
     # overwrite the destination args.config. Additionally, the user can supply
     # -c arguments after a -C in order to modify parts of the loaded config
     # file.
-    parser.add_argument(
+    config.add_argument(
         '-C', '--config-file',
         dest='config',
+        metavar='PATH',
         type=jetstream.utils.load_file,
-        help='load configuration data from a file'
+        help='load template variables from a file'
     )
 
 
@@ -124,13 +130,13 @@ def arg_parser():
     shared.add_argument(
         '-l', '--logging',
         metavar='',
-        help='set the logging profile instead of auto-selecting the '
-             'logger based on terminal type'
+        choices=jetstream.settings['logging_profiles'],
+        help='set the logging profile'
     )
 
     shared.add_argument(
         '-p', '--project',
-        type=load_project
+        help='path to a Jetstream project directory'
     )
 
     parser = argparse.ArgumentParser(
@@ -154,7 +160,8 @@ def arg_parser():
     # Dynamically import subcommand modules and add their parsers as
     # subparser to the main parser. This is done just to simplify the
     # process of adding subcommands to the cli. It automatically fills
-    # in subparser help text from the docstring of the module.
+    # in subparser help text from the docstring of the module, and calls
+    # the main function with the parsed Namespace.
     subparser = parser.add_subparsers(
         dest='subcommand',
         required=True,
@@ -168,7 +175,6 @@ def arg_parser():
             help=m.__doc__.splitlines()[0],
             allow_abbrev=False,
             description=m.__doc__,
-            formatter_class=argparse.RawDescriptionHelpFormatter,
             parents=[shared,]
         )
         p.set_defaults(func=m.main)
@@ -177,30 +183,22 @@ def arg_parser():
     return parser
 
 
-def load_project(path=None):
-    if path:
-        return jetstream.Project(path)
-    else:
-        try:
-            return jetstream.Project()
-        except jetstream.ProjectInvalid:
-            return None
-
-
 def main(args=None):
     parser = arg_parser()
     args, remaining = parser.parse_known_args(args)
 
     jetstream.start_logging(args.logging)
+    setting_src = '\n'.join((str(s) for s in jetstream.settings.sources))
     log.debug(f'Version: {pkg_resources.get_distribution("jetstream")}')
-    log.debug(f'sys.argv: {sys.argv}')
-    sources = '\n'.join((str(s) for s in jetstream.settings.sources))
-    log.debug(f'Settings files:\n{sources}')
+    log.debug(f'Command args: {sys.argv}')
+    log.debug(f'Settings files:\n{setting_src}')
 
     if args.project:
-        log.debug(f'Working in {args.project}')
+        args.project = jetstream.Project(args.project)
     else:
-        log.debug(f'Not working inside of a project!')
+        cwd = os.getcwd()
+        if jetstream.projects.is_project(cwd):
+            args.project = jetstream.Project(cwd)
 
     if args.func:
         args.func(args)

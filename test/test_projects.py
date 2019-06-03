@@ -18,7 +18,13 @@ class ProjectBasics(TestCase):
         self.temp_dir.cleanup()
 
     def test_project_init(self):
-        p = jetstream.new_project()
+        p = jetstream.init()
+        self.assertIsInstance(p, jetstream.Project)
+
+    def test_project_init_other_dir(self):
+        p = jetstream.init('banana')
+        os.path.exists('banana')
+        os.path.exists('banana/jetstream/project.yaml')
         self.assertIsInstance(p, jetstream.Project)
 
     def test_loading_project_data_json(self):
@@ -31,13 +37,13 @@ class ProjectBasics(TestCase):
                 ]
             }
         }
-        p = jetstream.new_project(config=test_data)
-        self.assertEqual(p.get_config(), test_data)
+        p = jetstream.init(config=test_data)
+        self.assertEqual(p.index, test_data)
 
     def test_project_run(self):
         wf = jetstream.Workflow()
         wf.new_task(name='task', cmd='echo test_project_run', stdout='/dev/null')
-        jetstream.new_project()
+        jetstream.init()
         runner = jetstream.runner.Runner()
         runner.start(wf)
 

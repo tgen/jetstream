@@ -10,7 +10,7 @@ import logging
 import jetstream
 from jetstream.cli import add_config_options_to_parser
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
 
 def arg_parser(parser):
     parser.add_argument(
@@ -38,18 +38,26 @@ def arg_parser(parser):
 
 def main(args):
     log.debug(f'{__name__} {args}')
-    p = jetstream.Project(args.path)
 
-    if p.exists():
+    paths = jetstream.projects.ProjectPaths(args.path)
+    if paths.exists():
         if args.force:
             log.info('Project already exists - force reinitializing')
-            p.init(id=args.project_id, config=args.config)
+            p = jetstream.projects.init(
+                args.path,
+                id=args.project_id,
+                config=args.config
+            )
         else:
             log.info('Project already exists - updating config')
-            p.save_config(args.get_config)
+            p = jetstream.Project(args.path)
+            p.update_index(args.config)
     else:
         log.info('Initializing project')
-        p.init(id=args.project_id, config=args.config)
+        p = jetstream.projects.init(
+            args.path,
+            id=args.project_id,
+            config=args.config
+        )
 
     log.info(p)
-    return p

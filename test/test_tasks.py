@@ -4,40 +4,58 @@ from jetstream.tasks import Task
 
 
 class TaskBasics(TestCase):
-    null_task_id_mac = '97d170e1550eee4afc0af065b78cda302a97674c'
-    null_task_id = Task().name
+    def test_init(self):
+        Task()
 
-    def test_null_task_id(self):
-        """This task will fail if the task identity hashing changes, or
-        if there are subtle differences on other platforms. This should not
-        affect behavior but it would be nice to understand why it occurs"""
-        self.assertEqual(self.null_task_id, self.null_task_id_mac)
-    
-    def test_task_init(self):
-        t = Task(name='taskA')
-        self.assertEqual(t.name, 'taskA')
+    def test_init2(self):
+        Task(name='task')
 
-    def test_deserialize(self):
+    def test_init3(self):
+        Task(name='task', cmd='echo hello world')
+
+    def test_nonstring_cmd(self):
+        self.assertRaises(ValueError, Task, 'taskA', cmd={})
+
+    def test_to_dict(self):
+        cmd = 'echo hello world'
+        t = Task(name='task', cmd=cmd, foo='bar')
+        t.complete()
+        d = t.to_dict()
+        self.assertEqual(d['name'], 'task')
+        self.assertEqual(d['cmd'], cmd)
+        self.assertEqual(d['foo'], 'bar')
+        self.assertEqual(d['state']['status'], 'complete')
+
+    def test_from_dict(self):
         t1 = tasks.from_dict({
             'name': 'taskA',
-            'directives': {},
-            'status': 'new'
+            'directives': {'cmd': 'echo hello world'},
+            'state': {'status': 'complete'}
         })
         self.assertEqual(t1.name, 'taskA')
-        self.assertEqual(t1.status, 'new')
+        self.assertEqual(t1.status, 'complete')
 
     def test_neg_deserialize(self):
-        """Task rehydration must be from a valid mapping"""
-        self.assertRaises(Exception, tasks.from_dict, data=42)
-        self.assertRaises(Exception, tasks.from_dict, data='hello')
-        self.assertRaises(Exception, tasks.from_dict, data=None)
-        self.assertRaises(Exception, tasks.from_dict, data=[])
-        self.assertRaises(Exception, tasks.from_dict, data=str)
+        """Task rehydration should fail with invalid data"""
+        self.assertRaises(Exception, tasks.from_dict, 42)
+        self.assertRaises(Exception, tasks.from_dict, None)
+        self.assertRaises(Exception, tasks.from_dict, [])
+        self.assertRaises(Exception, tasks.from_dict, str)
 
-    def test_task_identity(self):
-        """Tasks should maintain a single identity across instances"""
-        self.assertEqual(Task(), Task())
-        self.assertEqual(self.null_task_id, Task().name)
+    def test_identity(self):
+        """Equivalent tasks should maintain a single identity across instances
+        """
+        t1 = Task('foo')
+        t2 = Task('foo')
+
+        self.assertEqual(t1, t2)
+        self.assertEqual(t1.identity, t2.identity)
+
+        t1 = Task('foo', cmd='echo hello world')
+        t2 = Task('foo')
+
+        self.assertEqual(t1, t2)
+        self.assertNotEqual(t1.identity, t2.identity)
 
     def test_equality(self):
         """Rehydrated tasks should be equal to initted tasks"""
@@ -56,9 +74,10 @@ class TaskBasics(TestCase):
         t1.complete()
         self.assertEqual(t1, t2)
         self.assertEqual(t1.name, t2.name)
+        self.assertEqual(t1.identity, t2.identity)
         
     def test_contains(self):
-        """Equality handling means we can test for contains"""
+        """Equality handling means we can test for tasks in containers"""
         t1 = Task(name='taskA')
         t2 = Task(name='taskB')
         l = [1, 2, 3, t1, 'A', 'B', 'C']
@@ -80,36 +99,64 @@ class TaskBasics(TestCase):
         t1 = Task(name='taskA')
         t2 = Task(name='taskB')
         wf = Workflow()
-        wf.add_task(t1)
-
+        wf.add(t1)
         self.assertIn(t1, wf)
         self.assertNotIn(t2, wf)
 
-    def test_is_operator(self):
+    def test_equality_vs_id(self):
+        """Tasks can be equal but distinct objects"""
         t1 = Task(name='taskA')
         t2 = Task(name='taskA')
-
         self.assertEqual(t1, t2)
-        assert t1 is not t2
+        self.assertIsNot(t1, t2)
+        self.assertEqual(t1.identity, t2.identity)
 
-    def test_task_change_status(self):
+    def test_change_status(self):
         t = Task(name='task')
         self.assertEqual(t.status, 'new')
 
-    def test_task_change_state(self):
+    def test_change_state(self):
         t = Task(name='task')
         t.state['foo'] = 'bar'
         self.assertEqual(t.state['foo'], 'bar')
         t.state.update(foo='baz')
         self.assertEqual(t.state['foo'], 'baz')
 
-    def test_complete_task(self):
+    def test_complete(self):
         t = Task(name='task')
         t.complete()
         self.assertEqual(t.status, 'complete')
+        self.assertTrue(t.is_complete())
+        self.assertTrue(t.is_done())
+        self.assertFalse(t.is_failed())
 
-    def test_fail_task(self):
+    def test_pending(self):
+        t = Task()
+        t.pending()
+        self.assertEqual(t.status, 'pending')
+        self.assertTrue(t.is_pending())
+        self.assertFalse(t.is_done())
+
+    def test_skipped(self):
+        t = Task()
+        t.skip(foo='bar')
+        self.assertEqual(t.status, 'skipped')
+        self.assertTrue(t.is_skipped())
+        self.assertTrue(t.is_done())
+
+    def test_fail(self):
         t = Task(name='task')
+        t.fail()
+        self.assertEqual(t.status, 'failed')
+
+    def test_fail_retry(self):
+        t = Task(name='task', retry=3)
+        t.fail()
+        self.assertEqual(t.status, 'new')
+        t.fail()
+        self.assertEqual(t.status, 'new')
+        t.fail()
+        self.assertEqual(t.status, 'new')
         t.fail()
         self.assertEqual(t.status, 'failed')
 
@@ -120,42 +167,8 @@ class TaskBasics(TestCase):
         self.assertTrue(t.is_pending())
         self.assertFalse(t.is_done())
 
-    def test_neg_task_dependency_failure(self):
-        t1 = Task(name='task')
-        t2 = Task(name='task2', after='task1')
-        
-        t1.fail()
-        self.assertEqual(t2.status, 'new')
-
     def test_task_serializedeserialze(self):
         t1 = Task(name='task1', cmd='echo hello world', before='foo')
-        t2 = Task.from_dict(t1.to_dict())
+        t2 = tasks.from_dict(t1.to_dict())
 
         self.assertEqual(t1, t2)
-
-
-class TasksInWorkflows(TestCase):
-    def test_task_dependency_failure(self):
-        """Failing a task should also cause any dependents to fail.
-        The task state should indicate which dependency caused the failure"""
-        wf = Workflow()
-        t1 = wf.new_task(name='task1')
-        t2 = wf.new_task(name='task2', after='task1')
-        
-        t1.fail()
-
-        self.assertEqual(t2.status, 'failed')
-        self.assertIn('dependency_failed', t2.state)
-
-    def test_task_dependency_failure_recursive(self):
-        """Dependent task failure should propagate to all child tasks"""
-        wf = Workflow()
-
-        t1 = wf.new_task(name='task1')
-        t2 = wf.new_task(name='task2', after='task1')
-        t3 = wf.new_task(name='task3', after='task2')
-        t4 = wf.new_task(name='task4', after='task3')
-        t1.fail()
-
-        self.assertEqual(t4.status, 'failed')
-        self.assertIn('dependency_failed', t4.state)

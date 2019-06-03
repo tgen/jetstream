@@ -38,11 +38,13 @@ log.addHandler(logging.NullHandler())
 
 # Package module imports
 from jetstream import backends, pipelines, runner, templates, utils, workflows
-from jetstream.projects import Project, ProjectInvalid, new_project
+from jetstream.projects import Project, init, is_project
 from jetstream.runner import Runner
 from jetstream.templates import environment, render_template
 from jetstream.workflows import Workflow, Task, load_workflow, save_workflow, \
     random_workflow
+from jetstream.pipelines import Pipeline, InvalidPipeline, get_pipeline, \
+    pipelines_iter, list_pipelines
 
 
 def lookup_backend(name=None):
@@ -50,7 +52,7 @@ def lookup_backend(name=None):
     will return the class and also a dictionary of default paramters for
     instantiating the class that can be customized via config file."""
     name = name or settings['backend'].get(str)
-    params = dict(settings['backends'][name].get(dict))
+    params = settings['backends'][name].get(dict).copy()
     cls = params.pop('()')
     backend = utils.dynamic_import(cls)
     return backend, params

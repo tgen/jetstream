@@ -27,7 +27,8 @@ class BaseBackend(object):
                 stdout = task.directives['stdout']
             else:
                 filename = f'{task.name}.log'
-                stdout = os.path.join(self.runner.project.logs_dir, filename)
+                logs_dir = self.runner.project.paths.logs_dir
+                stdout = os.path.join(logs_dir, filename)
 
             if 'stderr' in task.directives:
                 stderr = task.directives['stderr']
@@ -43,5 +44,6 @@ class BaseBackend(object):
 class PoisonedBackend(BaseBackend):
     async def spawn(self, something):
         if random.random() > 0.95:
-            raise Exception('Bad code in the backend should cause the runner'
-                            'to halt!')
+            err = 'Unhandled exceptions in the backend should cause the ' \
+                  'runner to halt immediately and revoke all jobs.'
+            raise Exception(err)

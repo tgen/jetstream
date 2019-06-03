@@ -12,246 +12,200 @@ random = Random(42)
 
 
 class WorkflowBasics(TestCase):
-    def test_workflow_repr(self):
-        wf = jetstream.Workflow()
-        wf.__repr__()
+    def test_init(self):
+        jetstream.Workflow()
 
-    def test_workflow_pretty(self):
+    def test_len(self):
         wf = jetstream.Workflow()
-        wf.new_task(name='hello_world')
-        wf.to_yaml()
-        wf.to_json()
+        self.assertEqual(len(wf), 0)
 
     def test_add_task(self):
+        t = jetstream.Task()
         wf = jetstream.Workflow()
-        wf.new_task(name='task')
+        wf.add(t)
+
+    def test_pop_task(self):
+        t = jetstream.Task()
+        wf = jetstream.Workflow(tasks=[t,])
+        t2 = wf.pop(t.name)
+        self.assertIs(t, t2)
+        self.assertEqual(len(wf), 0)
+
+    def test_new_task(self):
+        wf = jetstream.Workflow()
+        wf.new_task(cmd='hello world')
+        self.assertEqual(len(wf), 1)
 
     def test_add_duplicate_task(self):
         wf = jetstream.Workflow()
         t1 = Task()
         t2 = Task()    
-        wf.add_task(t1)
-        
-        self.assertRaises(ValueError, wf.add_task, t2)
+        wf.add(t1)
+        self.assertRaises(ValueError, wf.add, t2)
 
-    def test_workflow_len(self):
-        """ Test the Workflow.__len__() method"""
+    def test_indexing(self):
         wf = jetstream.Workflow()
-        wf.new_task(name='hello')
-        
-        self.assertEqual(len(wf), 1)
-
-    def test_get_task(self):
-        wf = jetstream.Workflow()
-        t1 = wf.new_task(name='task')
-        t2 = wf.get_task(t1.name)
-
-        self.assertIs(t1, t2)
+        t1 = wf.new_task()
+        t2 = wf[t1.name]
+        t3 = wf[t1.name]
+        self.assertIs(t1, t2, t3)
 
     def test_add_task_w_cmd(self):
         wf = jetstream.Workflow()
         cmd = 'echo hello world'
         t1 = wf.new_task(name='task', cmd=cmd)
-        t2 = wf.get_task(t1.name)
-        
+        t2 = wf['task']
         self.assertEqual(t1, t2)
         self.assertIs(t1, t2)
 
     def test_add_task_w_stdin(self):
         wf = jetstream.Workflow()
-        stdin = '#!/bin/bash\necho hello world'
-        t = wf.new_task(name='task', stdin=stdin)
-
-        self.assertEqual(t.directives().get('stdin'), stdin)
+        stdin = '/path/to/stdin.txt'
+        task = wf.new_task(name='task', stdin=stdin)
+        self.assertEqual(task.directives.get('stdin'), stdin)
 
     def test_add_task_w_stdout(self):
         wf = jetstream.Workflow()
         stdout = 'out.txt'
-        t = wf.new_task(name='task', stdout=stdout)
-
-        self.assertEqual(t.directives().get('stdout'), stdout)
-        self.assertEqual(t.directives().get('stderr'), None)
+        task = wf.new_task(name='task', stdout=stdout)
+        self.assertEqual(task.directives.get('stdout'), stdout)
 
     def test_add_task_w_stderr(self):
         wf = jetstream.Workflow()
         stderr = 'err.txt'
-        t = wf.new_task(name='task', stderr=stderr)
-
-        self.assertEqual(t.directives().get('stderr'), stderr)
+        task = wf.new_task(name='task', stderr=stderr)
+        self.assertEqual(task.directives.get('stderr'), stderr)
 
     def test_add_task_w_stdout_stderr(self):
         wf = jetstream.Workflow()
         stdout = 'out.txt'
         stderr = 'err.txt'
-        t = wf.new_task(name='task', stdout=stdout, stderr=stderr)
-
-        self.assertEqual(t.directives().get('stdout'), stdout)
-        self.assertEqual(t.directives().get('stderr'), stderr)
+        task = wf.new_task(name='task', stdout=stdout, stderr=stderr)
+        self.assertEqual(task.directives.get('stdout'), stdout)
+        self.assertEqual(task.directives.get('stderr'), stderr)
 
     def test_add_task_w_cpus(self):
         wf = jetstream.Workflow()
         cpus = 4
-        t = wf.new_task(name='task', cpus=cpus)
-        
-        self.assertEqual(t.directives().get('cpus'), cpus)
+        task = wf.new_task(name='task', cpus=cpus)
+        self.assertEqual(task.directives.get('cpus'), cpus)
 
     def test_add_task_w_mem(self):
         wf = jetstream.Workflow()
         mem = 4
-        t = wf.new_task(name='task', mem=mem)
-
-        self.assertEqual(t.directives().get('mem'), mem)
+        task = wf.new_task(name='task', mem=mem)
+        self.assertEqual(task.directives.get('mem'), mem)
 
     def test_find_by_id(self):
         wf = jetstream.Workflow()
         t = wf.new_task(name='task')
-
-        self.assertEqual(wf.find('t.*'), {t.name,})
+        results = wf.find('t.*')
+        self.assertIn(t, results)
 
     def test_find_by_id_fallback(self):
         wf = jetstream.Workflow()
-
         self.assertEqual(wf.find('.*', fallback=None), None)
 
     def test_neg_find_by_id(self):
         wf = jetstream.Workflow()
         self.assertRaises(ValueError, wf.find, 't.*')
 
-    def test_find_by_ouput(self):
-        wf = jetstream.Workflow()
-        t = wf.new_task(name='task', output='log.txt')
-        matches = wf.find_by_output('log.txt')
-
-        self.assertEqual(matches, {t.name,})
-
-    def test_find_by_output_fallback(self):
-        wf = jetstream.Workflow()
-        
-        self.assertEqual(wf.find_by_output('.*', fallback=None), None)
-
-    def test_neg_find_by_output(self):
-        wf = jetstream.Workflow()
-
-        self.assertRaises(ValueError, wf.find_by_output, '.*')
-
     def test_stress_add_tasks(self):
         wf = jetstream.Workflow()
 
         for i in range(500):
-            wf.new_task(name=str(i))
+            wf.new_task(name=f'task_{i}')
 
         self.assertEqual(len(wf), 500)
 
     def test_stress_add_tasks_transaction(self):
         wf = jetstream.Workflow()
 
-        with wf:
-            for i in range(500):
-                wf.new_task(name=str(i))
+        for i in range(500):
+            wf.new_task(name=f'task{i}')
 
         self.assertEqual(len(wf), 500)
 
-    # TODO Test duplicate task add during context manager
-
 
 class WorkflowDependencies(TestCase):
-    def test_neg_add_task_w_input(self):
-        """Task dependencies are linked after every wf.new_task or wf.add_task
-        unless context manager is used. Adding a task that requires inputs when
-        the no task produces that input as output should raise an error."""
+    def test_successors_1(self):
         wf = jetstream.Workflow()
-
-        self.assertRaises(ValueError, wf.new_task, name='task', input='a')
-
-    def test_wf_dependents_1(self):
-        wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1', output='banana.txt')
         t2 = wf.new_task(name='task2', input='banana.txt')
-        
-        deps = set(wf.dependents(t1))
+        graph = wf.graph()
+        deps = set(graph.successors(t1))
         self.assertEqual(deps, {t2,})
 
-    def test_wf_dependents_2(self):
+    def test_successors_2(self):
+        """Test adding input/output directives as lists"""
         wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1', output=['banana.txt', 'banana2.txt'])
         t2 = wf.new_task(name='task2', input=['banana.txt', 'banana2.txt'])
-
-        deps = set(wf.dependents(t1))
+        graph = wf.graph()
+        deps = set(graph.successors(t1))
         self.assertEqual(deps, {t2,})
 
-    def test_wf_dependencies_1(self):
+    def test_predecessors_1(self):
         wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1', output='log1.txt')
         t2 = wf.new_task(name='task2', output='log2.txt')
         t3 = wf.new_task(name='task3', input=['log1.txt', 'log2.txt'])
-        
-        deps = set(wf.dependencies(t3))
+        graph = wf.graph()
+        deps = set(graph.predecessors(t3))
         self.assertEqual(deps, {t1, t2})
 
-    def test_neg_add_task_w_after(self):
-        wf = jetstream.Workflow()
-        self.assertRaises(ValueError, wf.new_task, name='task', after='task1')
-
     def test_neg_self_dependency(self):
-        """Tasks cannot depend on themselves. The current task will be removed
-        from the match results when searching for dependencies"""
+        """Tasks cannot depend on themselves. Adding edges where from==to
+        does nothing. """
         wf = jetstream.Workflow()
         t = wf.new_task(name='task', after='task')
-
-        self.assertEqual([], list(t.dependencies()))
+        graph = wf.graph()
+        deps = set(graph.predecessors(t))
+        self.assertEqual(deps, set())
 
     def test_add_task_w_after(self):
         wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1', )
         t2 = wf.new_task(name='task2', after='task1')
-        
-        deps = list(wf.dependencies(t2))
+        graph = wf.graph()
+        deps = set(graph.predecessors(t2))
+        self.assertEqual(deps, {t1,})
 
-        self.assertEqual(deps, [t1,])
-
-    def test_neg_add_task_w_before(self):
-        wf = jetstream.Workflow()
-
-        self.assertRaises(ValueError, wf.new_task, name='task', before='task1')
 
     def test_add_task_w_before(self):
         wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1')
         t2 = wf.new_task(name='task2', before='task1')
-
-        deps = list(wf.dependencies(t1))
-
-        self.assertEqual(deps, [t2, ])
+        graph = wf.graph()
+        deps = set(graph.predecessors(t1))
+        self.assertEqual(deps, {t2,})
 
     def test_is_ready(self):
         wf = jetstream.Workflow()
-
         t1 = wf.new_task(name='task1')
         t2 = wf.new_task(name='task2', after='task1')
-        
-        self.assertEqual(wf.is_ready(t1), True)
-        self.assertEqual(wf.is_ready(t2), False)
+        graph = wf.graph()
+        self.assertEqual(graph.is_ready(t1), True)
+        self.assertEqual(graph.is_ready(t2), False)
 
     def test_dependent_failure(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='hello')
         t2 = wf.new_task(name='goodbye', after='hello')
-        t1.fail()
-
-        self.assertEqual(t2.status, 'failed')
+        graph = wf.graph()
+        graph.not_okay(t1)
+        self.assertTrue(t2.is_done())
+        self.assertTrue(t2.is_failed())
+        self.assertTrue(t2.is_skipped())
+        self.assertFalse(t2.is_complete())
 
     def test_workflow_mash(self):
         wf1 = jetstream.random_workflow(n=10)
         wf2 = jetstream.random_workflow(n=20)
 
         common_task = Task(name='in_common')
-        wf1.add_task(common_task)
-        wf2.add_task(common_task)
+        wf1.add(common_task)
+        wf2.add(common_task)
 
         for t in wf1:
             t.complete()
@@ -259,8 +213,8 @@ class WorkflowDependencies(TestCase):
         wf3 = jetstream.workflows.mash(wf1, wf2)
         self.assertIn(common_task, wf3)
 
-        t = wf3.get_task('in_common')
-        self.assertTrue(t.is_complete)
+        t = wf3['in_common']
+        self.assertTrue(t.is_complete())
 
 
 
@@ -274,25 +228,27 @@ class WorkflowIteration(TestCase):
     def test_random_workflow_n_and_timout(self):
         jetstream.random_workflow(250, timeout=1)
 
-    def test_workflow_iter(self):
+    def test_iter(self):
         wf = jetstream.random_workflow(n=25, timeout=1)
-        i = iter(wf)
+        iter(wf)
 
-        self.assertEqual(type(i), jetstream.workflows.Workflow)
+    def test_graph(self):
+        wf = jetstream.random_workflow(n=25, timeout=1)
+        wf.graph()
 
-    def test_workflow_iter_next1(self):
+    def test_graph_iter(self):
+        """While tasks are pending but workflow is not complete, the
+        WorkflowGraphIterator will return None. When all tasks are complete
+        it should raise StopIteration"""
         wf = jetstream.Workflow()
 
         t = wf.new_task(name='task')
-
-        i = iter(wf)
-
+        i = iter(wf.graph())
         self.assertIs(next(i), t)
         self.assertIs(next(i), None)
         self.assertIs(next(i), None)
 
         t.complete()
-
         self.assertRaises(StopIteration, next, i)
 
 
@@ -309,24 +265,29 @@ class WorkflowSaving(TestCase):
         os.chdir(self._original_dir)
         self._temp_dir.cleanup()
 
-    def test_workflow_save(self):
+    def test_save(self):
+        wf = jetstream.Workflow()
+        for i in range(100):
+            wf.new_task(name=f'task{i}', cmd='echo task {}'.format(i))
+        jetstream.save_workflow(wf, 'wf.pickle')
+        self.assertTrue(os.path.exists('wf.pickle'))
+
+    def test_load(self):
         wf = jetstream.Workflow()
 
-        with wf:
-            for i in range(100):
-                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+        # Add some tasks
+        for i in range(100):
+            wf.new_task(name=f'task{i}', cmd='echo task {}'.format(i))
 
-        jetstream.save_workflow(wf, 'wf.yaml')
+        # Modify some state
+        wf['task50'].complete()
+        wf['task42'].skip(foo='bar')
 
-    def test_workflow_load(self):
-        wf = jetstream.Workflow()
-        t1 = jetstream.Task(name='whatever')
+        jetstream.save_workflow(wf, 'wf.pickle')
+        wf2 = jetstream.load_workflow('wf.pickle')
 
-        with wf:
-            wf.add_task(t1)
-            for i in range(100):
-                wf.new_task(name=str(i), cmd='echo task {}'.format(i))
+        self.assertEqual(len(wf), 100)
+        self.assertIn('task1', wf2)
+        self.assertTrue(wf2['task50'].is_complete())
+        self.assertEqual(wf2['task42'].state.get('foo'), 'bar')
 
-        jetstream.save_workflow(wf, 'wf.yaml')
-        wf2 = jetstream.load_workflow('wf.yaml')
-        self.assertIn(t1, wf2)

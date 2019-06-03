@@ -1,71 +1,68 @@
-"""Run a pipeline
+"""Run a pipeline.
 
 Pipelines are Jetstream templates that have been documented with version
 information and added to the jetstream pipelines directory. This command
 allows pipelines to be referenced by name and automatically includes the
 pipeline scripts and constants in the run."""
-import os
 import logging
+import os
+import sys
 import jetstream
-from jetstream.cli.subcommands.run import main as run_main
-from jetstream.cli.subcommands.run import arg_parser as run_arg_parser
+from jetstream.cli.subcommands import run
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
+__doc__ = __doc__+ '\n\n' + run.__doc__
 
 
 def arg_parser(parser):
     # This subcommand is just an extension of the run command, so we add all
     # the arguments from that command to the parser as well.
-    run_arg_parser(parser)
+    run.arg_parser(parser)
+
+    # Hack the existing parser so that it doesn't error if a pipeline
+    # name is not given. This allows us to list options instead of getting
+    # a parser error immediately.
+    for action in parser._actions:
+        if 'path' in action.dest:
+            action.nargs = '?'
 
     pipelines = parser.add_argument_group('pipeline options')
 
     pipelines.add_argument(
         '--pipelines-home',
-        help='Override path to the pipelines home',
+        help='override path to the pipelines home',
     )
 
     pipelines.add_argument(
-        '--ls',
+        '-L', '--list',
         action='store_true',
-        help='Show details about installed pipelines'
+        help='show a list of all the pipelines installed'
     )
 
-# TODO Arg parser upgrades?
-# All these share an arg parser:
-# jetstream pipelines name
-# jetstream build name / jetstream run name / jetstream render name
-# the value "name" should be optional positional, then:
-# jetstream build <args> == jetstream run --build-only <args>
-# jetstream render <args> == jetstream run --render-only <args>
-# jetstream pipelines name == jetstream run -t pipeline/main.jst <args>
-# jetstream pipelines
 
-def main(args=None):
+def main(args):
     log.debug(f'{__name__} {args}')
 
-    # Make sure pipelines are configured
     if args.pipelines_home:
         jetstream.settings['pipelines']['home'] = args.pipelines_home
 
-    pipelines_home = jetstream.settings['pipelines']['home'].get(str)
+    if args.path:
+        pipeline, *version = args.path.rsplit('@', 1)
+        version = next(iter(version), None)
+        args.pipeline = pipeline = jetstream.get_pipeline(pipeline, version)
+        args.path = os.path.join(pipeline.path, pipeline.info['main'])
 
-    # ls just prints info about current pipelines
-    if args.ls:
-        installed = jetstream.pipelines.ls(pipelines_home)
-        print(jetstream.utils.yaml_dumps(installed))
-    else:
-        args.pipeline = pipeline = jetstream.pipelines.lookup(args.path)
-        args.path = os.path.join(pipeline.path, pipeline.manifest['main'])
-
-        # If the pipeline has a bin directory, prepend the env PATH
-        if 'bin' in pipeline.manifest:
+        if 'bin' in pipeline.info:
             bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
             os.environ['PIPELINE_BIN'] = str(bin_path)
             os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
-        run_main(args)
-
-
-if __name__ == '__main__':
-    main()
+        run.main(args)
+    else:
+        if args.list:
+            ps = jetstream.list_pipelines()
+            ps = '\n'.join(f'{p.name} ({p.version}): {p.path}' for p in ps)
+            print(ps)
+        else:
+            log.error(f'No pipeline name given!')
+            sys.exit(1)

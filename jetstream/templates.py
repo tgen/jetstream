@@ -6,6 +6,7 @@ import logging
 import os
 import urllib.parse
 import textwrap
+from collections.abc import Mapping
 import jetstream
 from jinja2 import (
     Environment,
@@ -18,21 +19,61 @@ from jinja2 import (
 log = logging.getLogger(__name__)
 
 
+class TemplateContext:
+    """Enforces the correct priority order for loading config data sources when
+    rendering templates:
+
+    low priority  --> 1) Project: jetstream/config.yaml
+                      2) Pipeline: pipeline.yaml: template_config_data section
+    high priority --> 3) Command Args: -c/--config and -C/--config-file options
+
+    """
+    def __init__(self, *, project=None, pipeline=None, command_args=None):
+        self.sources = []
+        self.stack = []
+
+        if project is not None:
+            rep = textwrap.shorten(str(project.index), 76)
+            self.sources.append(f'Project index: {rep}')
+            self.stack.append(project.index)
+
+        if pipeline is not None:
+            rep = textwrap.shorten(str(pipeline.manifest), 76)
+            self.sources.append(f'Pipeline manifest: {rep}')
+            self.stack.append(pipeline.manifest)
+
+        if command_args is not None:
+            rep = textwrap.shorten(str(command_args), 76)
+            self.sources.append(f'Command args: {rep}')
+            self.stack.append(command_args)
+
+    def __str__(self):
+        sources = [f'{i}: {text}' for i, text in enumerate(self.sources)]
+        return '\n'.join(sources)
+
+    def flatten(self):
+        """Returns a single config object created by flattening the sources
+        in """
+        return jetstream.utils.config_stack(*self.stack)
+
+
+
+class TemplateException(Exception):
+    """Can be raised by the template itself using raise() function"""
+
+
 @contextfunction
 def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
-    raise Exception(f'{ctx.name}: {msg}')
+    raise TemplateException(f'Template: {ctx.name}: {msg}')
 
 
 @contextfunction
-def log_helper(ctx, msg):
+def log_helper(ctx, msg, level='INFO'):
     """Allow "raise('msg')" to be used in templates"""
-    log.critical(f'{ctx.name}: {msg}')
+    level = logging._checkLevel(level)
+    log.log(level, f'{ctx.name}: {msg}')
     return ''
-
-@contextfunction
-def this_helper(ctx):
-    return ctx
 
 
 def basename(path):
@@ -86,7 +127,6 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
 
     env.globals['raise'] = raise_helper
     env.globals['log'] = log_helper
-    env.globals['this'] = this_helper
     env.filters['fromjson'] = fromjson
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
@@ -95,76 +135,52 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-class TemplateContext(object):
-    """Enforces the correct priority order for loading config data sources when
-    rendering templates:
-
-    low priority  --> 1) Project: jetstream/config.yaml
-                      2) Pipeline: pipeline.yaml: template_config_data section
-    high priority --> 3) Command Args: -c/--config and -C/--config-file options
-
-    """
-    def __init__(self, *, project=None, pipeline=None, command_args=None):
-       self.stack = (project.get_config, pipeline.config, command_args)
-
-    def __repr__(self):
-        sources = ' -> '.join((s for s in self.stack if s))
-        return '<TemplateContext '
-
-    def flatten(self):
-        """Returns a single config object created by flattening the sources
-        in """
-        log.debug('Flattening template context stack...')
-        stack = []
-
-        if self.project:
-            log.debug(f'Including project: {self.project.name}')
-            stack.append(self.project.get_config())
-
-        if self.pipeline:
-            log.debug(f'Including pipeline: {self.pipeline.name}')
-            stack.append(self.pipeline.get_config())
-
-        if self.command_args:
-            cmd_args = textwrap.shorten(str(self.command_args), 24)
-            log.debug(f'Including cmd args: {cmd_args}')
-            stack.append(self.command_args)
-
-        return jetstream.utils.config_stack(*stack)
-
-
-def render_template_file(path, env=None, **kwargs):
-    """Using Jinja2 environment, loads a template from a filepath, then renders
-    with the given context. See render_template for more info"""
-    template_dir = os.path.dirname(path)
-    template_basename = os.path.basename(path)
-
-    if env is None:
-        env = environment(searchpath=[template_dir, ])
-
-    template = env.get_template(template_basename)
-    return render_template(template, **kwargs)
-
-
-def render_template_string(s, env=None, **kwargs):
-    """Using Jinja2 environment, loads a template from a string, then renders
-    with the given context. See render_template for more info"""
-    if env is None:
-        env = environment(searchpath=[os.getcwd(),])
-
-    template = env.from_string(s)
-    return render_template(template, **kwargs)
-
-
-def render_template(template, project=None, pipeline=None, command_args=None):
-    """Render a template with the given context data sources"""
+def render_template(path=None, data=None, *, project=None, pipeline=None,
+                   command_args=None, search_path=()):
     log.info('Rendering template...')
+
+    if bool(path) == bool(data):
+        raise TypeError('build template expected path or data argument')
+
+    if path:
+        template_dir = os.path.dirname(path)
+        template_basename = os.path.basename(path)
+        env = environment(searchpath=[template_dir,] + list(search_path))
+        template = env.get_template(template_basename)
+    else:
+        env = environment(searchpath=list(search_path))
+        template = env.from_string(data)
+
     context = TemplateContext(
         project=project,
         pipeline=pipeline,
         command_args=command_args
     )
-    log.debug(f'Template render context: {context}')
-    ctx = context.flatten()
-    render = template.render(**ctx)
-    return render
+
+    sources = textwrap.indent(str(context), " " * 4)
+    if sources:
+        log.info(f'Template rendering data sources include:\n{sources}')
+    else:
+        log.warning(f'Warning: No data for rendering template variables')
+
+    context = context.flatten()
+    return template.render(**context)
+
+
+
+def build_template(*args, **kwargs):
+    render = render_template(*args, **kwargs)
+    tasks = jetstream.utils.yaml_loads(render)
+
+    log.info('Loading tasks...')
+    if isinstance(tasks, Mapping):
+        # If template is a mapping, it is expected to have a tasks section
+        props = {k: v for k, v in tasks.items() if k != 'tasks'}
+        tasks = [jetstream.Task(**t) for t in tasks['tasks']]
+        wf = jetstream.Workflow(tasks=tasks, props=props)
+    else:
+        tasks = [jetstream.Task(**t) for t in tasks]
+        wf = jetstream.Workflow(tasks=tasks)
+
+    return wf
+

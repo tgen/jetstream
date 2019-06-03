@@ -44,8 +44,8 @@ runner:
 projects:
   id_format: p{id}
   lock_timeout: 60
-  max_tries_history: 10
-  filename_format_history: %Y-%m-%dT%H-%M-%SZ.yaml
+  history_max_tries: 10
+  history_filename: %Y-%m-%dT%H-%M-%SZ.yaml
 
 
 # ================================== Backends =================================
@@ -111,6 +111,11 @@ kvargs:
     uri: urllib.parse.urlparse
     file: jetstream.utils.load_file
 
+# =================================== Tasks ===================================
+tasks:
+  summary_fields:
+    - name
+    - state.status
 
 # ================================== Logging ==================================
 # To permanently force a single logging style, create a key in your user
@@ -184,7 +189,7 @@ logging_profiles:
     version: 1
     formatters:
       f:
-        format: "[\x1b[4m\x1b[92m\U0001F335 {name}\x1b[0m] {asctime} {message}"
+        format: "[\x1b[4m\x1b[92m\U0001F335 {name}\x1b[0m] {asctime} {levelname}: {message}"
         datefmt: '%Y-%m-%d %H:%M:%S'
         style: '{'
     handlers:

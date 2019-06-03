@@ -27,8 +27,7 @@
 
 - name: after_dynamic_task
   stdout: /dev/null
-  after:
-    re: dynamic_task|after_adding_tasks
+  after_re: dynamic_task|after_adding_tasks
   cmd: |
     echo This should have run after \"dynamic_task\"
 

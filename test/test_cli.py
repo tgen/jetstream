@@ -11,7 +11,7 @@ TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
 TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
 
 
-class TestCliExt(TestCase):
+class TestCliRunTemplates(TestCase):
     """Tests that run workflow templates stored externally in
     test/test_templates """
     #longMessage = True
@@ -19,7 +19,7 @@ class TestCliExt(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliExt, self).setUp()
+        super(TestCliRunTemplates, self).setUp()
         self.original_dir = os.getcwd()
         self.temp_dir = tempfile.TemporaryDirectory()
         os.chdir(self.temp_dir.name)
@@ -40,11 +40,11 @@ class TestCliExt(TestCase):
                 cli_main(args)
 
 
-class TestCli(TestCase):
+class TestCliModule(TestCase):
     def setUp(self):
         """ All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCli, self).setUp()
+        super(TestCliModule, self).setUp()
         self.original_dir = os.getcwd()
         self.temp_dir = tempfile.TemporaryDirectory()
         os.chdir(self.temp_dir.name)
@@ -56,6 +56,18 @@ class TestCli(TestCase):
     def test_init(self):
         args = ['init', '-l', 'silent']
         cli_main(args)
+        self.assertTrue(os.path.exists('jetstream/project.yaml'))
+
+    def test_reinit(self):
+        args = ['init', '-l', 'silent']
+        cli_main(args)
+        p = jetstream.Project()
+
+        args = ['init', '-l', 'silent', '-c', 'foo', 'bar']
+        cli_main(args)
+        p2 = jetstream.Project()
+
+        self.assertEqual(p.info['id'], p2.info['id'])
 
     def test_run(self):
         with open('testwf.jst', 'w') as fp:
@@ -81,15 +93,15 @@ class TestCli(TestCase):
         cli_main(args)
 
     def test_tasks(self):
-        p = jetstream.new_project()
+        p = jetstream.init()
 
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = ['run', 'testwf.jst', '-l', 'silent', '--project', p.path]
+        args = ['run', 'testwf.jst', '-l', 'silent', '--project', p.paths.path]
         cli_main(args)
 
-        args = ['tasks', '--project', p.path]
+        args = ['tasks', '--project', p.paths.path]
         with redirect_stdout(StringIO()):
             cli_main(args)
 

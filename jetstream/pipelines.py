@@ -7,11 +7,26 @@ log = logging.getLogger(__name__)
 MANIFEST_FILENAME = 'pipeline.yaml'
 
 
-class InvalidPipeline(Exception):
+class InvalidPipeline(ValueError):
     pass
 
+# Manifest file example
+# This manifest is also available as config data
+# when rendering workflows. So, it can be a good
+# place to store extra variables that may be used
+# in the templates.
+#
+# __pipeline__:
+#   name: phoenix
+#   version: 1.0
+#   main: main.jst
+#   author: Ryan Richholt
+#   ...
+# foo: bar
+# constants:
+#   these: can be anything
 
-class Pipeline(object):
+class Pipeline:
     """Represents a pipeline installed on the system."""
     def __init__(self, path):
         self.path = os.path.abspath(os.path.expanduser(path))
@@ -23,8 +38,10 @@ class Pipeline(object):
         self.manifest = jetstream.utils.load_file(self.manifest_path)
 
         try:
-            self.name = self.manifest['name']
-            self.version = str(self.manifest.get('version', 0))
+            self.info = info = self.manifest['__pipeline__']
+            self.name = info['name']
+            self.main = info['main']
+            self.version = str(info['version'])
         except KeyError as e:
             err = f'{self.path}: manifest missing key "{e}"'
             raise InvalidPipeline(err) from None
@@ -34,10 +51,10 @@ class Pipeline(object):
             raise InvalidPipeline(err)
 
     def __repr__(self):
-        return f'<Pipeline: {self.name}-{self.version}>'
+        return f'<Pipeline: {self.name} ({self.version})>'
 
 
-def find_pipelines(home=None):
+def pipelines_iter(home=None):
     home = home or jetstream.settings['pipelines']['home'].get(str)
     for filename in os.listdir(home):
         path = os.path.join(home, filename)
@@ -46,18 +63,23 @@ def find_pipelines(home=None):
             try:
                 yield Pipeline(path)
             except Exception:
-                log.exception(f'Failed to load: {path}')
+                log.warning(f'Failed to load: {path}')
 
 
-def lookup(name, version=None, home=None):
+def list_pipelines(home=None):
+    return list(pipelines_iter(home))
+
+
+def get_pipeline(name, version=None, home=None):
     if version is not None:
         version = str(version)
-        for p in find_pipelines(home):
+        for p in pipelines_iter(home):
+            # TODO can we allow > < = syntax here?
             if p.name == name and p.version == version:
                 return p
     else:
         matches = []
-        for p in find_pipelines(home):
+        for p in pipelines_iter(home):
             if p.name == name:
                 matches.append(p)
 
@@ -65,7 +87,11 @@ def lookup(name, version=None, home=None):
             s = sorted(matches, key=lambda p: LooseVersion(p.version))
             return s[-1]
 
-    msg = f'Pipeline "{name}-{version}" not found!'
+    if version is not None:
+        msg = f'Pipeline "{name} ({version})" not found!'
+    else:
+        msg = f'Pipeline "{name} (latest)" not found!'
+
     raise FileNotFoundError(msg)
 
 

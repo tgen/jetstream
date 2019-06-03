@@ -26,20 +26,17 @@ sentinel = object()
 log = logging.getLogger(__name__)
 
 
-class Fingerprint(object):
+class Fingerprint:
     """Generate a snapshot of the system info."""
-    def __init__(self, note=None):
+    def __init__(self, note=None, id=None):
         self.datetime = datetime.utcnow().isoformat()
         self.user = getuser()
         self.version = str(get_distribution("jetstream"))
-        self.sys_version = sys.version.split('\n')
-        self.sys_platform = sys.platform
-        self.sys_mac = hex(getnode()).upper()
-        self.pid = os.getpid()
         self.args = ' '.join(sys.argv)
         self.hostname = gethostname()
         self.pwd = os.getcwd()
         self.note = str(note)
+        self.id = id or jetstream.guid()
 
     def to_dict(self):
         return vars(self)
@@ -135,19 +132,17 @@ class Source(str):
         return '{}: {}'.format(self.line_number, self)
 
 
-def coerce_sequence(obj):
-    """Coerce an object to a sequence.
-    If the object is not already a sequence, this will convert the object
-    to a single item list. Since strings are sequences, iterating over an
-    object that can be a string or a sequence can be difficult. This solves
-    the problem by ensuring scalars are converted to sequences. """
+def coerce_tuple(obj):
+    """Coerce an object to a tuple.
+    Since strings are sequences, iterating over an object that can be a string
+    or a sequence can be difficult. This solves the problem by ensuring scalars
+    are converted to sequences. """
     if obj is None:
-        obj = []
+        return tuple()
     elif isinstance(obj, str):
-        obj = [obj, ]
-    elif not isinstance(obj, Sequence):
-        obj = [obj, ]
-    return obj
+        return (obj, )
+    else:
+        return tuple(obj)
 
 
 def config_stack(*sources):
@@ -196,7 +191,11 @@ def config_stack(*sources):
     conf = confuse.Configuration(n, read=False)
     for s in sources:
         if s:
-            conf.set(confuse.ConfigSource(s))
+            if isinstance(s, Mapping):
+                conf.set(confuse.ConfigSource(s))
+            else:
+                err = 'Config sources should return Mapping-type objects'
+                raise ValueError(err)
 
     # Hack to remove the ordereddicts, they're just ugly to look at and when
     # working with primitive data types coming from json/yaml files they're
@@ -231,6 +230,21 @@ def dict_update_dot_notation(d, key, value):
         k = nk
 
     d[k] = value
+
+
+def dict_lookup_dot_notation(d, path):
+    path = path.split('.')
+
+    k = path.pop(0)
+    v = d[k]
+    d = v
+
+    while path:
+        k = path.pop(0)
+        v = d[k]
+        d = v
+
+    return v
 
 
 def dynamic_import(path):

@@ -8,15 +8,12 @@ import shutil
 import subprocess
 import tempfile
 import time
-
 from asyncio.subprocess import PIPE
 from concurrent.futures import CancelledError
 from datetime import datetime, timedelta
-
-import jetstream
 from jetstream.backends import BaseBackend
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream')
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 

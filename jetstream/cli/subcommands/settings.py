@@ -1,18 +1,15 @@
-"""Jetstream Application Settings
+"""Configure Jetstream application settings.
 
-Example:
-jetstream settings --create --backend slurm --pipelines-home ~/pipelines
-
-Use --full to see all current settings, or --create to initialize a new
-config file. Use settings -h/--help to for more info on creating settings
-files.
+Use "jetstream settings -v" to see all current settings, or "-c" to create a
+new user application settings file. See "jetstream settings -h" to for more info
+on application settings.
 """
 import json
 import logging
 import os
 import jetstream
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
 template = """# Jetstream Common User Settings
 backend: {backend}
 pipelines:
@@ -41,36 +38,36 @@ pipelines:
 
 def arg_parser(parser):
     parser.add_argument(
-        '--full',
+        '-v', '--verbose',
         action='store_true',
-        help='Show the full settings values loaded from all sources'
+        help='show the full settings values loaded from all sources'
     )
 
     create = parser.add_argument_group('Create a new settings file')
 
     create.add_argument(
-        '--create',
+        '-c', '--create',
         action='store_true',
-        help='Initialize an example config file at the user config path'
+        help='initialize an example config file at the user config path'
     )
 
     create.add_argument(
-        '--backend',
+        '-b', '--backend',
         default='local',
-        help='Backend to use when initializing a user settings file'
+        help='backend to use when initializing a user settings file'
     )
 
     create.add_argument(
-        '--pipelines-home',
+        '-P', '--pipelines-home',
         default='null',
-        help='Pipelines home directory to use when initializing a user'
-             'settings file.'
+        help='pipelines home directory to use when initializing a user'
+             'settings file'
     )
 
     create.add_argument(
-        '--overwrite-existing',
+        '-f', '--force',
         action='store_true',
-        help='Ignore FileExistsError when creating a settings file'
+        help='ignore FileExistsError when creating a settings file'
     )
 
 
@@ -78,14 +75,16 @@ def main(args):
     log.debug(f'{__name__} {args}')
     path = jetstream.settings.user_config_path()
 
-    if args.full:
+    if args.verbose:
         full = jetstream.settings.flatten()
         print(jetstream.utils.yaml_dumps(json.loads(json.dumps(full))))
         return
 
     if args.create:
-        if os.path.exists(path) and not args.overwrite_existing:
-            raise FileExistsError(path)
+        if os.path.exists(path) and not args.force:
+            err = f'There is already a user settings file here:\n{path}\nUse ' \
+                  '-f/--force to ignore this error and create a new one.'
+            raise FileExistsError(err)
         else:
             with open(path, 'w') as fp:
                 settings = template.format(

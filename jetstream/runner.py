@@ -32,8 +32,8 @@ def sigterm_ignored():
 
 class Runner:
     def __init__(self, backend_cls=None, backend_params=None,
-                 max_concurrency=None, throttle=None, autosave_min=None,
-                 autosave_max=None):
+                 max_concurrency=None, throttle=None, autosave=True,
+                 autosave_min=None, autosave_max=None):
         if backend_cls is None:
             self.backend_cls, self.backend_params = jetstream.lookup_backend('local')
         else:
@@ -41,6 +41,7 @@ class Runner:
             self.backend_params = backend_params
 
         self.backend = None
+        self.autosave = autosave
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
         self.throttle = throttle or settings['runner']['throttle'].get()
@@ -58,13 +59,8 @@ class Runner:
 
         # Properties that should not be modified during a run
         self._loop = None
-        self._run_id = None
         self._workflow = None
         self._project = None
-
-    @property
-    def run_id(self):
-        return self._run_id
 
     @property
     def workflow(self):
@@ -114,7 +110,7 @@ class Runner:
                     log.debug('Autosaver wait timed out')
 
                 log.debug('Autosaver saving workflow...')
-                self.save_workflow()
+                self.workflow.save()
                 last_save = datetime.now()
         except asyncio.CancelledError:
             pass
@@ -147,14 +143,6 @@ class Runner:
         if self.loop:
             self.loop.close()
 
-    def _get_workflow_save_path(self):
-        if self.workflow.save_path:
-            return self.workflow.save_path
-        elif self.project:
-            return self.project.workflow_path
-        else:
-            return f'{self.run_id}.pickle'
-
     def _halt(self):
         if self._main:
             self._main.cancel()
@@ -182,13 +170,13 @@ class Runner:
         """This coroutine is where the runner spends most of its time.
         It returns when the workflow raises StopIteration signalling that
         there are no more tasks to run. """
-        for task in self.workflow:
+        for task in self._workflow_iterator:
             if task is None:
                 await self._yield()
             else:
                 self.on_spawn(task)
 
-                if not task.directives().get('cmd'):
+                if not task.directives.get('cmd'):
                     # if task is blank or None
                     task.complete()
                 else:
@@ -241,33 +229,36 @@ class Runner:
     def on_spawn(self, task):
         """Called prior to launching a task"""
         log.debug('Runner spawn: {}'.format(task))
-        try:
-            exec_directive = task.directives().get('exec')
 
-            if exec_directive:
-                exec(exec_directive, None, {'runner': self, 'task': task})
-                self._workflow_iterator = iter(self.workflow)
-        except AttributeError:
-            log.exception('Exception suppressed')
+        exec_directive = task.directives.get('exec')
+
+        if exec_directive:
+            exec(exec_directive, None, {'runner': self, 'task': task})
+            self._workflow_iterator = iter(self.workflow.graph())
 
     def preflight(self):
         """Called prior to start"""
-        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
-        self.save_workflow()
-        log.info(f'Starting run: {self.run_id}')
-
-    def save_workflow(self):
-        path = self._get_workflow_save_path()
-        self.workflow.save(path)
+        if self.autosave:
+            if self.workflow.path:
+                log.info(f'Saving workflow: {self.workflow.path}')
+                self.workflow.save()
+                self._start_autosave()
+            else:
+                log.warning(
+                    'Autosave is enabled, but no path has been set for this '
+                    'workflow. Progress will not be saved.'
+                )
 
     def shutdown(self):
         """Called after shutdown"""
-        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
-        self.save_workflow()
+        if self.autosave:
+            if self.workflow.path:
+                log.info(f'Saving workflow: {self.workflow.path}')
+                self.workflow.save()
 
         complete = 0
         failed = 0
-        for t in self.workflow.tasks(objs=True):
+        for t in self.workflow:
             if t.is_complete():
                 complete += 1
             elif t.is_failed():
@@ -281,18 +272,20 @@ class Runner:
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
 
-    def start(self, workflow, run_id=None, project=None):
+    def start(self, workflow, project=None):
         """Called to start the runner on a workflow."""
+        if project:
+            os.chdir(project.paths.path)
+
         self._project = project
         self._workflow = workflow
         self._workflow_len = len(workflow)
-        self._run_id = run_id or jetstream.guid()
+        self._workflow_iterator = iter(self.workflow.graph())
         self._run_started = datetime.now()
         self._previous_directory = os.getcwd()
         self._errs = False
         self._start_event_loop()
         self._start_backend()
-        self._start_autosave()
 
         if self.max_concurrency is None:
             self.max_concurrency = utils.guess_max_forks()
@@ -301,9 +294,6 @@ class Runner:
 
         with sigterm_ignored():
             self.preflight()
-
-            if project:
-                os.chdir(project.path)
 
             try:
                 self._main = self.loop.create_task(self._spawn_new_tasks())
