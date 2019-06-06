@@ -56,14 +56,16 @@ class Pipeline:
 
 def pipelines_iter(home=None):
     home = home or jetstream.settings['pipelines']['home'].get(str)
-    for filename in os.listdir(home):
-        path = os.path.join(home, filename)
-        manifest_path = os.path.join(path, MANIFEST_FILENAME)
-        if os.path.isdir(path) and os.path.exists(manifest_path):
-            try:
-                yield Pipeline(path)
-            except Exception:
-                log.warning(f'Failed to load: {path}')
+
+    for directory in home.split(':'):
+        for filename in os.listdir(directory):
+            path = os.path.join(directory, filename)
+            manifest_path = os.path.join(path, MANIFEST_FILENAME)
+            if os.path.isdir(path) and os.path.exists(manifest_path):
+                try:
+                    yield Pipeline(path)
+                except Exception:
+                    log.warning(f'Failed to load: {path}')
 
 
 def list_pipelines(home=None):
