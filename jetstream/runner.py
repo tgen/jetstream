@@ -182,7 +182,11 @@ class Runner:
             else:
                 self.on_spawn(task)
 
-                if not task.directives.get('cmd'):
+                if task.is_done():
+                    # if there were errors in the exec directive, we do not
+                    # attempt to run the cmd
+                    await asyncio.sleep(0)
+                elif not task.directives.get('cmd'):
                     # if task is blank or None
                     task.complete()
                 else:
