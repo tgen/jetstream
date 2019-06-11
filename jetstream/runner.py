@@ -244,8 +244,9 @@ class Runner:
             except Exception as e:
                 task.fail(returncode=1)
                 task.state['exec error'] = str(e)
-                self._workflow_iterator.graph.not_ok(task)
-            finally:
+                self._workflow_iterator = iter(self.workflow.graph())
+                self._workflow_iterator.graph.skip_descendants(task)
+            else:
                 self._workflow_iterator = iter(self.workflow.graph())
 
     def preflight(self):
