@@ -287,19 +287,9 @@ class WorkflowGraph:
         else:
             return True
 
-    def ok(self, task, *args, **kwargs):
-        task.complete(*args, **kwargs)
-
-    def not_ok(self, task, *args, **kwargs):
-        # First attempt to fail the task knowing it may be rescued
-        # by the remaining attempts state
-        task.fail(*args, **kwargs)
-
-        # If it did in fact fail, then we should also skip
-        # any dependents because they cannot pass now
-        if task.is_failed():
-            for dep in self.descendants(task):
-                dep.skip(dependency_failed=task.name)
+    def skip_descendants(self, task, *args, **kwargs):
+        for dep in self.descendants(task):
+            dep.skip(dependency_failed=task.name)
 
 
 class WorkflowGraphIterator:

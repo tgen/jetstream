@@ -157,9 +157,7 @@ class Runner:
         try:
             task = future.result()
             if task.is_failed():
-                self._workflow_iterator.graph.not_ok(task)
-            else:
-                self._workflow_iterator.graph.ok(task)
+                self._workflow_iterator.graph.skip_descendants(task)
         except Exception:
             log.exception(f'Unhandled exception in a task future: {future}')
             self._halt()
