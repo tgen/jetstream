@@ -160,7 +160,7 @@ class SlurmBackend(BaseBackend):
         )
 
         self._bump_next_update()
-        log.info(f'SlurmBackend submitted: {task}')
+        log.info(f'SlurmBackend submitted({job.jid}): {task}')
 
         job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
