@@ -290,7 +290,7 @@ class WorkflowGraph:
     def ok(self, task, *args, **kwargs):
         task.complete(*args, **kwargs)
 
-    def not_okay(self, task, *args, **kwargs):
+    def not_ok(self, task, *args, **kwargs):
         # First attempt to fail the task knowing it may be rescued
         # by the remaining attempts state
         task.fail(*args, **kwargs)
