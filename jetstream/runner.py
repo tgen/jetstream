@@ -241,8 +241,14 @@ class Runner:
         exec_directive = task.directives.get('exec')
 
         if exec_directive:
-            exec(exec_directive, None, {'runner': self, 'task': task})
-            self._workflow_iterator = iter(self.workflow.graph())
+            try:
+                exec(exec_directive, None, {'runner': self, 'task': task})
+            except Exception as e:
+                task.fail(returncode=1)
+                task.state['exec error'] = str(e)
+                self._workflow_iterator.graph.not_ok(task)
+            finally:
+                self._workflow_iterator = iter(self.workflow.graph())
 
     def preflight(self):
         """Called prior to start"""
