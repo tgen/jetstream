@@ -155,7 +155,12 @@ class Runner:
         """Callback added to task futures when they are spawned"""
         log.debug('Handle: {}'.format(future))
         try:
-            future.result()
+            task = future.result()
+            if task.is_failed():
+                self._workflow_iterator.graph.not_okay(task)
+            else:
+                self._workflow_iterator.graph.okay(task)
+
         except Exception:
             log.exception(f'Unhandled exception in a task future: {future}')
             self._halt()

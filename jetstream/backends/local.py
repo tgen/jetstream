@@ -100,6 +100,8 @@ class LocalBackend(jetstream.backends.BaseBackend):
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
 
+            return task
+
     async def subprocess_sh(
             self, args, *, stdin=None, stdout=None, stderr=None,
             cwd=None, encoding=None, errors=None, env=None,

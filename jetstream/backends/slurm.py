@@ -189,6 +189,7 @@ class SlurmBackend(BaseBackend):
             task.fail(-15)
         finally:
             log.debug(f'Slurmbackend spawn completed for {task}')
+            return task
 
 
 class SlurmBatchJob(object):

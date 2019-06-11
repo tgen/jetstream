@@ -163,13 +163,16 @@ def run(wf, args):
         wf.path = ewf.path
 
     if args.out:
-        wf.update = args.out
+        wf.path = args.out
 
     wf.reset(args.reset_method)
     args.runner.start(
         workflow=wf,
         project=args.project
     )
+
+    if any((task.is_failed() for task in wf.tasks.values())):
+        exit(1)
 
 
 def main(args):

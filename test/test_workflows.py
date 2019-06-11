@@ -171,7 +171,6 @@ class WorkflowDependencies(TestCase):
         deps = set(graph.predecessors(t2))
         self.assertEqual(deps, {t1,})
 
-
     def test_add_task_w_before(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1')
