@@ -115,13 +115,12 @@ class SlurmBackend(BaseBackend):
             tags = shlex.split(tags)
 
         comment = {
-            'wf': self.runner.workflow.id,
             'id': task.identity,
             'tags': tags
         }
 
         # TODO long tags here could cause an sbatch submission error, but
-        # we still have about ~1000 characters before that happens so the
+        # we still have over 1000 characters before that happens, so the
         # chance is pretty small. Limiting the tag length is non-trivial
         # but possible. It would probably be best to enforce this limit at
         # the Task level though.

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from asyncio import BoundedSemaphore, Event
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -121,7 +122,10 @@ class Runner:
         """If the async event loop has outstanding futures, they must be
         cancelled, and results collected, prior to exiting. Otherwise, lots of
         ugly error messages will be shown to the user. """
-        futures = asyncio.all_tasks(self.loop)
+        if sys.version_info < (3, 7):
+            futures = asyncio.Task.all_tasks(self.loop)
+        else:
+            futures = asyncio.all_tasks(self.loop)
 
         if futures:
             for task in futures:
