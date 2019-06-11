@@ -282,7 +282,7 @@ class WorkflowGraph:
             return False
 
         for dep in self.predecessors(task):
-            if not dep.is_done():
+            if not dep.is_complete():
                 return False
         else:
             return True
