@@ -192,7 +192,7 @@ class WorkflowDependencies(TestCase):
         t1 = wf.new_task(name='hello')
         t2 = wf.new_task(name='goodbye', after='hello')
         graph = wf.graph()
-        graph.not_ok(t1)
+        graph.skip_descendants(t1)
         self.assertTrue(t2.is_done())
         self.assertTrue(t2.is_failed())
         self.assertTrue(t2.is_skipped())

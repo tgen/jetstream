@@ -1,0 +1,9 @@
+- name: foo
+  cmd: sleep 1
+
+{{ log('logging at warning level', level='WARNING') }}
+{{ log('logging with default level info') }}
+{{ log('logging at debug level', level='DEBUG') }}
+- name: bar
+  after: foo
+  cmd: sleep 0
