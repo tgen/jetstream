@@ -44,7 +44,7 @@ class PidFileLock(filelock.SoftFileLock):
 
 class ProjectPaths:
     def __init__(self, path):
-        self.path = path
+        self.path = os.path.abspath(path)
         self.index_dir = os.path.join(self.path, INDEX_DIR)
         self.index_path = os.path.join(self.index_dir, INDEX_FILENAME)
         self.logs_dir = os.path.join(self.index_dir, LOGS_DIR)
