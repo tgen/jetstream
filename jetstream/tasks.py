@@ -88,7 +88,8 @@ class Task:
             raise ValueError(f'Could not validate task name: {self.name}')
 
         if not name_valid:
-            err = 'Task names can only include alphanumeric, hypen, and ' \
+            err = f'Invalid task name "{self.name}". ' \
+                  'Task names can only include alphanumeric, hypen, and ' \
                   'underscore characters'
             raise ValueError(err)
 
