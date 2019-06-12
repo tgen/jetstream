@@ -421,6 +421,7 @@ def mash(G, H):
     :param H: Another Workflow
     :return: Workflow
     """
+    log.info(f'Mashing G:{G.path}:{len(G)} tasks with H:{H.path}:{len(H)} tasks')
     tasks = [task.copy() for task in G]
     workflow = jetstream.Workflow(tasks, props=G.props.copy())
     new = set()
@@ -441,9 +442,11 @@ def mash(G, H):
     graph = workflow.graph()
 
     for task in aff:
-        for d in nx.descendants(graph.G, task.name):
-            to_reset.add(d)
-            graph.G.remove_node(d)
+        if task.name in graph.G:
+            for d in nx.descendants(graph.G, task.name):
+                print(d)
+                to_reset.add(d)
+                graph.G.remove_node(d)
 
     for t in to_reset:
         workflow[t].reset()
