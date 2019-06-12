@@ -126,7 +126,7 @@ def build_only(args):
         search_path=args.search_path
     )
     if args.out:
-        wf.save(args.out, format=args.workflow_format)
+        wf.save(args.out)
     else:
         print(wf)
 
