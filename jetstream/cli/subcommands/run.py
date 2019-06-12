@@ -125,6 +125,7 @@ def build_only(args):
         command_args=args.config,
         search_path=args.search_path
     )
+    graph = wf.graph()
     if args.out:
         wf.save(args.out)
     else:
