@@ -282,10 +282,10 @@ class Runner:
                 failed += 1
 
         if failed:
-            log.info(f'\u2620  {failed} tasks failed!')
+            log.info(f'{failed} tasks failed!')
             self._errs = True
         else:
-            log.info(f'\U0001f44d {complete} tasks complete!')
+            log.info(f'{complete} tasks complete!')
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
 
