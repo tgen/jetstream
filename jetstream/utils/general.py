@@ -145,6 +145,19 @@ def coerce_tuple(obj):
         return tuple(obj)
 
 
+def coerce_list(obj):
+    """Coerce an object to a list.
+    Since strings are sequences, iterating over an object that can be a string
+    or a sequence can be difficult. This solves the problem by ensuring scalars
+    are converted to sequences. """
+    if obj is None:
+        return list()
+    elif isinstance(obj, str):
+        return [obj, ]
+    else:
+        return list(obj)
+
+
 def config_stack(*sources):
     """Uses Confuse config flattener to merge together nested config sources.
     The main goal here is to allow multiple sources to merge smoothly rather

@@ -34,13 +34,13 @@ class TaskDirectiveProcessor:
     KNOWN = {
         'cmd': 'none_or_str',
         'exec': 'none_or_str',
-        'before': 'coerce_tuple',
-        'after': 'coerce_tuple',
-        'input': 'coerce_tuple',
-        'output': 'coerce_tuple',
-        'before-re': 'coerce_tuple',
-        'after-re': 'coerce_tuple',
-        'input-re': 'coerce_tuple',
+        'before': 'coerce_list',
+        'after': 'coerce_list',
+        'input': 'coerce_list',
+        'output': 'coerce_list',
+        'before-re': 'coerce_list',
+        'after-re': 'coerce_list',
+        'input-re': 'coerce_list',
     }
 
     def __call__(self, directives):
@@ -61,6 +61,9 @@ class TaskDirectiveProcessor:
 
     def coerce_tuple(self, directive, value):
         return jetstream.utils.coerce_tuple(value)
+
+    def coerce_list(self, directive, value):
+        return jetstream.utils.coerce_list(value)
 
     def none_or_str(self,directive, value):
         if value is None:

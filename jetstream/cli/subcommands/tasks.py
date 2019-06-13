@@ -1,4 +1,5 @@
 """Manage the tasks in a workflow"""
+import argparse
 import logging
 import jetstream
 
@@ -8,18 +9,43 @@ log = logging.getLogger('jetstream.cli')
 def arg_parser(p):
     p.add_argument(
         '-w', '--workflow',
+        default=None,
         help='path to a Jetstream workflow file'
     )
 
     p.add_argument(
         '-n', '--name',
         nargs='+',
+        default=[],
         help='task name(s)'
     )
 
     p.add_argument(
         '-r', '--regex',
         nargs='+',
+        default=[],
+        help='task name pattern(s) - match task names with regex'
+    )
+
+    shared = argparse.ArgumentParser(add_help=False)
+
+    shared.add_argument(
+        '-w', '--workflow',
+        default=None,
+        help='path to a Jetstream workflow file'
+    )
+
+    shared.add_argument(
+        '-n', '--name',
+        nargs='+',
+        default=[],
+        help='task name(s)'
+    )
+
+    shared.add_argument(
+        '-r', '--regex',
+        nargs='+',
+        default=[],
         help='task name pattern(s) - match task names with regex'
     )
 
@@ -30,6 +56,7 @@ def arg_parser(p):
     # Task detailed view
     detailed_tasks = subparsers.add_parser(
         name='details',
+        parents=[shared,],
         description='See a more detailed view of tasks'
     )
 
@@ -38,6 +65,7 @@ def arg_parser(p):
     # Removing tasks
     remove_tasks = subparsers.add_parser(
         name='remove',
+        parents=[shared, ],
         description='Remove tasks from the current project workflow'
     )
 
@@ -60,7 +88,7 @@ def arg_parser(p):
     # Reset tasks
     reset_tasks = subparsers.add_parser(
         name='reset_tasks',
-        aliases=['reset', ],
+        parents=[shared, ],
         description='Reset tasks in the workflow. '
     )
 
@@ -74,8 +102,7 @@ def arg_parser(p):
 
     # Complete tasks
     complete_tasks = subparsers.add_parser(
-        name='complete_tasks',
-        aliases=['complete', ],
+        name='complete',
         description='Complete tasks in the workflow'
     )
 
@@ -83,58 +110,38 @@ def arg_parser(p):
 
     # Fail tasks
     fail_tasks = subparsers.add_parser(
-        name='fail_tasks',
-        aliases=['fail', ],
+        name='fail',
+        parents=[shared, ],
         description='Fail tasks in the workflow'
     )
 
     fail_tasks.set_defaults(func=fail)
 
 
-def summary(args):
-    wf = args.workflow
-
-    tasks = set()
-    if args.name or args.regex:
-        for task_name in args.name:
-            task = wf.get_task(task_name)
-            tasks.add(task)
-        for pat in args.pattern:
-            for t in wf.find(pat, objs=True):
-                tasks.add(t)
-    else:
-        tasks = list(wf)
-
-    f = jetstream.settings['tasks']['summary_fields'].get(list)
-    print('\t'.join(f))
-
-    for t in tasks:
-        d = t.to_dict()
-        values = [jetstream.utils.dict_lookup_dot_notation(d, v) for v in f]
-        print('\t'.join(values))
-
-
 def details(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
 
     tasks = set()
+    print(args)
     if args.name or args.regex:
         for task_name in args.name:
-            task = wf.get_task(task_name)
+            task = wf.tasks.get(task_name)
             tasks.add(task)
         for pat in args.regex:
             for t in wf.find(pat, objs=True):
                 tasks.add(t)
     else:
-        tasks = wf.list_tasks()
+        tasks = wf.tasks.values()
 
-    for t in tasks:
-        # TODO Finish this
-        print(t.to_dict())
+    tasks = [t.to_dict() for t in tasks]
+    print(jetstream.utils.yaml_dumps(tasks))
 
 
 def remove(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
+
     msg = '{} has successors that would be orphaned, remove them first' \
           'or use --force option.'
 
@@ -167,7 +174,9 @@ def remove(args):
 
 
 def reset(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
+
     for name in args.task_name:
         task_ids = wf.find(name)
         for name in task_ids:
@@ -176,7 +185,8 @@ def reset(args):
 
 
 def complete(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
     for name in args.task_name:
         task_ids = wf.find(name)
         for name in task_ids:
@@ -185,7 +195,8 @@ def complete(args):
 
 
 def fail(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
     for name in args.task_name:
         task_ids = wf.find(name)
         for name in task_ids:
@@ -193,19 +204,43 @@ def fail(args):
     wf.save()
 
 
-def main(args):
+def summary(args):
     log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
+    tasks = set()
+    if args.name or args.regex:
+        for task_name in args.name:
+            task = wf.tasks.get(task_name)
+            tasks.add(task)
+        for pat in args.regex:
+            for t in wf.find(pat, objs=True):
+                tasks.add(t)
+    else:
+        tasks = list(wf)
 
+    f = jetstream.settings['tasks']['summary_fields'].get(list)
+    print('\t'.join(f))
+
+    for t in tasks:
+        d = t.to_dict()
+        values = [jetstream.utils.dict_lookup_dot_notation(d, v) for v in f]
+        print('\t'.join(values))
+
+
+def load_workflow(args):
     if args.workflow:
-        args.workflow = jetstream.load_workflow(args.workflow)
+        log.debug(f'Workflow given by arguments, loading {args.workflow}')
+        workflow = jetstream.load_workflow(args.workflow)
     elif args.project:
-        args.workflow = args.project.load_workflow()
+        log.debug(f'Workflow not given by arguments, loading project {args.project}')
+        workflow = args.project.load_workflow()
     else:
         err = 'No workflow given. Must be run inside a project, or use ' \
               '--project --workflow arguments'
         raise FileNotFoundError(err)
+    return workflow
 
 
-    if args.func is main:
-        summary(args)
-
+def main(args):
+    log.debug(f'{__name__} {args}')
+    summary(args)
