@@ -105,7 +105,7 @@ class ConfigAction(argparse.Action):
             return loader_fn(value)
         except Exception as e:
             print(dir(e))
-            msg = f'{type(e).__name__}: {e}'
+            msg = f'"{value}" {type(e).__name__}: {e}'
 
             raise argparse.ArgumentTypeError(msg) from None
 
