@@ -27,7 +27,6 @@ from collections import Counter, deque
 from datetime import datetime
 from distutils.version import LooseVersion
 import networkx as nx
-from networkx.readwrite import json_graph
 import jetstream
 from jetstream import utils
 from jetstream.tasks import Task
@@ -428,11 +427,18 @@ def mash(G, H):
     modified = set()
 
     for task in H:
+        log.debug(f'Checking {task}')
         if task in G:
+            log.debug(f'also exists in G')
             if task.identity != G[task.name].identity:
+                log.debug(f'but identity is different, replacing in workflow..')
+                workflow.pop(task.name)
                 workflow.add(task)
                 modified.add(task)
+            else:
+                log.debug(f'and same identity so skipping...')
         else:
+            log.debug(f'not in G, just adding to workflow...')
             workflow.add(task)
             new.add(task)
 
@@ -444,7 +450,6 @@ def mash(G, H):
     for task in aff:
         if task.name in graph.G:
             for d in nx.descendants(graph.G, task.name):
-                print(d)
                 to_reset.add(d)
                 graph.G.remove_node(d)
 
