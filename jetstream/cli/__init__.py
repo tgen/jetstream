@@ -93,6 +93,22 @@ class ConfigAction(argparse.Action):
 
         jetstream.utils.dict_update_dot_notation(namespace_dest, key, obj)
 
+    @staticmethod
+    def config_file(value):
+        if not os.path.exists(value):
+            msg = f'{value} does not exist'
+            raise argparse.ArgumentTypeError(msg)
+
+        loader_fn = ConfigAction.DEFAULT_LOADERS['file']
+
+        try:
+            return loader_fn(value)
+        except Exception as e:
+            print(dir(e))
+            msg = f'{type(e).__name__}: {e}'
+
+            raise argparse.ArgumentTypeError(msg) from None
+
 
 def add_config_options_to_parser(parser):
     """Adds the -c/--config and -C/--config-file options to an arg parser"""
@@ -119,7 +135,7 @@ def add_config_options_to_parser(parser):
         '-C', '--config-file',
         dest='config',
         metavar='PATH',
-        type=jetstream.utils.load_file,
+        type=ConfigAction.config_file,
         help='load template variables from a file'
     )
 
