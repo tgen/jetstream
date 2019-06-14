@@ -87,7 +87,7 @@ def arg_parser(p):
 
     # Reset tasks
     reset_tasks = subparsers.add_parser(
-        name='reset_tasks',
+        name='reset',
         parents=[shared, ],
         description='Reset tasks in the workflow. '
     )
@@ -118,24 +118,40 @@ def arg_parser(p):
     fail_tasks.set_defaults(func=fail)
 
 
+def _iter_selected_tasks(args, wf):
+    """Tasks can be selected by name or pattern, this generator yields any
+    tasks covered by the args in the given workflow. """
+    for task_name in args.name:
+        yield wf.tasks.get(task_name)
+
+    for pat in args.regex:
+        for t in wf.find(pat, objs=True):
+            yield t
+
+
 def details(args):
+    """Long format details about the tasks"""
     log.debug(f'{__name__} {args}')
     wf = load_workflow(args)
 
-    tasks = set()
-    print(args)
     if args.name or args.regex:
-        for task_name in args.name:
-            task = wf.tasks.get(task_name)
+        tasks = set()
+        for task in _iter_selected_tasks(args, wf):
             tasks.add(task)
-        for pat in args.regex:
-            for t in wf.find(pat, objs=True):
-                tasks.add(t)
     else:
         tasks = wf.tasks.values()
 
-    tasks = [t.to_dict() for t in tasks]
-    print(jetstream.utils.yaml_dumps(tasks))
+    for t in tasks:
+        print(t.name)
+        print(f'Directives:\n{jetstream.utils.yaml_dumps(t.directives)}')
+        print(f'State:\n{jetstream.utils.yaml_dumps(t.state)}')
+        try:
+            print('Logs:')
+            stdout_path = t.directives.get('stdout')
+            with open(stdout_path, 'r') as fp:
+                print(fp.read())
+        except FileNotFoundError:
+            print(f'Could not find log file: {stdout_path}')
 
 
 def remove(args):
@@ -146,30 +162,18 @@ def remove(args):
           'or use --force option.'
 
     if args.force:
-        for name in args.task_name:
-            wf.pop(name)
-
-        for pat in args.regex:
-            for task in wf.find(pat, fallback=[]):
-                wf.pop(task.name)
+        for task in _iter_selected_tasks(args, wf):
+            wf.pop(task.name)
     else:
         graph = wf.graph()
 
-        for name in args.task_name:
-            task = wf[name]
+        for task in _iter_selected_tasks(args, wf):
             has_deps = next(iter(graph.successors(task)))
             if has_deps:
                 raise ValueError(msg.format(task))
             else:
-                wf.pop(name)
+                wf.pop(task.name)
 
-        for pat in args.regex:
-            for task in wf.find(pat, fallback=[]):
-                has_deps = next(iter(graph.successors(task)))
-                if has_deps:
-                    raise ValueError(msg.format(task))
-                else:
-                    wf.pop(task.name)
     wf.save()
 
 
@@ -177,44 +181,40 @@ def reset(args):
     log.debug(f'{__name__} {args}')
     wf = load_workflow(args)
 
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for name in task_ids:
-            wf[name].reset()
+    for task in _iter_selected_tasks(args, wf):
+        task.reset()
+
     wf.save()
 
 
 def complete(args):
     log.debug(f'{__name__} {args}')
     wf = load_workflow(args)
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for name in task_ids:
-            wf[name].complete()
+
+    for task in _iter_selected_tasks(args, wf):
+        task.complete()
+
     wf.save()
 
 
 def fail(args):
     log.debug(f'{__name__} {args}')
     wf = load_workflow(args)
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for name in task_ids:
-            wf[name].fail()
+
+    for task in _iter_selected_tasks(args, wf):
+        task.fail(force=True)
+
     wf.save()
 
 
 def summary(args):
     log.debug(f'{__name__} {args}')
     wf = load_workflow(args)
-    tasks = set()
+
     if args.name or args.regex:
-        for task_name in args.name:
-            task = wf.tasks.get(task_name)
+        tasks = set()
+        for task in _iter_selected_tasks(args, wf):
             tasks.add(task)
-        for pat in args.regex:
-            for t in wf.find(pat, objs=True):
-                tasks.add(t)
     else:
         tasks = list(wf)
 

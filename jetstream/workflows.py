@@ -153,7 +153,7 @@ class Workflow:
         """Resets state for any "pending" or "failed" tasks """
         log.info('Retry: Resetting state for any pending or failed tasks...')
         for task in self:
-            if task.status in ('pending', 'failed'):
+            if task.status in ('pending', 'failed', 'skipped'):
                 task.reset()
 
     def save(self, path=None):

@@ -65,7 +65,7 @@ class TemplateException(Exception):
 @contextfunction
 def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
-    raise TemplateException(f'Template: {ctx.name}: {msg}')
+    raise TemplateException(f'{ctx.name}: {msg}')
 
 
 @contextfunction
