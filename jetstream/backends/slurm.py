@@ -129,7 +129,7 @@ class SlurmBackend(BaseBackend):
         return comment_string
 
     async def spawn(self, task):
-        log.debug(f'Spawn: {task}')
+        log.debug(f'Spawn: {task.name}')
 
         if not task.directives.get('cmd'):
             return task.complete()
@@ -160,7 +160,7 @@ class SlurmBackend(BaseBackend):
         )
 
         self._bump_next_update()
-        log.info(f'SlurmBackend submitted({job.jid}): {task}')
+        log.info(f'SlurmBackend submitted({job.jid}): {task.name}')
 
         job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
@@ -175,10 +175,10 @@ class SlurmBackend(BaseBackend):
                 task.state['slurm_sacct'] = job_info
 
             if job.is_ok():
-                log.info(f'Complete: {task}')
+                log.info(f'Complete: {task.name}')
                 task.complete(job.returncode())
             else:
-                log.info(f'Failed: {task}')
+                log.info(f'Failed: {task.name}')
                 task.fail(job.returncode())
 
             log.debug('Done notifying workflow')
@@ -188,7 +188,7 @@ class SlurmBackend(BaseBackend):
             task.state['err'] = 'Runner cancelled Backend.spawn'
             task.fail(-15)
         finally:
-            log.debug(f'Slurmbackend spawn completed for {task}')
+            log.debug(f'Slurmbackend spawn completed for {task.name}')
             return task
 
 
