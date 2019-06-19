@@ -167,7 +167,7 @@ class SlurmBackend(BaseBackend):
 
         try:
             await job.event.wait()
-            log.debug('Job event was set, gathering info and notifying workflow')
+            log.debug('Job event was set, gathering info updating status')
 
             if self.sacct_fields:
                 job_info = {k: v for k, v in job.job_data.items() if
@@ -181,9 +181,10 @@ class SlurmBackend(BaseBackend):
                 log.info(f'Failed: {task.name}')
                 task.fail(job.returncode())
 
-            log.debug('Done notifying workflow')
+            log.debug('Done updating status')
 
         except asyncio.CancelledError:
+            log.debug('async task cancelled')
             job.cancel()
             task.state['err'] = 'Runner cancelled Backend.spawn'
             task.fail(-15)

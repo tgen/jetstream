@@ -122,11 +122,13 @@ class Runner:
         """If the async event loop has outstanding futures, they must be
         cancelled, and results collected, prior to exiting. Otherwise, lots of
         ugly error messages will be shown to the user. """
+        log.debug('Cleanup event loop')
         if sys.version_info < (3, 7):
             futures = asyncio.Task.all_tasks(self.loop)
         else:
             futures = asyncio.all_tasks(self.loop)
 
+        log.debug(f'{len(futures)} outstanding futures to cancel')
         if futures:
             for task in futures:
                 task.cancel()
@@ -136,6 +138,7 @@ class Runner:
                 loop=self.loop,
                 return_exceptions=True
             ))
+
         else:
             results = []
 
