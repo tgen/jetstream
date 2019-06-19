@@ -15,7 +15,6 @@ from jinja2 import (
     contextfunction,
     FileSystemLoader
 )
-from jinja2.nativetypes import NativeEnvironment
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +117,7 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     if searchpath is None:
         searchpath = [os.getcwd(),]
 
-    env = NativeEnvironment(
+    env = Environment(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
         undefined=undefined_handler,
