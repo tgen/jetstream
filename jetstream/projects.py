@@ -122,6 +122,10 @@ class Project:
             except jetstream.utils.yaml.YAMLError:
                 log.exception(f'Failed to load history file: {path}')
 
+    @property
+    def is_locked(self):
+        return self.lock.is_locked
+
     def list_history(self):
         return list(self.history_iter())
 

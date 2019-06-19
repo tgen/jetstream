@@ -193,7 +193,7 @@ class Runner:
                     await self._spawn(task)
                     await asyncio.sleep(0)  # Gives event loop a chance to run
 
-        log.info('Workflow complete!')
+        log.info('Run complete!')
         if self._futures:
             await asyncio.wait(self._futures)
 
@@ -272,20 +272,6 @@ class Runner:
             if self.workflow.path:
                 log.info(f'Saving workflow: {self.workflow.path}')
                 self.workflow.save()
-
-        complete = 0
-        failed = 0
-        for t in self.workflow:
-            if t.is_complete():
-                complete += 1
-            elif t.is_failed():
-                failed += 1
-
-        if failed:
-            log.info(f'{failed} tasks failed!')
-            self._errs = True
-        else:
-            log.info(f'{complete} tasks complete!')
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
 

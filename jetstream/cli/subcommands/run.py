@@ -125,7 +125,7 @@ def build_only(args):
         command_args=args.config,
         search_path=args.search_path
     )
-    graph = wf.graph()
+    wf.graph()
     if args.out:
         wf.save(args.out)
     else:
@@ -137,21 +137,63 @@ def from_module(args):
 
 
 def from_template(args):
-    wf = jetstream.templates.build_template(
+    return jetstream.templates.build_template(
         path=args.path,
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config
     )
-    run(wf, args)
 
 
 def from_workflow(args):
-    wf = jetstream.load_workflow(args.path)
-    run(wf, args)
+    return jetstream.load_workflow(args.path)
 
 
-def run(wf, args):
+def check_for_failures(tasks):
+    failures = [task for task in tasks if task.is_failed()]
+    if failures:
+        for i in range(5):
+            try:
+                task = failures.pop(-1)
+                log.info(f'{task.name} failed')
+            except IndexError:
+                break
+        else:
+            log.info(f'and {len(failures)} other tasks...')
+
+        raise RuntimeError('Some tasks failed')
+
+
+def run(args):
+    """Given some new workflow and the command args, this will:
+    1) load any existing workflow either from specific args or project
+    2) mash the existing workflow with the new workflow
+    3) run the combined workflow
+    4) raise a RuntimeError if any tasks failed
+    """
+    cls, params = jetstream.lookup_backend(args.backend)
+    args.runner = jetstream.Runner(cls, params)
+
+    format = _resolve_format(args)
+
+    try:
+        if args.render_only:
+            return render_only(args)
+        elif args.build_only:
+            return build_only(args)
+        elif format == 'template':
+            wf = from_template(args)
+        elif format == 'module':
+            wf = from_module(args)
+        elif format == 'workflow':
+            wf = from_workflow(args)
+        else:
+            msg = f'Invalid argument configuration: {args}'
+            raise ValueError(msg)
+    except RuntimeError:
+        log.error('There were task failures during the run')
+        exit(1)
+
     if args.existing_workflow:
         ewf = jetstream.load_workflow(args.existing_workflow)
     elif args.project:
@@ -172,29 +214,23 @@ def run(wf, args):
         project=args.project
     )
 
-    if any((task.is_failed() for task in wf.tasks.values())):
-        exit(1)
+    check_for_failures(wf.tasks.values())
+
 
 
 def main(args):
     log.debug(f'{__name__} {args}')
 
-    # Get the runner setup first so that we find errors here before spending
-    # time building the workflow
-    cls, params = jetstream.lookup_backend(args.backend)
-    args.runner = jetstream.Runner(cls, params)
+    try:
+        if args.project:
+            with args.project.lock:
+                run(args)
+        else:
+            run(args)
+    except RuntimeError:
+        log.error('There were task failures during the run')
+        raise SystemExit(1)
+    except TimeoutError:
+        log.error('Failed to acquire project lock, there may be a run pending.')
+        raise SystemExit(1)
 
-    format = _resolve_format(args)
-
-    if args.render_only:
-        render_only(args)
-    elif args.build_only:
-        build_only(args)
-    elif format == 'template':
-        from_template(args)
-    elif format == 'module':
-        from_module(args)
-    elif format == 'workflow':
-        from_workflow(args)
-    else:
-        log.warning('Invalid argument configuration')
