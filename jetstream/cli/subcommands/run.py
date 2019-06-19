@@ -176,23 +176,19 @@ def run(args):
 
     format = _resolve_format(args)
 
-    try:
-        if args.render_only:
-            return render_only(args)
-        elif args.build_only:
-            return build_only(args)
-        elif format == 'template':
-            wf = from_template(args)
-        elif format == 'module':
-            wf = from_module(args)
-        elif format == 'workflow':
-            wf = from_workflow(args)
-        else:
-            msg = f'Invalid argument configuration: {args}'
-            raise ValueError(msg)
-    except RuntimeError:
-        log.error('There were task failures during the run')
-        exit(1)
+    if args.render_only:
+        return render_only(args)
+    elif args.build_only:
+        return build_only(args)
+    elif format == 'template':
+        wf = from_template(args)
+    elif format == 'module':
+        wf = from_module(args)
+    elif format == 'workflow':
+        wf = from_workflow(args)
+    else:
+        msg = f'Invalid argument configuration: {args}'
+        raise ValueError(msg)
 
     if args.existing_workflow:
         ewf = jetstream.load_workflow(args.existing_workflow)
@@ -228,7 +224,7 @@ def main(args):
         else:
             run(args)
     except RuntimeError:
-        log.error('There were task failures during the run')
+        log.error('There were task failures during the run.')
         raise SystemExit(1)
     except TimeoutError:
         log.error('Failed to acquire project lock, there may be a run pending.')
