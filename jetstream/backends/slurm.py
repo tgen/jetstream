@@ -9,11 +9,10 @@ import subprocess
 import tempfile
 import time
 from asyncio.subprocess import PIPE
-from concurrent.futures import CancelledError
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
 
-log = logging.getLogger('jetstream')
+log = logging.getLogger('jetstream.backends')
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
@@ -90,11 +89,6 @@ class SlurmBackend(BaseBackend):
                         if job.is_done() and job.event is not None:
                             job.event.set()
                             self.jobs.pop(jid)
-
-        except CancelledError:
-            if self.jobs:
-                log.info('Requesting scancel for outstanding slurm jobs')
-                subprocess.run(['scancel'] + list(self.jobs.keys()))
         finally:
             log.info('Slurm job monitor stopped!')
 
@@ -128,13 +122,20 @@ class SlurmBackend(BaseBackend):
         comment_string = json.dumps(comment, sort_keys=True)
         return comment_string
 
+    def cancel(self):
+        if self.jobs:
+            jobs = list(self.jobs.keys())
+            log.info(f'Requesting scancel for {len(jobs)} slurm jobs')
+            subprocess.run(['scancel'] + jobs)
+
     async def spawn(self, task):
         log.debug(f'Spawn: {task.name}')
 
         if not task.directives.get('cmd'):
             return task.complete()
 
-        time.sleep(self.sbatch_delay) # sbatch breaks when called too frequently
+        # sbatch breaks when called too frequently
+        time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
@@ -165,32 +166,23 @@ class SlurmBackend(BaseBackend):
         job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
 
-        try:
-            await job.event.wait()
-            log.debug('Job event was set, gathering info updating status')
+        await job.event.wait()
+        log.debug('Job event was set, gathering info updating status')
 
-            if self.sacct_fields:
-                job_info = {k: v for k, v in job.job_data.items() if
-                            k in self.sacct_fields}
-                task.state['slurm_sacct'] = job_info
+        if self.sacct_fields:
+            job_info = {k: v for k, v in job.job_data.items() if
+                        k in self.sacct_fields}
+            task.state['slurm_sacct'] = job_info
 
-            if job.is_ok():
-                log.info(f'Complete: {task.name}')
-                task.complete(job.returncode())
-            else:
-                log.info(f'Failed: {task.name}')
-                task.fail(job.returncode())
+        if job.is_ok():
+            log.info(f'Complete: {task.name}')
+            task.complete(job.returncode())
+        else:
+            log.info(f'Failed: {task.name}')
+            task.fail(job.returncode())
 
-            log.debug('Done updating status')
-
-        except asyncio.CancelledError:
-            log.debug('async task cancelled')
-            job.cancel()
-            task.state['err'] = 'Runner cancelled Backend.spawn'
-            task.fail(-15)
-        finally:
-            log.debug(f'Slurmbackend spawn completed for {task.name}')
-            return task
+        log.debug(f'Slurmbackend spawn completed for {task.name}')
+        return task
 
 
 class SlurmBatchJob(object):

@@ -84,13 +84,13 @@ class Runner:
         await asyncio.wait_for(self._event.wait(), timeout=timeout)
 
     async def _autosave_coro(self):
-        log.debug('Autosaver started!')
-        last_save = datetime.now()
         try:
-            while 1:
-                mn = timedelta(seconds=self.autosave_min)
-                mx = timedelta(seconds=self.autosave_max)
+            log.debug('Autosaver started!')
+            last_save = datetime.now()
+            mn = timedelta(seconds=self.autosave_min)
+            mx = timedelta(seconds=self.autosave_max)
 
+            while 1:
                 # If the workflow has been saved too recently, wait until
                 # the minimum interval is reached.
                 time_since_last = datetime.now() - last_save
@@ -131,49 +131,25 @@ class Runner:
         log.debug(f'{len(futures)} outstanding futures to cancel')
         if futures:
             for task in futures:
+                log.debug(f'Cancelling: {task}')
                 task.cancel()
 
+            log.debug('Running loop until remaining futures return...')
             results = self.loop.run_until_complete(asyncio.gather(
                 *futures,
                 loop=self.loop,
                 return_exceptions=True
             ))
-
         else:
             results = []
 
         for fut, res in zip(futures, results):
             if isinstance(res, Exception):
-                log.critical(f'Error collected during shutdown: {res}')
                 self._errs = True
 
         if self.loop:
+            log.debug('Closing event loop')
             self.loop.close()
-
-    def _halt(self):
-        if self._main:
-            self._main.cancel()
-
-    def _handle_completed_task_futures(self, future):
-        """Callback added to task futures when they are spawned"""
-        log.debug('Handle: {}'.format(future))
-        try:
-            task = future.result()
-            if task.is_failed():
-                self._workflow_iterator.graph.skip_descendants(task)
-        except Exception:
-            log.exception(f'Unhandled exception in a task future: {future}')
-            self._halt()
-        finally:
-            self.notify_waiters()
-            self._conc_sem.release()
-            self._futures.remove(future)
-
-    async def _spawn(self, task):
-        await self._conc_sem.acquire()
-        future = self.loop.create_task(self.backend.spawn(task))
-        future.add_done_callback(self._handle_completed_task_futures)
-        self._futures.append(future)
 
     async def _spawn_new_tasks(self):
         """This coroutine is where the runner spends most of its time.
@@ -183,22 +159,21 @@ class Runner:
             if task is None:
                 await self._yield()
             else:
-                self.on_spawn(task)
+                self.process_exec_directives(task)
 
-                if task.is_done():
-                    # if there were errors in the exec directive, we do not
-                    # attempt to run the cmd
-                    await asyncio.sleep(0)
-                elif not task.directives.get('cmd'):
-                    # if task is blank or None
-                    task.complete()
+                if task.directives.get('cmd'):
+                    if not task.is_done():
+                        # If the task was completed by the exec directive, we
+                        # do not need to attempt to run the cmd
+                        await self.process_cmd_directives(task)
                 else:
-                    await self._spawn(task)
-                    await asyncio.sleep(0)  # Gives event loop a chance to run
+                    task.complete()
+                    await asyncio.sleep(0)
 
-        log.info('Run complete!')
         if self._futures:
             await asyncio.wait(self._futures)
+
+        log.info('Run complete!')
 
     def _start_autosave(self):
         """Starts the autosaver coroutine"""
@@ -239,22 +214,19 @@ class Runner:
         except asyncio.TimeoutError:
             pass
 
-    def on_spawn(self, task):
-        """Called prior to launching a task"""
-        log.debug('Runner spawn: {}'.format(task))
+    async def process_cmd_directives(self, task):
+        await self._conc_sem.acquire()
+        future = self.loop.create_task(self.backend.spawn(task))
+        future.add_done_callback(self.handler)
+        self._futures.append(future)
 
+    def process_exec_directives(self, task):
         exec_directive = task.directives.get('exec')
 
         if exec_directive:
-            try:
-                exec(exec_directive, None, {'runner': self, 'task': task})
-            except Exception as e:
-                task.fail(returncode=1)
-                task.state['exec error'] = str(e)
-                self._workflow_iterator = iter(self.workflow.graph())
-                self._workflow_iterator.graph.skip_descendants(task)
-            else:
-                self._workflow_iterator = iter(self.workflow.graph())
+            env = {'runner': self, 'task': task}
+            exec(exec_directive, None, env)
+            self._workflow_iterator = iter(self.workflow.graph())
 
     def preflight(self):
         """Called prior to start"""
@@ -271,12 +243,30 @@ class Runner:
 
     def shutdown(self):
         """Called after shutdown"""
+
         if self.autosave:
             if self.workflow.path:
                 log.info(f'Saving workflow: {self.workflow.path}')
                 self.workflow.save()
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
+
+    def handler(self, future):
+        """Callback added to task futures when they are spawned"""
+        try:
+            task = future.result()
+            if task.is_failed():
+                self._workflow_iterator.graph.skip_descendants(task)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            self._errs = True
+        except Exception:
+            log.exception(f'Unhandled exception in a task future: {future}')
+            if self._main and not self._main.cancelled():
+                self._main.cancel()
+        finally:
+            self.notify_waiters()
+            self._conc_sem.release()
+            self._futures.remove(future)
 
     def start(self, workflow, project=None):
         """Called to start the runner on a workflow."""
@@ -304,9 +294,12 @@ class Runner:
             try:
                 self._main = self.loop.create_task(self._spawn_new_tasks())
                 self.loop.run_until_complete(self._main)
-            except asyncio.CancelledError:
-                self._errs = True
             finally:
-                self.shutdown()
                 self._cleanup_event_loop()
+                log.debug(f'Runner finished shutdown, errs={self._errs}')
+
+                if self._errs:
+                    self.backend.cancel()
+
+                self.shutdown()
                 os.chdir(self._previous_directory)

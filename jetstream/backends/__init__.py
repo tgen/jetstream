@@ -15,6 +15,11 @@ class BaseBackend(object):
         only for subclassing to make new backends"""
         raise NotImplementedError
 
+    def cancel(self):
+        """Called if the run is cancelled for any reason, this is a good
+        spot to clean up any outstanding jobs etc.."""
+        pass
+
     def get_fd_paths(self, task):
         """When working inside project, task outputs will be directed into
         log files inside project.logs_dir. But task.stdout/stderr should
