@@ -204,7 +204,7 @@ def main(args=None):
 
     jetstream.start_logging(args.logging)
     setting_src = '\n'.join((str(s) for s in jetstream.settings.sources))
-    log.debug(f'Version: {pkg_resources.get_distribution("jetstream")}')
+    log.info(f'Version: {pkg_resources.get_distribution("jetstream")}')
     log.debug(f'Command args: {sys.argv}')
     log.debug(f'Settings files:\n{setting_src}')
 
