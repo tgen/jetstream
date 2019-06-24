@@ -200,7 +200,7 @@ def arg_parser():
 
 def main(args=None):
     parser = arg_parser()
-    args, remaining = parser.parse_known_args(args)
+    args = parser.parse_args(args)
 
     jetstream.start_logging(args.logging)
     setting_src = '\n'.join((str(s) for s in jetstream.settings.sources))

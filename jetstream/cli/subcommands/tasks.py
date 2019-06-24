@@ -103,6 +103,7 @@ def arg_parser(p):
     # Complete tasks
     complete_tasks = subparsers.add_parser(
         name='complete',
+        parents=[shared, ],
         description='Complete tasks in the workflow'
     )
 
@@ -122,7 +123,11 @@ def _iter_selected_tasks(args, wf):
     """Tasks can be selected by name or pattern, this generator yields any
     tasks covered by the args in the given workflow. """
     for task_name in args.name:
-        yield wf.tasks.get(task_name)
+        try:
+            yield wf.tasks[task_name]
+        except KeyError as e:
+            log.error(f'"{task_name}" not found in workflow')
+
 
     for pat in args.regex:
         for t in wf.find(pat):
@@ -163,6 +168,7 @@ def remove(args):
 
     if args.force:
         for task in _iter_selected_tasks(args, wf):
+            log.info(f'Removing: {task}')
             wf.pop(task.name)
     else:
         graph = wf.graph()
@@ -172,6 +178,7 @@ def remove(args):
             if has_deps:
                 raise ValueError(msg.format(task))
             else:
+                log.info(f'Removing: {task}')
                 wf.pop(task.name)
 
     wf.save()
@@ -182,6 +189,7 @@ def reset(args):
     wf = load_workflow(args)
 
     for task in _iter_selected_tasks(args, wf):
+        log.info(f'Resetting: {task}')
         task.reset()
 
     wf.save()
@@ -192,6 +200,7 @@ def complete(args):
     wf = load_workflow(args)
 
     for task in _iter_selected_tasks(args, wf):
+        log.info(f'Completing: {task}')
         task.complete()
 
     wf.save()
@@ -202,6 +211,7 @@ def fail(args):
     wf = load_workflow(args)
 
     for task in _iter_selected_tasks(args, wf):
+        log.info(f'Failing: {task}')
         task.fail(force=True)
 
     wf.save()
