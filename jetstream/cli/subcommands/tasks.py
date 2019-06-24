@@ -125,7 +125,7 @@ def _iter_selected_tasks(args, wf):
         yield wf.tasks.get(task_name)
 
     for pat in args.regex:
-        for t in wf.find(pat, objs=True):
+        for t in wf.find(pat):
             yield t
 
 
