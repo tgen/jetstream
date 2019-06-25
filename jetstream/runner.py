@@ -189,9 +189,8 @@ class Runner:
             raise ValueError('Backend.coroutines must be a list, or tuple')
         else:
             for c in backend_coroutines:
-                future = c()
-                future.add_done_callback(self.handler)
-                self.loop.create_task(future)
+                task = self.loop.create_task(c())
+                task.add_done_callback(self.handler)
 
     def _start_event_loop(self):
         if asyncio._get_running_loop() is not None:
