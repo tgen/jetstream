@@ -1,10 +1,9 @@
 import logging
 import asyncio
 import jetstream
-
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.backends')
 
 
 class LocalBackend(jetstream.backends.BaseBackend):
@@ -33,11 +32,11 @@ class LocalBackend(jetstream.backends.BaseBackend):
     async def spawn(self, task):
         log.debug('Spawn: {}'.format(task))
 
-        if 'cmd' not in task.directives():
+        if 'cmd' not in task.directives:
             return task.complete()
 
-        cmd = task.directives()['cmd']
-        cpus = task.directives().get('cpus', 0)
+        cmd = task.directives['cmd']
+        cpus = task.directives.get('cpus', 0)
         cpus_reserved = 0
         open_fps = list()
 
@@ -45,7 +44,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
             raise RuntimeError('Task cpus greater than available cpus')
 
         try:
-            for i in range(task.directives().get('cpus', 0)):
+            for i in range(task.directives.get('cpus', 0)):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
@@ -76,14 +75,20 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 stderr=stderr_fp
             )
 
-            log.info(f'LocalBackend spawned({p.pid}): {task.tid}')
+            task.state.update(
+                stdout_path=stdout,
+                stderr_path=stderr,
+                label=f'Slurm({p.pid})',
+            )
+
+            log.info(f'LocalBackend spawned({p.pid}): {task.name}')
             rc = await p.wait()
 
             if rc != 0:
-                log.info(f'Failed: {task.tid}')
+                log.info(f'Failed: {task.name}')
                 return task.fail(p.returncode)
             else:
-                log.info(f'Complete: {task.tid}')
+                log.info(f'Complete: {task.name}')
                 return task.complete(p.returncode)
         except CancelledError:
             task.state['err'] = 'Runner cancelled Backend.spawn()'
@@ -94,6 +99,8 @@ class LocalBackend(jetstream.backends.BaseBackend):
 
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
+
+            return task
 
     async def subprocess_sh(
             self, args, *, stdin=None, stdout=None, stderr=None,

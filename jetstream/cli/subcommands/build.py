@@ -1,8 +1,10 @@
-"""Shortcut to "jetstream run" with --build-only option"""
+"""Shortcut to "jetstream run" with "--build-only" option.
+"""
 import logging
 from jetstream.cli.subcommands import run
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
+__doc__ = __doc__+ '\n' + run.__doc__
 
 
 def arg_parser(parser):

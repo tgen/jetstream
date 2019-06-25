@@ -1,87 +1,100 @@
 import logging
 import os
-import traceback
-import yaml
+from distutils.version import LooseVersion
 import jetstream
 
 log = logging.getLogger(__name__)
 MANIFEST_FILENAME = 'pipeline.yaml'
 
 
-class InvalidPipeline(Exception):
+class InvalidPipeline(ValueError):
     pass
 
+# Manifest file example
+# This manifest is also available as config data
+# when rendering workflows. So, it can be a good
+# place to store extra variables that may be used
+# in the templates.
+#
+# __pipeline__:
+#   name: phoenix
+#   version: 1.0
+#   main: main.jst
+#   author: Ryan Richholt
+#   ...
+# foo: bar
+# constants:
+#   these: can be anything
 
-class Pipeline(object):
+class Pipeline:
     """Represents a pipeline installed on the system."""
     def __init__(self, path):
         self.path = os.path.abspath(os.path.expanduser(path))
-        self.manifest = self.load_manifest(self.path)
+
+        if not os.path.isdir(self.path):
+            raise InvalidPipeline(f'"{self.path}" is not a directory')
+
+        self.manifest_path = os.path.join(self.path, MANIFEST_FILENAME)
+        self.manifest = jetstream.utils.load_file(self.manifest_path)
+
+        try:
+            self.info = info = self.manifest['__pipeline__']
+            self.name = info['name']
+            self.main = info['main']
+            self.version = str(info['version'])
+        except KeyError as e:
+            err = f'{self.path}: manifest missing key "{e}"'
+            raise InvalidPipeline(err) from None
+
+        if not self.name.isidentifier():
+            err = f'{self.path}: "{self.name}" is not a valid identifier'
+            raise InvalidPipeline(err)
 
     def __repr__(self):
-        if self.manifest is None:
-            return f'<Pipeline at {self.path}>'
-        else:
-            return f'<Pipeline({self.manifest.get("name")}) at {self.path}>'
-
-    @staticmethod
-    def load_manifest(path):
-        if not os.path.isdir(path):
-            raise InvalidPipeline(f'"{path}" is not a directory!')
-
-        manifest_path = os.path.join(path, MANIFEST_FILENAME)
-
-        try:
-            with open(manifest_path, 'r') as fp:
-                manifest = jetstream.utils.yaml_loads(fp.read())
-        except FileNotFoundError:
-            err = f'Manifest file not found {manifest_path}'
-            raise InvalidPipeline(err) from None
-        except yaml.YAMLError:
-            tb = traceback.format_exc()
-            msg = f'Failed to load {path} error below:\n{tb}'
-            raise InvalidPipeline(msg) from None
-
-        try:
-            name = manifest['name']
-        except KeyError:
-            raise InvalidPipeline(f'manifest missing "name"') from None
-
-        if not name.isidentifier():
-            raise InvalidPipeline(f'"{name}" is not a valid identifier')
-
-        return manifest
+        return f'<Pipeline: {self.name} ({self.version})>'
 
 
-def ls(home=None):
-    if home is None:
-        home = jetstream.settings['pipelines']['home'].get()
+def pipelines_iter(home=None):
+    home = home or jetstream.settings['pipelines']['home'].get(str)
 
-    pipelines = {}
-    for d in os.listdir(home):
-        path = os.path.join(home, d)
-        manifest = os.path.join(path, MANIFEST_FILENAME)
-
-        if os.path.isdir(path) and os.path.exists(manifest):
-            try:
-                pipeline = Pipeline(path)
-            except InvalidPipeline:
-                log.exception('Failed to load pipeline!')
-
-            pipelines[pipeline.manifest['name']] = pipeline
-
-    return pipelines
+    for directory in home.split(':'):
+        for filename in os.listdir(directory):
+            path = os.path.join(directory, filename)
+            manifest_path = os.path.join(path, MANIFEST_FILENAME)
+            if os.path.isdir(path) and os.path.exists(manifest_path):
+                try:
+                    yield Pipeline(path)
+                except Exception:
+                    log.warning(f'Failed to load: {path}')
 
 
-def lookup(name):
-    home = jetstream.settings['pipelines']['home'].get()
-    pipelines = jetstream.pipelines.ls(home)
+def list_pipelines(home=None):
+    return list(pipelines_iter(home))
 
-    try:
-        return pipelines[name]
-    except KeyError:
-        msg = f'Pipeline "{name}" not found!'
-        raise ValueError(msg) from None
+
+def get_pipeline(name, version=None, home=None):
+    if version is not None:
+        version = str(version)
+        for p in pipelines_iter(home):
+            # TODO can we allow > < = syntax here?
+            if p.name == name and p.version == version:
+                return p
+    else:
+        matches = []
+        for p in pipelines_iter(home):
+            if p.name == name:
+                matches.append(p)
+
+        if matches:
+            s = sorted(matches, key=lambda p: LooseVersion(p.version))
+            return s[-1]
+
+    if version is not None:
+        msg = f'Pipeline "{name} ({version})" not found!'
+    else:
+        msg = f'Pipeline "{name} (latest)" not found!'
+
+    raise FileNotFoundError(msg)
 
 
 # TODO New feature - load workflows directly from a python module:

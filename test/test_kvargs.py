@@ -3,21 +3,24 @@ from unittest import TestCase
 
 
 class TestKvargs(TestCase):
-    def test_kvarg_keys(self):
-        x = ['--keyisemptystring:' '--:okay', '--str:better', '--file:csv:best']
-        for k in x:
-            jetstream.kvargs.parse_key(k)
+    def setUp(self):
+        self.og = {
+            'something': {
+                'nested': {
+                    'foo': 42,
+                    'bar': 24
+                }},
+            'another': [1,2,3]
+        }
 
-    def test_nex_kvarg_keys(self):
-        x = ['--nope', 'nope', '-nope']
-        for k in x:
-            self.assertRaises(
-                jetstream.kvargs.KvargsError,
-                jetstream.kvargs.parse_key,
-                k
-            )
+    def test_dot_update(self):
+        t = self.og.copy()
+        t['another'] = 42
+        jetstream.utils.dict_update_dot_notation(self.og, 'another', 42)
+        self.assertEqual(self.og, t)
 
-    def test_kvargs_sequnce(self):
-        x = ('--str:hello', 'world', '--int:test', '5')
-        d = jetstream.kvargs.parse_kvargs(x)
-        self.assertEqual(d, {'hello': 'world', 'test': 5})
+    def test_dot_update2(self):
+        t = self.og.copy()
+        t['something']['nested']['bar'] = 42
+        jetstream.utils.dict_update_dot_notation(self.og, 'something.nested.bar', 24)
+        self.assertEqual(self.og, t)

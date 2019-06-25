@@ -8,15 +8,12 @@ import shutil
 import subprocess
 import tempfile
 import time
-
 from asyncio.subprocess import PIPE
-from concurrent.futures import CancelledError
 from datetime import datetime, timedelta
-
-import jetstream
 from jetstream.backends import BaseBackend
+from jetstream import settings
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.backends')
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
@@ -32,7 +29,8 @@ class SlurmBackend(BaseBackend):
                 'slurm_args')
 
     def __init__(self, sacct_frequency=60, sbatch_delay=0.1,
-                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed')):
+                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
+                 job_monitor_max_fails=5):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -44,6 +42,7 @@ class SlurmBackend(BaseBackend):
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
+        self.job_monitor_max_fails = job_monitor_max_fails
         self.jobs = dict()
 
         self.coroutines = (self.job_monitor,)
@@ -72,7 +71,7 @@ class SlurmBackend(BaseBackend):
     async def job_monitor(self):
         """Request job data updates from sacct for each job in self.jobs."""
         log.info('Slurm job monitor started!')
-
+        failures = self.job_monitor_max_fails
         try:
             while 1:
                 await self.wait_for_next_update()
@@ -81,8 +80,19 @@ class SlurmBackend(BaseBackend):
                     log.debug('No current jobs to check')
                     self._bump_next_update()
                     continue
+                try:
+                    sacct_data = sacct(*self.jobs, return_data=True)
+                except Exception:
+                    if failures <= 0:
+                        raise
+                    else:
+                        failures -= 1
+                    err = f'Slurm job monitor error: {failures} remaining'
+                    log.exception(err)
+                    await asyncio.sleep(120)
+                    continue
 
-                sacct_data = sacct(*self.jobs, return_data=True)
+                failures = self.job_monitor_max_fails
                 self._bump_next_update()
 
                 for jid, data in sacct_data.items():
@@ -93,11 +103,6 @@ class SlurmBackend(BaseBackend):
                         if job.is_done() and job.event is not None:
                             job.event.set()
                             self.jobs.pop(jid)
-
-        except CancelledError:
-            if self.jobs:
-                log.info('Requesting scancel for outstanding slurm jobs')
-                subprocess.run(['scancel'] + list(self.jobs.keys()))
         finally:
             log.info('Slurm job monitor stopped!')
 
@@ -113,88 +118,85 @@ class SlurmBackend(BaseBackend):
         """Slurm jobs will receive a comment that contains details about the
         task, run id, and tags taken from the task directives. If tags are a
         string, they will be converted to a list with shlex.split"""
-        tags = task.directives().get('tags', [])
-
+        tags = task.directives.get('tags', [])
         if isinstance(tags, str):
             tags = shlex.split(tags)
 
         comment = {
-            'run': self.runner.run_id,
-            'task': {
-                'tid': task.tid,
-                'tags': tags,
-                }
-            }
+            'id': task.identity,
+            'tags': tags
+        }
+
+        # TODO long tags here could cause an sbatch submission error, but
+        # we still have over 1000 characters before that happens, so the
+        # chance is pretty small. Limiting the tag length is non-trivial
+        # but possible. It would probably be best to enforce this limit at
+        # the Task level though.
 
         comment_string = json.dumps(comment, sort_keys=True)
+        return comment_string
 
-        if len(comment_string) > 1024:
-            return json.dumps({
-                'tid': task.tid,
-                'err': 'Job comment too long!'
-            }, sort_keys=True)
-        else:
-            return comment_string
+    def cancel(self):
+        if self.jobs:
+            jobs = list(self.jobs.keys())
+            log.info(f'Requesting scancel for {len(jobs)} slurm jobs')
+            subprocess.run(['scancel'] + jobs)
 
     async def spawn(self, task):
-        log.debug(f'Spawn: {task}')
+        log.debug(f'Spawn: {task.name}')
 
-        if not task.directives().get('cmd'):
+        if not task.directives.get('cmd'):
             return task.complete()
 
-        time.sleep(self.sbatch_delay) # sbatch breaks when called too frequently
+        # sbatch breaks when called too frequently
+        time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         job = sbatch(
-            cmd=task.directives()['cmd'],
-            name=self.slurm_job_name(task),
+            cmd=task.directives['cmd'],
+            name=task.name,
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,
             comment=self.slurm_job_comment(task),
-            cpus_per_task=task.directives().get('cpus'),
-            mem=task.directives().get('mem'),
-            walltime=task.directives().get('walltime'),
-            additional_args=task.directives().get('sbatch_args'),
+            cpus_per_task=task.directives.get('cpus'),
+            mem=task.directives.get('mem'),
+            walltime=task.directives.get('walltime'),
+            additional_args=task.directives.get('sbatch_args'),
             sbatch_executable=self.sbatch_executable
         )
 
         task.state.update(
             label=f'Slurm({job.jid})',
+            stdout_path=stdout,
+            stderr_path=stderr,
             slurm_job_id=job.jid,
             slurm_cmd=' '.join(shlex.quote(a) for a in job.args)
         )
 
         self._bump_next_update()
-        log.info(f'SlurmBackend submitted: {task}')
+        log.info(f'SlurmBackend submitted({job.jid}): {task.name}')
 
         job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
 
-        try:
-            await job.event.wait()
-            log.debug('Job event was set, gathering info and notifying workflow')
+        await job.event.wait()
+        log.debug('Job event was set, gathering info updating status')
 
-            if self.sacct_fields:
-                job_info = {k: v for k, v in job.job_data.items() if
-                            k in self.sacct_fields}
-                task.state['slurm_sacct'] = job_info
+        if self.sacct_fields:
+            job_info = {k: v for k, v in job.job_data.items() if
+                        k in self.sacct_fields}
+            task.state['slurm_sacct'] = job_info
 
-            if job.is_ok():
-                log.info(f'Complete: {task}')
-                task.complete(job.returncode())
-            else:
-                log.info(f'Failed: {task}')
-                task.fail(job.returncode())
+        if job.is_ok():
+            log.info(f'Complete: {task.name}')
+            task.complete(job.returncode())
+        else:
+            log.info(f'Failed: {task.name}')
+            task.fail(job.returncode())
 
-            log.debug('Done notifying workflow')
-
-        except asyncio.CancelledError:
-            job.cancel()
-            task.state['err'] = 'Runner cancelled Backend.spawn'
-            task.fail(-15)
-        finally:
-            log.debug(f'Slurmbackend spawn completed for {task}')
+        log.debug(f'Slurmbackend spawn completed for {task.name}')
+        return task
 
 
 class SlurmBatchJob(object):
@@ -440,7 +442,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
            cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None, sbatch_executable=None, retry=3):
+           additional_args=None, sbatch_executable=None, retry=10):
     if sbatch_executable is None:
         sbatch_executable = 'sbatch'
 
@@ -499,7 +501,8 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
         except subprocess.CalledProcessError:
             if remaining_tries > 0:
                 remaining_tries -= 1
-                log.exception(f'Error during sbatch, retrying...')
+                log.exception(f'Error during sbatch, retrying in 60s ...')
+                time.sleep(60)
             else:
                 raise
 

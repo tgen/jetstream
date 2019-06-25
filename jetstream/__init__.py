@@ -2,10 +2,15 @@ import logging
 import logging.config
 import os
 import sys
+from pkg_resources import get_distribution
 
 import confuse
 import ulid
 import yaml
+
+__author__ = 'Ryan Richholt'
+__email__ = 'rrichholt@tgen.org'
+__version__ = get_distribution('jetstream').version
 
 
 # Configure parallel library dependencies (Used by numpy)
@@ -32,34 +37,34 @@ log.addHandler(logging.NullHandler())
 
 
 # Package module imports
-import jetstream.backends
-import jetstream.kvargs
-import jetstream.pipelines
-import jetstream.runner
-import jetstream.templates
-import jetstream.utils
-import jetstream.workflows
-from jetstream.projects import Project, ProjectInvalid, new_project
+from jetstream import backends, pipelines, runner, templates, utils, workflows
+from jetstream.projects import Project, init, is_project
 from jetstream.runner import Runner
 from jetstream.templates import environment, render_template
 from jetstream.workflows import Workflow, Task, load_workflow, save_workflow, \
     random_workflow
+from jetstream.pipelines import Pipeline, InvalidPipeline, get_pipeline, \
+    pipelines_iter, list_pipelines
 
 
 def lookup_backend(name=None):
     """Looks up the backend by name or gets the default from the settings. This
     will return the class and also a dictionary of default paramters for
     instantiating the class that can be customized via config file."""
-    name = name or jetstream.settings['backend'].get(str)
-    params = dict(jetstream.settings['backends'][name].get(dict))
+    name = name or settings['backend'].get(str)
+    params = settings['backends'][name].get(dict).copy()
     cls = params.pop('()')
-    backend = jetstream.utils.dynamic_import(cls)
+    backend = utils.dynamic_import(cls)
     return backend, params
 
 
-def run_id():
-    """Generate a new run ID"""
-    return 'js{}'.format(ulid.new().str)
+def guid(formatter=None):
+    """Generate a new unique ID"""
+    id = ulid.new().str
+    if formatter:
+        return formatter.format(id=id)
+    else:
+        return id
 
 
 def start_logging(profile=None):
@@ -69,7 +74,7 @@ def start_logging(profile=None):
         if sys.stderr.isatty():
             profile = 'interactive'
         else:
-            profile = 'default'
+            profile = 'basic'
 
     profile = str(profile).lower()
     config = settings['logging_profiles'][profile].get(dict)

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from asyncio import BoundedSemaphore, Event
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -32,27 +33,25 @@ def sigterm_ignored():
 
 class Runner:
     def __init__(self, backend_cls=None, backend_params=None,
-                 max_concurrency=None, throttle=None, autosave_min=None,
-                 autosave_max=None):
-        self.backend = None
-
+                 max_concurrency=None, throttle=None, autosave=True,
+                 autosave_min=None, autosave_max=None):
         if backend_cls is None:
             self.backend_cls, self.backend_params = jetstream.lookup_backend('local')
         else:
             self.backend_cls = backend_cls
             self.backend_params = backend_params
 
+        self.backend = None
+        self.autosave = autosave
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
         self.throttle = throttle or settings['runner']['throttle'].get()
         self.max_concurrency = max_concurrency \
                                or settings['runner']['max_concurrency'].get()
         self._conc_sem = None
+        self._condition = None
         self._errs = False
-        self._events = []
         self._futures = []
-        self._loop = None
-        self._last_save = None
         self._main = None
         self._previous_directory = None
         self._run_started = None
@@ -60,13 +59,9 @@ class Runner:
         self._workflow_len = None
 
         # Properties that should not be modified during a run
-        self._run_id = None
+        self._loop = None
         self._workflow = None
         self._project = None
-
-    @property
-    def run_id(self):
-        return self._run_id
 
     @property
     def workflow(self):
@@ -80,39 +75,44 @@ class Runner:
     def loop(self):
         return self._loop
 
-    async def _autosave_coro(self):
-        log.debug('Autosaver started!')
-        self._last_save = datetime.now()
-        try:
-            while 1:
-                mn = timedelta(seconds=self.autosave_min)
-                mx = timedelta(seconds=self.autosave_max)
+    # Synchronization methods for events that should wait on tasks to return
+    def notify_waiters(self):
+        self._event.set()
 
+    async def wait_for_next_task_future(self, timeout=None):
+        self._event.clear()
+        await asyncio.wait_for(self._event.wait(), timeout=timeout)
+
+    async def _autosave_coro(self):
+        try:
+            log.debug('Autosaver started!')
+            last_save = datetime.now()
+            mn = timedelta(seconds=self.autosave_min)
+            mx = timedelta(seconds=self.autosave_max)
+
+            while 1:
                 # If the workflow has been saved too recently, wait until
                 # the minimum interval is reached.
-                time_since_last = datetime.now() - self._last_save
+                time_since_last = datetime.now() - last_save
                 delay_for = mn - time_since_last
-                log.debug(f'Autosaver hold for {delay_for}s')
+                log.debug(f'Autosaver hold for {delay_for}')
                 await asyncio.sleep(delay_for.seconds)
 
                 # Otherwise, wait for the next future to return and then save
                 # but do not wait longer than autosave_max
-                e = Event(loop=self.loop)
-                self._events.append(e)
-                timeout_at = self._last_save + mx
+                timeout_at = last_save + mx
                 timeout_in = (timeout_at - datetime.now()).seconds
-
                 log.debug(f'Autosaver next save in {timeout_in}s')
+
                 try:
-                    await asyncio.wait_for(e.wait(), timeout=timeout_in)
-                    log.debug(f'Autosaver wait cleared by runner')
+                    await self.wait_for_next_task_future(timeout=timeout_in)
+                    log.debug('Autosaver wait cleared by runner')
                 except asyncio.TimeoutError:
-                    log.debug(f'Autosaver wait timed out')
-                    pass
+                    log.debug('Autosaver wait timed out')
 
                 log.debug('Autosaver saving workflow...')
-                self.save_workflow()
-                self._last_save = datetime.now()
+                self.workflow.save()
+                last_save = datetime.now()
         except asyncio.CancelledError:
             pass
         finally:
@@ -122,12 +122,19 @@ class Runner:
         """If the async event loop has outstanding futures, they must be
         cancelled, and results collected, prior to exiting. Otherwise, lots of
         ugly error messages will be shown to the user. """
-        futures = asyncio.Task.all_tasks(self.loop)
+        log.debug('Cleanup event loop')
+        if sys.version_info < (3, 7):
+            futures = asyncio.Task.all_tasks(self.loop)
+        else:
+            futures = asyncio.all_tasks(self.loop)
 
+        log.debug(f'{len(futures)} outstanding futures to cancel')
         if futures:
             for task in futures:
+                log.debug(f'Cancelling: {task}')
                 task.cancel()
 
+            log.debug('Running loop until remaining futures return...')
             results = self.loop.run_until_complete(asyncio.gather(
                 *futures,
                 loop=self.loop,
@@ -138,65 +145,35 @@ class Runner:
 
         for fut, res in zip(futures, results):
             if isinstance(res, Exception):
-                log.critical(f'Error collected during shutdown: {res}')
                 self._errs = True
 
         if self.loop:
+            log.debug('Closing event loop')
             self.loop.close()
-
-    def _get_workflow_save_path(self):
-        if self.workflow.save_path:
-            return self.workflow.save_path
-        elif self.project:
-            return self.project.workflow_path
-        else:
-            return f'{self.run_id}.pickle'
-
-    def _halt(self):
-        if self._main:
-            self._main.cancel()
-
-    def _handle_completed_task_futures(self, future):
-        """Callback added to task futures when they are spawned"""
-        log.debug('Handle: {}'.format(future))
-        try:
-            future.result()
-            if self._events:
-                for e in self._events:
-                    e.set()
-        except Exception:
-            log.exception(f'Unhandled exception in a task future: {future}')
-            self._halt()
-        finally:
-            self._conc_sem.release()
-            self._futures.remove(future)
-
-    async def _spawn(self, task):
-        await self._conc_sem.acquire()
-        future = self.loop.create_task(self.backend.spawn(task))
-        future.add_done_callback(self._handle_completed_task_futures)
-        self._futures.append(future)
 
     async def _spawn_new_tasks(self):
         """This coroutine is where the runner spends most of its time.
         It returns when the workflow raises StopIteration signalling that
         there are no more tasks to run. """
-        for task in self.workflow:
+        for task in self._workflow_iterator:
             if task is None:
                 await self._yield()
             else:
-                self.on_spawn(task)
+                self.process_exec_directives(task)
 
-                if not task.directives().get('cmd'):
-                    # if task is blank or None
-                    task.complete()
+                if task.directives.get('cmd'):
+                    if not task.is_done():
+                        # If the task was completed by the exec directive, we
+                        # do not need to attempt to run the cmd
+                        await self.process_cmd_directives(task)
                 else:
-                    await self._spawn(task)
-                    await asyncio.sleep(0)  # Gives event loop a chance to run
+                    task.complete()
+                    await asyncio.sleep(0)
 
-        log.info('Workflow complete!')
         if self._futures:
             await asyncio.wait(self._futures)
+
+        log.info('Run complete!')
 
     def _start_autosave(self):
         """Starts the autosaver coroutine"""
@@ -212,7 +189,8 @@ class Runner:
             raise ValueError('Backend.coroutines must be a list, or tuple')
         else:
             for c in backend_coroutines:
-                self.loop.create_task(c())
+                task = self.loop.create_task(c())
+                task.add_done_callback(self.handler)
 
     def _start_event_loop(self):
         if asyncio._get_running_loop() is not None:
@@ -220,6 +198,7 @@ class Runner:
 
         self._loop = asyncio.events.new_event_loop()
         asyncio.events.set_event_loop(self._loop)
+        self._event = Event()
 
     async def _yield(self):
         """Since the workflow is a simple synchronous class, it will just
@@ -230,68 +209,81 @@ class Runner:
         checking the workflow for new tasks. """
         delay = self.throttle * (self._workflow_len or 0)
         log.debug(f'Yield for {delay}s or when next future returns')
-        e = Event(loop=self.loop)
-        self._events.append(e)
 
         try:
-            await asyncio.wait_for(e.wait(), timeout=delay)
+            await self.wait_for_next_task_future(timeout=delay)
         except asyncio.TimeoutError:
             pass
 
-    def on_spawn(self, task):
-        """Called prior to launching a task"""
-        log.debug('Runner spawn: {}'.format(task))
-        try:
-            exec_directive = task.directives().get('exec')
+    async def process_cmd_directives(self, task):
+        await self._conc_sem.acquire()
+        future = self.loop.create_task(self.backend.spawn(task))
+        future.add_done_callback(self.handler)
+        self._futures.append(future)
 
-            if exec_directive:
-                exec(exec_directive, None, {'runner': self, 'task': task})
-                self._workflow_iterator = iter(self.workflow)
-        except AttributeError:
-            log.exception('Exception suppressed')
+    def process_exec_directives(self, task):
+        exec_directive = task.directives.get('exec')
+
+        if exec_directive:
+            env = {'runner': self, 'task': task}
+            exec(exec_directive, None, env)
+            self._workflow_iterator = iter(self.workflow.graph())
 
     def preflight(self):
         """Called prior to start"""
-        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
-        self.save_workflow()
-        log.info(f'Starting run: {self.run_id}')
-
-    def save_workflow(self):
-        self.workflow.save(self._get_workflow_save_path())
+        if self.autosave:
+            if self.workflow.path:
+                log.info(f'Saving workflow: {self.workflow.path}')
+                self.workflow.save()
+                self._start_autosave()
+            else:
+                log.warning(
+                    'Autosave is enabled, but no path has been set for this '
+                    'workflow. Progress will not be saved.'
+                )
 
     def shutdown(self):
         """Called after shutdown"""
-        log.info(f'Saving workflow: {self._get_workflow_save_path()}')
-        self.save_workflow()
 
-        complete = 0
-        failed = 0
-        for t in self.workflow.tasks(objs=True):
-            if t.is_complete():
-                complete += 1
-            elif t.is_failed():
-                failed += 1
-
-        if failed:
-            log.info(f'\u2620  {failed} tasks failed!')
-            self._errs = True
-        else:
-            log.info(f'\U0001f44d {complete} tasks complete!')
+        if self.autosave:
+            if self.workflow.path:
+                log.info(f'Saving workflow: {self.workflow.path}')
+                self.workflow.save()
 
         log.info(f'Total run time: {datetime.now() - self._run_started}')
 
-    def start(self, workflow, run_id=None, project=None):
+    def handler(self, future):
+        """Callback added to task futures when they are spawned"""
+        try:
+            res = future.result()
+            if isinstance(res, jetstream.Task):
+                if res.is_failed():
+                    self._workflow_iterator.graph.skip_descendants(res)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            self._errs = True
+        except Exception:
+            log.exception(f'Unhandled exception in a task future: {future}')
+            if self._main and not self._main.cancelled():
+                self._main.cancel()
+        finally:
+            self.notify_waiters()
+            self._conc_sem.release()
+            self._futures.remove(future)
+
+    def start(self, workflow, project=None):
         """Called to start the runner on a workflow."""
+        if project:
+            os.chdir(project.paths.path)
+
         self._project = project
         self._workflow = workflow
         self._workflow_len = len(workflow)
-        self._run_id = run_id or jetstream.run_id()
+        self._workflow_iterator = iter(self.workflow.graph())
         self._run_started = datetime.now()
         self._previous_directory = os.getcwd()
         self._errs = False
         self._start_event_loop()
         self._start_backend()
-        self._start_autosave()
 
         if self.max_concurrency is None:
             self.max_concurrency = utils.guess_max_forks()
@@ -301,15 +293,15 @@ class Runner:
         with sigterm_ignored():
             self.preflight()
 
-            if project:
-                os.chdir(project.path)
-
             try:
                 self._main = self.loop.create_task(self._spawn_new_tasks())
                 self.loop.run_until_complete(self._main)
-            except asyncio.CancelledError:
-                self._errs = True
             finally:
-                self.shutdown()
                 self._cleanup_event_loop()
+                log.debug(f'Runner finished shutdown, errs={self._errs}')
+
+                if self._errs:
+                    self.backend.cancel()
+
+                self.shutdown()
                 os.chdir(self._previous_directory)

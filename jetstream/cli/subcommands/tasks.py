@@ -1,162 +1,256 @@
 """Manage the tasks in a workflow"""
+import argparse
 import logging
-import sys
 import jetstream
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
 
 
 def arg_parser(p):
     p.add_argument(
-        '-t', '--tasks',
-        nargs='+',
-        help='Task name(s) to summarize'
+        '-w', '--workflow',
+        default=None,
+        help='path to a Jetstream workflow file'
     )
 
     p.add_argument(
+        '-n', '--name',
+        nargs='+',
+        default=[],
+        help='task name(s)'
+    )
+
+    p.add_argument(
+        '-r', '--regex',
+        nargs='+',
+        default=[],
+        help='task name pattern(s) - match task names with regex'
+    )
+
+    shared = argparse.ArgumentParser(add_help=False)
+
+    shared.add_argument(
         '-w', '--workflow',
-        help='Path to a Jetstream workflow file'
+        default=None,
+        help='path to a Jetstream workflow file'
+    )
+
+    shared.add_argument(
+        '-n', '--name',
+        nargs='+',
+        default=[],
+        help='task name(s)'
+    )
+
+    shared.add_argument(
+        '-r', '--regex',
+        nargs='+',
+        default=[],
+        help='task name pattern(s) - match task names with regex'
     )
 
     subparsers = p.add_subparsers(
         dest='subcommand'
     )
 
+    # Task detailed view
+    detailed_tasks = subparsers.add_parser(
+        name='details',
+        parents=[shared,],
+        description='See a more detailed view of tasks'
+    )
+
+    detailed_tasks.set_defaults(func=details)
+
+    # Removing tasks
     remove_tasks = subparsers.add_parser(
-        name='remove_tasks',
-        aliases=['remove',],
+        name='remove',
+        parents=[shared, ],
         description='Remove tasks from the current project workflow'
-                    'Warning - Experimental feature! If you '
-                    'find this feature useful, have problems or suggestions, '
-                    'please submit an issue on Github.'
     )
 
     remove_tasks.set_defaults(func=remove)
 
-    remove_tasks.add_argument(
-        'task_name',
-        nargs='+',
-        help='Task name(s) to remove. This will search for tasks with a '
-             'name matching the pattern and remove them from the workflow.'
-    )
 
     remove_tasks.add_argument(
         '-d', '--descendants',
         action='store_true',
-        default=False,
-        help='Also remove any descendants of the task'
+        help='also remove any descendants of the task'
     )
 
     remove_tasks.add_argument(
         '-f', '--force',
         action='store_true',
-        default=False,
-        help='Ignore dependency errors. Warning - This may corrupt the '
-             'workflow causing it to be unloadable.'
+        help='Ignore dependency errors. Caution! This may leave tasks with '
+             'missing dependencies and result in a corrupted workflow.'
     )
 
+    # Reset tasks
     reset_tasks = subparsers.add_parser(
-        name='reset_tasks',
-        aliases=['reset', ],
-        description='Reset tasks in the current project workflow. '
-                    'Warning - Experimental feature! If you '
-                    'find this feature useful, have problems or suggestions, '
-                    'please submit an issue on Github.'
+        name='reset',
+        parents=[shared, ],
+        description='Reset tasks in the workflow. '
     )
 
     reset_tasks.set_defaults(func=reset)
 
+    reset_tasks.add_argument(
+        '-a', '--ancestors',
+        action='store_true',
+        help='also reset any ancestors of the task'
+    )
+
+    # Complete tasks
     complete_tasks = subparsers.add_parser(
-        name='complete_tasks',
-        aliases=['complete', ],
-        description='Complete tasks in the current project workflow'
-                    'Warning - Experimental feature! If you '
-                    'find this feature useful, have problems or suggestions, '
-                    'please submit an issue on Github.'
+        name='complete',
+        parents=[shared, ],
+        description='Complete tasks in the workflow'
     )
 
     complete_tasks.set_defaults(func=complete)
 
+    # Fail tasks
     fail_tasks = subparsers.add_parser(
-        name='fail_tasks',
-        aliases=['fail', ],
-        description='Fail tasks in the current project workflow'
-                    'Warning - Experimental feature! If you '
-                    'find this feature useful, have problems or suggestions, '
-                    'please submit an issue on Github.'
+        name='fail',
+        parents=[shared, ],
+        description='Fail tasks in the workflow'
     )
 
     fail_tasks.set_defaults(func=fail)
 
 
-def tasks(args):
-    wf = args.workflow
+def _iter_selected_tasks(args, wf):
+    """Tasks can be selected by name or pattern, this generator yields any
+    tasks covered by the args in the given workflow. """
+    for task_name in args.name:
+        try:
+            yield wf.tasks[task_name]
+        except KeyError as e:
+            log.error(f'"{task_name}" not found in workflow')
 
-    if args.tasks:
-        for task_name in args.tasks:
-            tasks = wf.find(task_name, objs=True)
-            info = [task.serialize() for task in tasks]
-            jetstream.utils.yaml_dump(info, sys.stdout)
+
+    for pat in args.regex:
+        for t in wf.find(pat):
+            yield t
+
+
+def details(args):
+    """Long format details about the tasks"""
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
+
+    if args.name or args.regex:
+        tasks = set()
+        for task in _iter_selected_tasks(args, wf):
+            tasks.add(task)
     else:
-        tasks = {t.tid: t for t in wf.tasks(objs=True)}
+        tasks = wf.tasks.values()
 
-        print('\t'.join(('task_id', 'status',)))
-        for t in tasks.values():
-            print('\t'.join((t.tid, t.status,)))
+    for t in tasks:
+        print(t.name)
+        print(f'Directives:\n{jetstream.utils.yaml_dumps(t.directives)}')
+        print(f'State:\n{jetstream.utils.yaml_dumps(t.state)}')
+        try:
+            print('Logs:')
+            stdout_path = t.directives.get('stdout')
+            with open(stdout_path, 'r') as fp:
+                print(fp.read())
+        except FileNotFoundError:
+            print(f'Could not find log file: {stdout_path}')
 
 
 def remove(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
 
-    for name in args.task_name:
-        wf.remove_task(name, force=args.force, descendants=args.descendants)
+    msg = '{} has successors that would be orphaned, remove them first' \
+          'or use --force option.'
+
+    if args.force:
+        for task in _iter_selected_tasks(args, wf):
+            log.info(f'Removing: {task}')
+            wf.pop(task.name)
+    else:
+        graph = wf.graph()
+
+        for task in _iter_selected_tasks(args, wf):
+            has_deps = next(iter(graph.successors(task)))
+            if has_deps:
+                raise ValueError(msg.format(task))
+            else:
+                log.info(f'Removing: {task}')
+                wf.pop(task.name)
 
     wf.save()
 
 
 def reset(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
 
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).reset()
+    for task in _iter_selected_tasks(args, wf):
+        log.info(f'Resetting: {task}')
+        task.reset()
 
     wf.save()
 
 
 def complete(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
 
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).complete()
+    for task in _iter_selected_tasks(args, wf):
+        log.info(f'Completing: {task}')
+        task.complete()
 
     wf.save()
 
 
 def fail(args):
-    wf = args.workflow
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
 
-    for name in args.task_name:
-        task_ids = wf.find(name)
-        for tid in task_ids:
-            wf.get_task(tid).fail()
+    for task in _iter_selected_tasks(args, wf):
+        log.info(f'Failing: {task}')
+        task.fail(force=True)
 
     wf.save()
 
 
+def summary(args):
+    log.debug(f'{__name__} {args}')
+    wf = load_workflow(args)
+
+    if args.name or args.regex:
+        tasks = set()
+        for task in _iter_selected_tasks(args, wf):
+            tasks.add(task)
+    else:
+        tasks = list(wf)
+
+    f = jetstream.settings['tasks']['summary_fields'].get(list)
+    print('\t'.join(f))
+
+    for t in tasks:
+        d = t.to_dict()
+        values = [jetstream.utils.dict_lookup_dot_notation(d, v) for v in f]
+        print('\t'.join(values))
+
+
+def load_workflow(args):
+    if args.workflow:
+        log.debug(f'Workflow given by arguments, loading {args.workflow}')
+        workflow = jetstream.load_workflow(args.workflow)
+    elif args.project:
+        log.debug(f'Workflow not given by arguments, loading project {args.project}')
+        workflow = args.project.load_workflow()
+    else:
+        err = 'No workflow given. Must be run inside a project, or use ' \
+              '--project --workflow arguments'
+        raise FileNotFoundError(err)
+    return workflow
+
+
 def main(args):
     log.debug(f'{__name__} {args}')
-
-    if args.workflow:
-        args.workflow = jetstream.load_workflow(args.workflow)
-    else:
-        if args.project is None:
-            raise ValueError('No workflow given and not working in a project')
-        args.workflow = args.project.workflow
-
-    if args.func is main:
-        tasks(args)
-
+    summary(args)

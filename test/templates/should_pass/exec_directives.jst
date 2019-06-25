@@ -8,10 +8,8 @@
   stdout: /dev/null
   after: start
   exec: |
-
-    with runner.workflow:
-        for i in range(10):
-            runner.workflow.new_task(cmd='true', name='new_task_{}'.format(i))
+      for i in range(10):
+          runner.workflow.new_task(name='new_task_{}'.format(i), cmd='true')
 
 
 - name: finalize

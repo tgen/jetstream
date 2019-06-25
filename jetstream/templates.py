@@ -1,69 +1,114 @@
-"""Initiate a Jinja environment with template loaders that search
+"""Initiate a Jinja2 environment with template loaders that search
 locations set by arguments or environment variables. """
 import json
 import hashlib
 import logging
 import os
-import traceback
-import confuse
-from datetime import datetime
+import urllib.parse
+import textwrap
+from collections.abc import Mapping
 import jetstream
 from jinja2 import (
     Environment,
     StrictUndefined,
     Undefined,
-    evalcontextfilter,
+    contextfunction,
     FileSystemLoader
 )
 
 log = logging.getLogger(__name__)
 
 
-@evalcontextfilter
-def raise_helper(eval_ctx, msg):
+class TemplateContext:
+    """Enforces the correct priority order for loading config data sources when
+    rendering templates:
+
+    low priority  --> 1) Project: jetstream/config.yaml
+                      2) Pipeline: pipeline.yaml: template_config_data section
+    high priority --> 3) Command Args: -c/--config and -C/--config-file options
+
+    """
+    def __init__(self, *, project=None, pipeline=None, command_args=None):
+        self.sources = []
+        self.stack = []
+
+        if project is not None:
+            rep = textwrap.shorten(str(project.index), 76)
+            self.sources.append(f'Project index: {rep}')
+            self.stack.append(project.index)
+
+        if pipeline is not None:
+            rep = textwrap.shorten(str(pipeline.manifest), 76)
+            self.sources.append(f'Pipeline manifest: {rep}')
+            self.stack.append(pipeline.manifest)
+
+        if command_args is not None:
+            rep = textwrap.shorten(str(command_args), 76)
+            self.sources.append(f'Command args: {rep}')
+            self.stack.append(command_args)
+
+    def __str__(self):
+        sources = [f'{i}: {text}' for i, text in enumerate(self.sources)]
+        return '\n'.join(sources)
+
+    def flatten(self):
+        """Returns a single config object created by flattening the sources
+        in """
+        return jetstream.utils.config_stack(*self.stack)
+
+
+
+class TemplateException(Exception):
+    """Can be raised by the template itself using raise() function"""
+
+
+@contextfunction
+def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
-    raise Exception(msg)
+    raise TemplateException(f'{ctx.name}: {msg}')
 
 
-@evalcontextfilter
-def basename(eval_ctx, path):
-    """Allow "basename(<path>)" to be used in templates"""
-    if isinstance(path, str):
-        return os.path.basename(path)
-    else:
-        return [os.path.basename(p) for p in path]
+@contextfunction
+def log_helper(ctx, msg, level='INFO'):
+    """Allow "raise('msg')" to be used in templates"""
+    level = logging._checkLevel(level)
+    log.log(level, f'{ctx.name}: {msg}')
+    return ''
 
 
-@evalcontextfilter
-def dirname(eval_ctx, path):
-    """Allow "dirname(<path>)" to be used in templates"""
-    # TODO Make this work on sequences of paths
-    if isinstance(path, str):
-        return os.path.dirname(path)
-    else:
-        return [os.path.dirname(p) for p in path]
+def basename(path):
+    """Allow "{{ path|basename }}" to be used in templates"""
+    return os.path.basename(path)
 
 
-@evalcontextfilter
-def sha256(eval_ctx, value):
-    """Allow "sha256(<value>)" to be used in templates"""
+def dirname(path):
+    """Allow "{{ path|dirname }}" to be used in templates"""
+    return os.path.dirname(path)
+
+
+def urlparse(value):
+    """Allow "{{ value|urlparse }}" to be used in templates. The return
+    value of this filter is a named tuple that can be used to access parts
+    of a qualified URL. eg: {{ path|urlparse|attr("netloc") }}"""
+    return urllib.parse.urlparse(value)
+
+
+def sha256(value):
+    """Allow "{{ value|sha256 }}" to be used in templates"""
     h = hashlib.sha256(value.encode())
     return h.hexdigest()
 
 
-@evalcontextfilter
-def fromjson(eval_ctx, value):
-    """Allow "fromjson(<value>)" to be used in templates"""
+def fromjson(value):
+    """Allow "{{ value|fromjson }}" to be used in templates"""
     return json.loads(value)
 
 
 def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
                 searchpath=None):
-    """Start a Jinja2 Environment with the given template directories.
-
-    Templates are loaded by a Jinja2 FilesystemLoader that includes built-in
-    templates by default. The search path is also extended to include any
-    directories in template_dirs."""
+    """Starts a Jinja2 Environment with a FileSystemLoader on the given search
+    path. This adds several features to the standard template processor.
+    """
     if strict:
         undefined_handler = StrictUndefined
     else:
@@ -81,129 +126,61 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     )
 
     env.globals['raise'] = raise_helper
+    env.globals['log'] = log_helper
     env.filters['fromjson'] = fromjson
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
+    env.filters['urlparse'] = urlparse
     env.filters['sha256'] = sha256
     return env
 
 
-def context(*, project=None, command_args=None, settings=True):
-    """Enforces the correct priority order for loading data sources when
-    rendering templates"""
-
-    # Template rendering config stack
-    #
-    #
-    # constants:
-    #   command args "constants" key
-    #   pipeline manifest "constants" section (if using pipelines)
-    #   settings file "constants" section
-    #
-    # <globals>: <values>
-    #   command args
-    #   project config file (if working in a project)
-    #
-    #
-    #Constants load order: Config files > Pipeline manifest (pipelines only) > command args???"""]
-    # Load constants
-    stack = []
-
-    if settings:
-        sc = jetstream.settings.flatten().get('constants')
-        if sc:
-            stack.append(sc)
-
-    if command_args:
-        cc = command_args.get('constants', {})
-        if cc:
-            stack.append(cc)
-
-    a = {'constants': jetstream.utils.config_stack(*stack)}
-
-    # Load globals
-    stack = []
-
-    if project:
-        stack.append(project.config)
-
-    if command_args:
-        stack.append(command_args)
-
-    b = jetstream.utils.config_stack(*stack)
-
-    # Mash them all together
-    return jetstream.utils.config_stack(a, b)
-
-
-def render_template(path, context=None, env=None, render_only=False):
-    """Load and render a template.
-
-    :param context: Mapping object with data used to render template
-    :param env: A preconfigured Jinja Environment
-    :param render_only: Return the rendered template instead of a workflow
-    :return: jetstream.Workflow
-    """
+def render_template(path=None, data=None, *, project=None, pipeline=None,
+                   command_args=None, search_path=()):
     log.info('Rendering template...')
-    started = datetime.now()
 
-    if env is None:
-        env = environment(searchpath=[os.getcwd(), os.path.dirname(path)])
+    if bool(path) == bool(data):
+        raise TypeError('build template expected path or data argument')
 
-    if not os.path.exists(path):
-        raise FileNotFoundError(path)
+    if path:
+        template_dir = os.path.dirname(path)
+        template_basename = os.path.basename(path)
+        env = environment(searchpath=[template_dir,] + list(search_path))
+        template = env.get_template(template_basename)
+    else:
+        env = environment(searchpath=list(search_path))
+        template = env.from_string(data)
 
-    if os.path.isdir(path):
-        raise FileNotFoundError(f'{path} is a directory!')
+    context = TemplateContext(
+        project=project,
+        pipeline=pipeline,
+        command_args=command_args
+    )
 
-    with open(path, 'r') as fp:
-        data = fp.read()
+    sources = textwrap.indent(str(context), " " * 4)
+    if sources:
+        log.info(f'Template rendering data sources include:\n{sources}')
+    else:
+        log.warning(f'No data for rendering template variables')
 
-    log.debug(f'Template render context:\n{context}')
-    template = env.from_string(data)
-    render = template.render(**context)
+    context = context.flatten()
+    return template.render(**context)
 
-    if render_only:
-        return render
 
-    log.debug(f'Rendered template:\n{render}')
-    log.info('Parsing template...')
 
-    try:
-        parsed_tasks = jetstream.utils.yaml_loads(render)
-    except jetstream.utils.yaml.YAMLError:
-        log.critical(f'Error parsing rendered template:\n{render}')
-        tb = traceback.format_exc()
-        log.critical(f'Parser Traceback:\n{tb}\n')
-        msg = (
-            f'The template was rendered successfully, but failed to parse with'
-            f'the YAML loader. See the parser traceback above for more details.'
-        )
-        raise ValueError(msg) from None
+def build_template(*args, **kwargs):
+    render = render_template(*args, **kwargs)
+    tasks = jetstream.utils.yaml_loads(render)
 
-    if not isinstance(parsed_tasks, list):
-        log.warning(f'Error loading rendered template:\n{render}')
-        msg = (
-            f'The template was rendered and parsed successfully, but the '
-            f'resulting data structure was a {type(parsed_tasks)} . Templates '
-            f'should always produce a list of tasks.'
-        )
-        raise ValueError(msg)
+    log.info('Loading tasks...')
+    if isinstance(tasks, Mapping):
+        # If template is a mapping, it is expected to have a tasks section
+        props = {k: v for k, v in tasks.items() if k != 'tasks'}
+        tasks = [jetstream.Task(**t) for t in tasks['tasks']]
+        wf = jetstream.Workflow(tasks=tasks, props=props)
+    else:
+        tasks = [jetstream.Task(**t) for t in tasks]
+        wf = jetstream.Workflow(tasks=tasks)
 
-    # log.debug(f'Parsed template:\n{parsed_tasks}')
-    log.info('Building workflow...')
+    return wf
 
-    workflow = jetstream.Workflow()
-    with workflow:
-        for task in parsed_tasks:
-            if not isinstance(task, dict):
-                msg = f'Error with task:\n{task}' \
-                      f'The template was rendered and parsed successfully, ' \
-                      f'but encountered a task that was not a mapping type.'
-                raise ValueError(msg)
-
-            workflow.new_task(**task)
-
-    elapsed = datetime.now() - started
-    log.info(f'Workflow ready (after {elapsed}): {workflow}')
-    return workflow

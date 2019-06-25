@@ -1,31 +1,64 @@
-import os
 import logging
+import os
+import time
+from datetime import datetime
 import filelock
 import jetstream
 
 log = logging.getLogger(__name__)
-sentinel = object()
+INDEX_DIR = 'jetstream'
+INDEX_FILENAME = 'project.yaml'
+LOGS_DIR = 'logs'
+HISTORY_DIR = 'history'
+PID_FILENAME = 'pid.lock'
+WORKFLOW_FILENAME = 'workflow.pickle'
 
 
-class ProjectInvalid(Exception):
-    """Raised when trying to load a project that is missing something"""
-    pass
+# May 27th 2019 - Decided that the settings template data should be
+# dropped for now, 1) it adds a layer of complexity that's almost too much
+# for me to explain, 2) and it creates new difficult problems (like the one
+# below). Now, the template context just includes project>pipeline>command.
+# This still leaves one complicated behavior: The precedence is configured
+# so that pipeline values are higher than project values, you cannot edit
+# the config.yaml to override pipeline settings in the pipeline.yaml, they
+# must be passed as command args. But, this pattern seems to be the best of
+# two bad options.
+
+# TODO include project config data saved in the user app settings?
+# It seems logical to store user settings template data in the
+# project config.yaml when creating the project. But, this sets up some
+# odd behaviors. Since project config would be higher priority that user
+# general config. Changes to user general config will not be updated in a
+# project when re-running workflows later. How could this be handled?
 
 
 class PidFileLock(filelock.SoftFileLock):
     """This FileLock subclass adds extra info to the lock file upon acquire"""
+
     def acquire(self, *args, **kwargs):
         super(PidFileLock, self).acquire(*args, **kwargs)
         with open(self.lock_file, 'w') as fp:
             info = jetstream.utils.Fingerprint()
-            jetstream.utils.yaml_dump(info.serialize(), fp)
+            jetstream.utils.yaml_dump(info.to_dict(), fp)
+
+
+class ProjectPaths:
+    def __init__(self, path):
+        self.path = os.path.abspath(path)
+        self.index_dir = os.path.join(self.path, INDEX_DIR)
+        self.index_path = os.path.join(self.index_dir, INDEX_FILENAME)
+        self.logs_dir = os.path.join(self.index_dir, LOGS_DIR)
+        self.history_dir = os.path.join(self.index_dir, HISTORY_DIR)
+        self.pid_path = os.path.join(self.index_dir, PID_FILENAME)
+        self.workflow_path = os.path.join(self.index_dir, WORKFLOW_FILENAME)
+
+    def exists(self):
+        return os.path.exists(self.index_path)
 
 
 class Project:
-    """Load a Jetstream project.
-
-    This class is an internal representation of a project. A project is any
-    directory with an index dir and project.yaml: `<project>/jetstream/`.
+    """Load a Jetstream project. A project is any directory with an index dir
+    and project.yaml: `<project>/jetstream/`.
 
     <project>/
         .
@@ -41,154 +74,98 @@ class Project:
         └──      ...
 
     """
-    _INDEX = 'jetstream'
-    _LOGS_DIR = 'logs'
-    _INFO_FILENAME = 'project.yaml'
-    _LOCK_FILENAME = 'pid.lock'
-    _WORKFLOW_FILENAME = 'workflow.pickle'
-    _CONFIG_FILENAME = 'config.yaml'
-    def __init__(self, path=None, validate=True):
-        self._config = sentinel
-        self._info = sentinel
-        self._workflow = sentinel
+    def __init__(self, path=None):
+        path = path or os.getcwd()
+        timeout = jetstream.settings['projects']['lock_timeout'].get(int)
+        self.paths = ProjectPaths(path)
+        self.lock = PidFileLock(self.paths.pid_path, timeout=timeout)
 
-        if path is not None:
-            self.path = os.path.abspath(path)
-        else:
-            self.path = os.getcwd()
-
-        if validate:
-            if not os.path.exists(self.path):
-                raise ProjectInvalid(f'Does not exist: {self.path}')
-
-            if not os.path.exists(self.info_path):
-                raise ProjectInvalid(f'File not found: {self.info_path}')
-
-        self.lock = PidFileLock(
-            self.pid_path,
-            timeout=jetstream.settings['lock_timeout'].get(int)
-        )
+        try:
+            self.index = jetstream.utils.load_file(self.paths.index_path)
+            self.info = self.index['__project__']
+        except FileNotFoundError as e:
+            err = f'Project index not found: {e}'
+            raise FileNotFoundError(err) from None
+        except KeyError:
+            err = f'Project index does not contain "__project__" key.'
+            raise FileNotFoundError(err) from None
 
     def __repr__(self):
-        return f'<Project path={self.path}>'
+        return f'<Project path={self.paths.path}>'
 
-    @property
-    def config_path(self):
-        return os.path.join(self.index_dir, Project._CONFIG_FILENAME)
+    def add_to_history(self, note=None, data=None):
+        tries = jetstream.settings['projects']['history_max_tries'].get(int)
+        format = jetstream.settings['projects']['history_filename'].get(str)
+        fingerprint = jetstream.utils.Fingerprint(note=note).to_dict()
+        fingerprint['data'] = data
 
-    @property
-    def index_dir(self):
-        return os.path.join(self.path, Project._INDEX)
+        os.makedirs(self.paths.history_dir, exist_ok=True)
 
-    @property
-    def info_path(self):
-        return os.path.join(self.index_dir, Project._INFO_FILENAME)
-
-    @property
-    def logs_dir(self):
-        return os.path.join(self.index_dir, Project._LOGS_DIR)
-
-    @property
-    def pid_path(self):
-        return os.path.join(self.index_dir, Project._LOCK_FILENAME)
-
-    @property
-    def workflow_path(self):
-        return os.path.join(self.index_dir, Project._WORKFLOW_FILENAME)
-
-    @property
-    def config(self):
-        if self._config is sentinel:
+        for _ in range(0, tries):
+            name = datetime.utcnow().strftime(format)
+            path = os.path.join(self.paths.history_dir, name)
             try:
-                self.load_config()
-            except FileNotFoundError:
-                log.exception('No project config file found!')
-                self._config = None
-        return self._config
+                with open(path, 'x') as fp:
+                    jetstream.utils.yaml_dump(fingerprint, fp)
+                return path
+            except FileExistsError:
+                time.sleep(1)
+        else:
+            raise FileExistsError(f'Unable to create history file: {path}')
 
-    @config.setter
-    def config(self, value):
-        self._config = value
+    def history_iter(self):
+        yield self.index
+        for f in os.listdir(self.paths.history_dir):
+            try:
+                path = os.path.join(self.paths.history_dir, f)
+                yield jetstream.utils.load_yaml(path)
+            except jetstream.utils.yaml.YAMLError:
+                log.exception(f'Failed to load history file: {path}')
 
     @property
-    def info(self):
-        if self._info is sentinel:
-            try:
-                self.load_info()
-            except FileNotFoundError:
-                log.exception('No project info file found!')
-                self._info = None
-        return self._info
+    def is_locked(self):
+        return self.lock.is_locked
 
-    @info.setter
-    def info(self, value):
-        self._info = value
-
-    @property
-    def workflow(self):
-        """Lazy-loads the workflow file when accessed"""
-        if self._workflow is sentinel:
-            try:
-                self.load_workflow()
-            except FileNotFoundError:
-                log.exception('No project workflow file found!')
-                self._workflow = None
-        return self._workflow
-
-    @workflow.setter
-    def workflow(self, value):
-        self._workflow = value
-
-    def init(self, workflow=None, config=None):
-        os.makedirs(self.index_dir, exist_ok=True)
-        os.makedirs(self.logs_dir, exist_ok=True)
-
-        self.info = jetstream.utils.Fingerprint().serialize()
-        self.config = config or dict()
-        self.workflow = workflow or None
-        self.save()
-        return self
-
-    def load_config(self):
-        """Load the config file for this project"""
-        self.config = jetstream.utils.load_file(self.config_path)
-        return self.config
-
-    def load_info(self):
-        self.info = jetstream.utils.load_file(self.info_path)
-        return self.info
+    def list_history(self):
+        return list(self.history_iter())
 
     def load_workflow(self):
-        """Load the existing workflow for this project. This sets
-        project.workflow to the workflow object that was loaded."""
-        self.workflow = jetstream.workflows.load_workflow(self.workflow_path)
-        return self.workflow
+        try:
+            return jetstream.load_workflow(self.paths.workflow_path)
+        except FileNotFoundError:
+            return jetstream.Workflow(path=self.paths.workflow_path)
 
-    def save_config(self):
-        """Save a config file for this project"""
-        log.debug(f'Saving project config: {self.config_path}')
-        with open(self.config_path, 'w') as fp:
-            jetstream.utils.yaml_dump(self.config, fp)
-
-    def save_info(self):
-        log.debug(f'Saving project info: {self.info_path}')
-        with open(self.info_path, 'w') as fp:
-            jetstream.utils.yaml_dump(self.info, fp)
-
-    def save_workflow(self):
-        """Save a workflow in this project"""
-        log.debug(f'Saving project workflow: {self.workflow_path}')
-        jetstream.workflows.save_workflow(self.workflow, self.workflow_path)
-
-    def save(self):
-        self.save_config()
-        self.save_info()
-
-        if self.workflow:
-            self.save_workflow()
+    def update_index(self, data):
+        self.index = jetstream.utils.config_stack(self.index, data)
+        with open(self.paths.index_path, 'w') as fp:
+            jetstream.utils.yaml_dump(self.index, fp)
+        self.add_to_history('Updated index data', data=self.index)
 
 
-def new_project(path=None, config=None):
-    """Helper function for creating a new project"""
-    p = Project(path=path, validate=False)
-    return p.init(config=config)
+def is_project(path):
+    paths = ProjectPaths(path)
+    return paths.exists()
+
+
+def init(path=None, config=None, id=None):
+    """Sets up a new project dir. This will overwrite jetstream/project.yaml if
+    the project already exists. """
+    if path is None:
+        path = os.getcwd()
+
+    paths = ProjectPaths(path)
+    os.makedirs(paths.index_dir, exist_ok=True)
+    os.makedirs(paths.logs_dir, exist_ok=True)
+    os.makedirs(paths.history_dir, exist_ok=True)
+
+    fingerprint = jetstream.utils.Fingerprint(note='init', id=id).to_dict()
+    config = config or dict()
+    config.update(__project__=fingerprint)
+
+    with open(paths.index_path, 'w') as fp:
+        jetstream.utils.yaml_dump(config, fp)
+
+    wf = jetstream.Workflow()
+    wf.save(paths.workflow_path)
+    return Project(path)
+

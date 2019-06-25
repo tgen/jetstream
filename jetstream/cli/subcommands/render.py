@@ -1,25 +1,17 @@
-"""Render a template and print the results"""
+"""Shortcut to "jetstream run" with "--render-only" option
+"""
 import logging
-from jetstream.templates import context, render_template
+from jetstream.cli.subcommands import run
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('jetstream.cli')
+__doc__ = __doc__+ '\n' + run.__doc__
 
 
 def arg_parser(parser):
-    parser.add_argument(
-        'path',
-        help='Path to a workflow template'
-    )
-
+    run.arg_parser(parser)
 
 
 def main(args):
     log.debug(f'{__name__} {args}')
-
-    c = context(
-        project=args.project,
-        command_args=args.kvargs
-    )
-
-    render = render_template(args.path, c, render_only=True)
-    print(render)
+    args.render_only = True
+    return run.main(args)
