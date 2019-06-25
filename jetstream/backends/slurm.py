@@ -442,7 +442,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
            cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None, sbatch_executable=None, retry=3):
+           additional_args=None, sbatch_executable=None, retry=10):
     if sbatch_executable is None:
         sbatch_executable = 'sbatch'
 
@@ -501,7 +501,8 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
         except subprocess.CalledProcessError:
             if remaining_tries > 0:
                 remaining_tries -= 1
-                log.exception(f'Error during sbatch, retrying...')
+                log.exception(f'Error during sbatch, retrying in 60s ...')
+                time.sleep(60)
             else:
                 raise
 
