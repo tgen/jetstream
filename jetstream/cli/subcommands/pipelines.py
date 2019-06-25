@@ -53,7 +53,7 @@ def main(args):
         args.path = os.path.join(pipeline.path, pipeline.info['main'])
 
         if 'bin' in pipeline.info:
-            bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
+            bin_path = os.path.join(pipeline.path, pipeline.info['bin'])
             os.environ['PIPELINE_BIN'] = str(bin_path)
             os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
