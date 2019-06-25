@@ -29,7 +29,8 @@ class SlurmBackend(BaseBackend):
                 'slurm_args')
 
     def __init__(self, sacct_frequency=60, sbatch_delay=0.1,
-                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed')):
+                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
+                 job_monitor_max_fails=5):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -41,6 +42,7 @@ class SlurmBackend(BaseBackend):
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
+        self.job_monitor_max_fails = job_monitor_max_fails
         self.jobs = dict()
 
         self.coroutines = (self.job_monitor,)
@@ -69,8 +71,7 @@ class SlurmBackend(BaseBackend):
     async def job_monitor(self):
         """Request job data updates from sacct for each job in self.jobs."""
         log.info('Slurm job monitor started!')
-        max_failures = settings['backends']['slurm']['job_monitor_max_fails'].get(int)
-        failures = max_failures
+        failures = self.job_monitor_max_fails
         try:
             while 1:
                 await self.wait_for_next_update()
@@ -91,7 +92,7 @@ class SlurmBackend(BaseBackend):
                     await asyncio.sleep(120)
                     continue
 
-                failures = max_failures
+                failures = self.job_monitor_max_fails
                 self._bump_next_update()
 
                 for jid, data in sacct_data.items():
