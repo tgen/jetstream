@@ -11,6 +11,7 @@ import time
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
+from jetstream import settings
 
 log = logging.getLogger('jetstream.backends')
 sacct_delimiter = '\037'
@@ -68,7 +69,8 @@ class SlurmBackend(BaseBackend):
     async def job_monitor(self):
         """Request job data updates from sacct for each job in self.jobs."""
         log.info('Slurm job monitor started!')
-
+        max_failures = settings['backends']['slurm']['job_monitor_max_fails'].get(int)
+        failures = max_failures
         try:
             while 1:
                 await self.wait_for_next_update()
@@ -77,8 +79,19 @@ class SlurmBackend(BaseBackend):
                     log.debug('No current jobs to check')
                     self._bump_next_update()
                     continue
+                try:
+                    sacct_data = sacct(*self.jobs, return_data=True)
+                except Exception:
+                    if failures <= 0:
+                        raise
+                    else:
+                        failures -= 1
+                    err = f'Slurm job monitor error: {failures} remaining'
+                    log.exception(err)
+                    await asyncio.sleep(120)
+                    continue
 
-                sacct_data = sacct(*self.jobs, return_data=True)
+                failures = max_failures
                 self._bump_next_update()
 
                 for jid, data in sacct_data.items():

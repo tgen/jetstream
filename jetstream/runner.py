@@ -189,7 +189,9 @@ class Runner:
             raise ValueError('Backend.coroutines must be a list, or tuple')
         else:
             for c in backend_coroutines:
-                self.loop.create_task(c())
+                future = c()
+                future.add_done_callback(self.handler)
+                self.loop.create_task(future)
 
     def _start_event_loop(self):
         if asyncio._get_running_loop() is not None:
@@ -254,9 +256,10 @@ class Runner:
     def handler(self, future):
         """Callback added to task futures when they are spawned"""
         try:
-            task = future.result()
-            if task.is_failed():
-                self._workflow_iterator.graph.skip_descendants(task)
+            res = future.result()
+            if isinstance(res, jetstream.Task):
+                if res.is_failed():
+                    self._workflow_iterator.graph.skip_descendants(res)
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._errs = True
         except Exception:

@@ -58,6 +58,7 @@ backends:
     cpus: null
   slurm:
     (): jetstream.backends.slurm.SlurmBackend
+    job_monitor_max_fails: 5
     sacct_frequency: 10
     sacct_fields:
       - JobID

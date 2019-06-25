@@ -1,0 +1,17 @@
+- name: step1
+  cmd: echo hello
+  stdout: /dev/null
+
+- name: step2
+  after: step1
+  cmd: exit 1
+
+- name: step3
+  after: step2
+  cmd: echo nope
+
+- name: step4
+  after: step3
+  cmd: echo nope again
+
+

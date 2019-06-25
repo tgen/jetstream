@@ -1,0 +1,14 @@
+- name: task1
+  cmd: |
+    echo this should  run
+
+- name: task2
+  after: task1
+  exec: |
+    raise ValueError('foo')
+  cmd: echo this should not run
+
+- name: task3
+  after: task2
+  cmd: echo this should not run either
+
