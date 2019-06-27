@@ -150,16 +150,30 @@ def from_workflow(args):
 
 
 def check_for_failures(tasks):
-    failures = [task for task in tasks if task.is_failed()]
-    if failures:
+    fails = []
+    skips = []
+    for task in tasks:
+        if task.is_failed():
+            if task.is_skipped():
+                skips.append(task)
+            else:
+                fails.append(task)
+
+    if fails or skips:
+        log.info(f'{len(fails)+len(skips)} total tasks failed:')
         for i in range(5):
             try:
-                task = failures.pop(-1)
-                log.info(f'{task.name} failed')
+                task = fails.pop(-1)
+                log.info(f'{task} {task.state.get("label")}')
             except IndexError:
                 break
         else:
-            log.info(f'and {len(failures)} other tasks...')
+            if fails:
+                log.info(f'...and {len(fails)} more failed!')
+
+        if skips:
+            log.info(f'{len(skips)} tasks were skipped due to '
+                     f'failed dependencies')
 
         raise RuntimeError('Some tasks failed')
 
@@ -205,12 +219,14 @@ def run(args):
         wf.path = args.out
 
     wf.reset(args.reset_method)
-    args.runner.start(
-        workflow=wf,
-        project=args.project
-    )
 
-    check_for_failures(wf.tasks.values())
+    try:
+        args.runner.start(
+            workflow=wf,
+            project=args.project
+        )
+    finally:
+        check_for_failures(wf.tasks.values())
 
 
 
@@ -224,7 +240,7 @@ def main(args):
         else:
             run(args)
     except RuntimeError:
-        log.error('There were task failures during the run.')
+        log.error('There were errors during the run.')
         raise SystemExit(1)
     except TimeoutError:
         log.error('Failed to acquire project lock, there may be a run pending.')
