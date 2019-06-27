@@ -430,7 +430,13 @@ def mash(G, H):
         log.debug(f'Checking {task}')
         if task in G:
             log.debug(f'also exists in G')
-            if task.identity != G[task.name].identity:
+            g_task = G[task.name]
+            if g_task.is_failed():
+                log.debug(f'status is failed, replacing in workflow..')
+                workflow.pop(task.name)
+                workflow.add(task)
+                modified.add(task)
+            elif task.identity != g_task.identity:
                 log.debug(f'but identity is different, replacing in workflow..')
                 workflow.pop(task.name)
                 workflow.add(task)
