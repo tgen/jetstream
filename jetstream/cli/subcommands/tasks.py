@@ -150,13 +150,16 @@ def details(args):
         print(t.name)
         print(f'Directives:\n{jetstream.utils.yaml_dumps(t.directives)}')
         print(f'State:\n{jetstream.utils.yaml_dumps(t.state)}')
-        try:
-            print('Logs:')
-            stdout_path = t.directives.get('stdout')
-            with open(stdout_path, 'r') as fp:
-                print(fp.read())
-        except FileNotFoundError:
-            print(f'Could not find log file: {stdout_path}')
+        print('Logs:')
+        stdout_path = t.state.get('stdout_path') or t.directives.get('stdout')
+        if stdout_path is None:
+            print(f'Could not determine the log path')
+        else:
+            try:
+                with open(stdout_path, 'r') as fp:
+                    print(fp.read())
+            except FileNotFoundError:
+                print(f'Could not find log file: {stdout_path}')
 
 
 def remove(args):
