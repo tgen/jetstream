@@ -5,6 +5,36 @@ import jetstream
 
 log = logging.getLogger('jetstream.cli')
 
+TASK_DETAILS = """\
+--------------------------------------------
+{{ task.name }}: {{ task.status }}
+--------------------------------------------
+{% if task.directives.cmd %}
+Cmd: |
+    {{ task.directives.cmd|indent(4) }}
+    
+Directives:
+{% for k, v in task.directives.items() if k != 'cmd' %}
+    {{ k }}: {{ v|tojson|safe }}
+{% endfor %}
+{% else %}
+Directives:
+{% for k, v in task.directives.items() %}
+    {{ k }}: {{ v|tojson|safe }}
+{% endfor %}
+{% endif %}
+
+State:
+{% for k, v in task.state.items() %}
+    {{ k }}: {{ v|tojson|safe }}
+{% endfor %}
+  
+{% if logs %}
+Logs: |
+    {{ logs|indent(4) }}
+{% endif %}
+
+"""
 
 def arg_parser(p):
     p.add_argument(
@@ -147,19 +177,21 @@ def details(args):
         tasks = wf.tasks.values()
 
     for t in tasks:
-        print(t.name)
-        print(f'Directives:\n{jetstream.utils.yaml_dumps(t.directives)}')
-        print(f'State:\n{jetstream.utils.yaml_dumps(t.state)}')
-        print('Logs:')
         stdout_path = t.state.get('stdout_path') or t.directives.get('stdout')
         if stdout_path is None:
-            print(f'Could not determine the log path')
+            logs = f'Could not determine log file path'
         else:
             try:
                 with open(stdout_path, 'r') as fp:
-                    print(fp.read())
+                    logs = fp.read()
             except FileNotFoundError:
-                print(f'Could not find log file: {stdout_path}')
+                logs = f'Could not find log file: {stdout_path}'
+
+        env = jetstream.templates.environment()
+        template = env.from_string(TASK_DETAILS)
+        final = template.render(task=t, logs=logs)
+        print(final)
+
 
 
 def remove(args):

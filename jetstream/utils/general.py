@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 class Fingerprint:
     """Generate a snapshot of the system info."""
-    def __init__(self, note=None, id=None):
+    def __init__(self, note=None, id=None, pid=False):
         self.datetime = datetime.utcnow().isoformat()
         self.user = getuser()
         self.version = str(get_distribution("jetstream"))
@@ -37,6 +37,8 @@ class Fingerprint:
         self.pwd = os.getcwd()
         self.note = str(note)
         self.id = id or jetstream.guid()
+        if pid:
+            self.pid = os.getpid()
 
     def to_dict(self):
         return vars(self)

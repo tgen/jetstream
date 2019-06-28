@@ -1,6 +1,7 @@
 """View project info or history
 """
 import logging
+import os
 import jetstream
 
 log = logging.getLogger('jetstream.cli')
@@ -16,8 +17,7 @@ def arg_parser(parser):
 def project_summary(project):
     wf = project.load_workflow()
     return {
-        'index': project.info,
-        'paths': vars(project.paths),
+        'info': project.info,
         'workflow': {
             'tasks': len(wf),
             'status': wf.summary()
@@ -29,6 +29,10 @@ def main(args):
     log.debug(f'{__name__} {args}')
 
     if args.project:
+        lock_file = args.project.paths.pid_path
+        if os.path.exists(lock_file):
+            print(f'Warning! Run currently pending: {lock_file}')
+
         if args.history:
             for item in args.project.history_iter():
                 print(jetstream.utils.yaml_dumps(item))

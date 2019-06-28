@@ -38,7 +38,7 @@ class PidFileLock(filelock.SoftFileLock):
     def acquire(self, *args, **kwargs):
         super(PidFileLock, self).acquire(*args, **kwargs)
         with open(self.lock_file, 'w') as fp:
-            info = jetstream.utils.Fingerprint()
+            info = jetstream.utils.Fingerprint(pid=True)
             jetstream.utils.yaml_dump(info.to_dict(), fp)
 
 
