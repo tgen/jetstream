@@ -1,4 +1,4 @@
-"""Manage the tasks in a workflow"""
+"""Manage the tasks in a project or workflow. """
 import argparse
 import logging
 import jetstream

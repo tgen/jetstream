@@ -113,10 +113,12 @@ class ConfigAction(argparse.Action):
 def add_config_options_to_parser(parser):
     """Adds the -c/--config and -C/--config-file options to an arg parser"""
     config = parser.add_argument_group(
-        'template variables',
+        'config variables',
         description='These options are used to add data that is available for '
-                    'rendering templates. These arguments should follow the '
-                    'syntax "-c <[type:]key> <value>". They can be used '
+                    'rendering templates. Individual items can be added with '
+                    '"-c" or data can be loaded in bulk from files with "-C". '
+                    'Individual items should follow the syntax '
+                    '"-c <[type:]key> <value>". These options can be used '
                     'multiple times.'
     )
     # These options indicate an addition to the args.config object.
@@ -143,16 +145,18 @@ def add_config_options_to_parser(parser):
 def arg_parser():
     shared = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
 
-    shared.add_argument(
+    common = shared.add_argument_group('common options')
+
+    common.add_argument(
         '-l', '--logging',
-        metavar='',
-        choices=jetstream.settings['logging_profiles'],
-        help='set the logging profile'
+        choices=jetstream.settings['logging_profiles'].get(dict),
+        help='set the logging profile [interactive]'
     )
 
-    shared.add_argument(
+    common.add_argument(
         '-p', '--project',
-        help='path to a Jetstream project directory'
+        help='use project directory [set automatically if current directory is '
+             'a jetstream project]'
     )
 
     parser = argparse.ArgumentParser(

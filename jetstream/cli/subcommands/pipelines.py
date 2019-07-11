@@ -1,12 +1,11 @@
 """Run a pipeline.
 
 Pipelines are Jetstream templates that have been documented with version
-information and added to the jetstream pipelines directory. This command
-allows pipelines to be referenced by name and automatically includes the
-pipeline scripts and constants in the run."""
+information and added to a jetstream pipelines directory. This command
+allows pipelines to be referenced by name and automatically includes any
+pipeline scripts and constants in the run. """
 import logging
 import os
-import sys
 import jetstream
 from jetstream.cli.subcommands import run
 
@@ -54,7 +53,9 @@ def main(args):
         args.pipeline = pipeline = jetstream.get_pipeline(pipeline, version)
         args.path = os.path.join(pipeline.path, pipeline.info['main'])
 
-        if 'bin' in pipeline.info:
+        # If bin is declared in the pipeline manifest it should be prepended
+        # to the evironment variable PATH
+        if pipeline.info.get('bin'):
             bin_path = os.path.join(pipeline.path, pipeline.info['bin'])
             os.environ['PIPELINE_BIN'] = str(bin_path)
             os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
@@ -67,4 +68,4 @@ def main(args):
             print(ps)
         else:
             log.error(f'No pipeline name given!')
-            sys.exit(1)
+            raise SystemExit(1)

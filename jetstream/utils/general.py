@@ -50,90 +50,6 @@ class Fingerprint:
         return json_dumps(vars(self), sort_keys=True)
 
 
-class JsonDict(dict):
-    """Dict subclass that enforces JSON serializable keys/values.
-     This is going to be slower than a dictionary, because it's validating
-     every change made to the dict, but will ensure that the items can be
-     serialized later."""
-    def __init__(self, *args, **kwargs):
-        super(JsonDict, self).__init__(*args, **kwargs)
-        json_dumps(self)
-
-    def __repr__(self):
-        return 'JsonDict({})'.format(super(JsonDict, self).__repr__())
-
-    def __setitem__(self, key, val):
-        """When a single item is set, we dont need to revalidate the entire
-        object, just the new key/value"""
-        json.dumps({key: val})
-        return super(JsonDict, self).__setitem__(key, val)
-
-    def update(self, other=None, **kwargs):
-        if other is not None:
-            json_dumps(other)
-            super(JsonDict, self).update(other)
-        else:
-            json_dumps(kwargs)
-            super(JsonDict, self).update(**kwargs)
-
-    def to_dict(self):
-        """Return as a standard dictionary"""
-        return dict(self)
-
-
-class Source(str):
-    """String subclass that includes a `line_numbers` property for tracking
-    the source code line numbers after lines are split up.
-
-    I considered making this an object composed of a string and line number:
-
-    .. code-block:: python
-
-        class Source(object):
-            def __init__(self, line_number, data):
-              self.line_number = line_number
-              self.data = data
-
-        line = Source(0, 'Hello World')
-
-
-    But, I think it actually complicates most use cases. For example, if the
-    source lines were stored in a list, we might want to count a pattern. This
-    is easy with a list of strings:
-
-    .. code-block:: python
-
-        res = mylist.count('pattern')
-
-
-    With a custom class you would be forced to do something like:
-
-    .. code-block:: python
-
-         res = Sum([line for line in lines if line.data == 'pattern'])
-
-
-    I think this string subclass inheritance pattern is more difficult to
-    explain upfront, but it's much is easier to work with downstream. This class
-    behaves exactly like a string except in one case: `str.splitlines()` which
-    generates a list of Source objects instead of strings. """
-
-    def __new__(cls, data='', line_number=None):
-        line = super(Source, cls).__new__(cls, data)
-        line.line_number = line_number
-        return line
-
-    def splitlines(self, *args, **kwargs):
-        """Break source code into a list of source lines."""
-        lines = super(Source, self).splitlines(*args, **kwargs)
-        lines = [Source(data, line_number=i) for i, data in enumerate(lines)]
-        return lines
-
-    def print_ln(self):
-        """Format this string along with its line number"""
-        return '{}: {}'.format(self.line_number, self)
-
-
 def coerce_tuple(obj):
     """Coerce an object to a tuple.
     Since strings are sequences, iterating over an object that can be a string
@@ -307,7 +223,7 @@ def is_gzip(path, magic_number=b'\x1f\x8b'):
 
 
 def is_multiline(s):
-    """ Returns True if the string contains more than one line.
+    """Returns True if the string contains more than one line.
     This tends to perform much better than len(s.splitlines()) or s.count('\n')
     :param s: string to check
     :return: Bool
@@ -513,36 +429,6 @@ def parse_bool(value):
         return False
     else:
         raise TypeError(f'"{value}" could not be interpreted as a boolean')
-
-
-def read_group(*, ID=None, CN=None, DS=None, DT=None, FO=None, KS=None,
-               LB=None, PG=None, PI=None, PL=None, PM=None, PU=None,
-               SM=None, strict=True, **unknown):
-    """Returns a SAM group header line. This function takes a set of keyword
-    arguments that are known tags listed in the SAM specification:
-
-        https://samtools.github.io/hts-specs/
-
-    Unknown tags will raise a `TypeError` unless 'strict' is False
-
-    :param strict: Raise error for unknown read group tags
-    :type strict: bool
-    :return: str
-    """
-    if unknown and strict:
-        raise TypeError('Unknown read group tags: {}'.format(unknown))
-
-    fields = locals()
-    col_order = ('ID', 'CN', 'DS', 'DT', 'FO', 'KS', 'LB', 'PG', 'PI', 'PL',
-                 'PM', 'PU', 'SM')
-
-    final = ['@RG']
-    for field in col_order:
-        value = fields.get(field)
-        if value is not None:
-            final.append('{}:{}'.format(field, value))
-
-    return '\t'.join(final)
 
 
 def read_lines_allow_gzip(path):

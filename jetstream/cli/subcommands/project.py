@@ -1,4 +1,4 @@
-"""View project info or history
+"""View project info or history.
 """
 import logging
 import os

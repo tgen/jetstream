@@ -1,4 +1,5 @@
-"""Run Jetstream from a template, module, or workflow"""
+"""Run a template, module, or workflow.
+"""
 import argparse
 import logging
 import jetstream
@@ -10,14 +11,13 @@ log = logging.getLogger('jetstream.cli')
 def arg_parser(parser):
     parser.add_argument(
         'path',
-        help='path to a template, module, or workflow file. '
-             '(if using "pipelines" command, the name of the pipeline)'
+        help='path to a template, module, workflow file or pipeline name'
     )
 
     parser.add_argument(
         '-o', '--out',
-        help='path to save the workflow progress (this will be set '
-             'automatically if working with a project) [%(default)s]'
+        help='path to save the workflow progress [automatically set if working '
+             'with a project]'
     )
 
     parser.add_argument(
@@ -42,8 +42,7 @@ def arg_parser(parser):
     parser.add_argument(
         '--format',
         choices=['template', 'module', 'workflow'],
-        help='workflow format - if this is None, it will be inferred '
-             'from the extension of the path [%(default)s]'
+        help='workflow format [inferred from the extension of the path]'
     )
 
     parser.add_argument(
@@ -58,16 +57,15 @@ def arg_parser(parser):
     parser.add_argument(
         '--existing-workflow',
         help='path to an existing workflow file that will be merged into run '
-             '(this will be set automatically if working with a project)'
+             '[automatically set if working with a project]'
     )
 
     parser.add_argument(
         '--template-dir',
         action='append',
         default=[],
-        dest='search_path',
         help='directory to add to search path for loading templates, this can '
-             'be used multiple times'
+             'be used multiple times [automatically set with pipelines command]'
     )
 
     parser.add_argument(
@@ -108,7 +106,7 @@ def render_only(args):
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config,
-        search_path=args.search_path
+        search_path=args.template_dir
     )
     if args.out:
         with open(args.out, 'w') as fp:
@@ -123,7 +121,7 @@ def build_only(args):
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config,
-        search_path=args.search_path
+        search_path=args.template_dir
     )
     wf.graph()
     if args.out:

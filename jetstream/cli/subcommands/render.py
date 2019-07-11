@@ -1,4 +1,4 @@
-"""Shortcut to "jetstream run" with "--render-only" option
+"""Shortcut to "jetstream run" with "--render-only" option.
 """
 import logging
 from jetstream.cli.subcommands import run
