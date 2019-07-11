@@ -15,39 +15,44 @@ Jetstream supports a variety of use cases to fit your individual needs:
   configuration files, check-pointing, and version control.
 
 
-There are two ways to work with Jetstream: via the command-line utility or 
-as a Python package. The majority of this guide will cover the command-line
-interface which is the most common use case. See [installation](#installation) 
-for help getting started.
-
-
-## As complex as you need
-
 Simple workflows can be written as YAML documents that contain a set of _tasks_ 
 to run. Tasks contain the commands to execute and attributes to control when 
 and how they will be executed. For resuability, variables can be added to 
 the document with the Jinja2
 
+```yaml
+- output: foo.txt
+  cmd: echo hello world > foo.txt
 
+- input: foo.txt
+  cmd: cat foo.txt | say
+ 
+```
 
 And as the need for complexity increases, the expressive language of the 
 templating system can be used to adapt the document to your input data:   
 
 ```yaml
-{% for sample in sample_list %}
-- name: alignment_{{ sample.name }}
+{% for sample in samples %}
+- name: haplotypecaller_{{ sample.name }}
   cmd: |
-    echo foo > {{ results_path }}
+    activate gatk4
+
+    gatk \
+      -T HaplotypeCaller \
+      -R "{{ reference_fasta }}" \
+      -I "{{ sample.bam_path }}" \
+      -o "{{ sample.name }}.raw.indels.snps.vcf"
 
 {% endfor %}
-
-- name: bar
-  after: foo
-  cmd: echo bar >> {{ results_path }}
-
 ```
 
+# Usage
 
+There are two ways to work with Jetstream: via the command-line utility or 
+as a Python package. The majority of this guide will cover the command-line
+interface which is the most common use case. See [installation](#installation) 
+for help getting started.
 
 ## Command-line
 
@@ -64,9 +69,12 @@ The command line utility includes tools for managing projects, building
 pipelines, and executing runs. The most common use case is designing a 
 reusable template that can process data for many different projects:
 
-- [**Templates**](#building-pipelines-from-templates): Are text documents
-  that can be processed and run with the `jetstream` command-line utility.
+- [**Templates**](#templates): Are text documents that can be processed and 
+  run with the `jetstream` command-line utility.
   
+- [**Pipelines**](#pipelines): Are templates that have been organized and 
+  tagged with version information. They can be used with `jetstream pipelines` 
+
 
 ## Python package
 
