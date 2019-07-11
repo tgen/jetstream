@@ -70,15 +70,18 @@ def is_pipeline(path):
         return False
 
 
-def pipelines_iter(home=None):
+def pipelines_iter(searchpath=None):
     """Yields all pipelines found in pipeline home (taken from settings file or
     defaulting to user home directory)."""
-    settings_home = jetstream.settings['pipelines']['home'].get(str)
-    user_home = os.path.expanduser('~')
-    home = home or settings_home or user_home
-    paths_to_search = home.split(':')
+    settings_searchpath = jetstream.settings['pipelines']['searchpath'].get(str)
+    searchpath = searchpath or settings_searchpath
+    log.debug(f'Pipelines search path: {searchpath}')
+
+    paths_to_search = searchpath.split(':')
+    paths_to_search = [os.path.expanduser(p) for p in paths_to_search]
 
     for x in paths_to_search:
+        log.debug(f'Searching for pipelines in: {x}')
         for filename in os.listdir(x):
             path = os.path.join(x, filename)
             if is_pipeline(path):
@@ -88,22 +91,22 @@ def pipelines_iter(home=None):
                     log.warning(f'Failed to load: {path}')
 
 
-def list_pipelines(home=None):
+def list_pipelines(*args, **kwargs):
     """Returns all pipelines found in pipeline home as a list"""
-    return list(pipelines_iter(home))
+    return list(pipelines_iter(*args, **kwargs))
 
 
-def get_pipeline(name, version=None, home=None):
+def get_pipeline(name, version=None, *args, **kwargs):
     """Get a pipeline by name and version(optional)"""
     if version is not None:
         version = str(version)
-        for p in pipelines_iter(home):
+        for p in pipelines_iter(*args, **kwargs):
             # TODO can we allow > < = syntax here?
             if p.name == name and p.version == version:
                 return p
     else:
         matches = []
-        for p in pipelines_iter(home):
+        for p in pipelines_iter(*args, **kwargs):
             if p.name == name:
                 matches.append(p)
 

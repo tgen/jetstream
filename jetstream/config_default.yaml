@@ -81,7 +81,7 @@ backends:
 # pipelines command. Users will need to change pipelines:home in order to use
 # the pipelines command
 pipelines:
-  home: null
+  searchpath: ~/
 
 
 # =================================== Templates ===============================
