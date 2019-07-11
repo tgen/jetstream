@@ -185,8 +185,7 @@ def run(args):
     3) run the combined workflow
     4) raise a RuntimeError if any tasks failed
     """
-    cls, params = jetstream.lookup_backend(args.backend)
-    args.runner = jetstream.Runner(cls, params)
+    args.runner = jetstream.Runner(backend=args.backend)
 
     format = _resolve_format(args)
 

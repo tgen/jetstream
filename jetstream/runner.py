@@ -32,16 +32,18 @@ def sigterm_ignored():
 
 
 class Runner:
-    def __init__(self, backend_cls=None, backend_params=None,
-                 max_concurrency=None, throttle=None, autosave=True,
-                 autosave_min=None, autosave_max=None):
-        if backend_cls is None:
-            self.backend_cls, self.backend_params = jetstream.lookup_backend('local')
-        else:
-            self.backend_cls = backend_cls
-            self.backend_params = backend_params
+    def __init__(self, backend=None, max_concurrency=None, throttle=None,
+                 autosave=True, autosave_min=None, autosave_max=None):
+        backend = backend or jetstream.settings['backend'].get(str)
 
+        # Runner backends also connect the asyncio event loop, so they can't
+        # be instantiated until the loop is setup. Here I lookup the backend
+        # class and properties based on the name, then store them until the
+        # event loop is started. Runner.backend is eventually set when
+        # Runner._start_backend is called.
+        self.backend_cls, self.backend_params = jetstream.lookup_backend(backend)
         self.backend = None
+
         self.autosave = autosave
         self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
         self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
@@ -58,7 +60,6 @@ class Runner:
         self._workflow_iterator = None
         self._workflow_len = None
 
-        # Properties that should not be modified during a run
         self._loop = None
         self._workflow = None
         self._project = None
