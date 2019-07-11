@@ -115,11 +115,6 @@ kvargs:
     uri: urllib.parse.urlparse
     file: jetstream.utils.load_file
 
-# =================================== Tasks ===================================
-tasks:
-  summary_fields:
-    - name
-    - state.status
 
 # ================================== Logging ==================================
 # To permanently force a single logging style, create a key in your user
