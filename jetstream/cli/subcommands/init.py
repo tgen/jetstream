@@ -1,9 +1,9 @@
-"""Create or reinitialize a project
+"""Create or update a project.
 
 This command is used to create a new Jetstream project directory. If no
-path is given, the current directory will be initialized. If config data
-options are given (-c/--config/--config-file), they will be added to the
-project config file.
+path is given, the current directory will be initialized. If config variables
+arguments are given (-c/--config -C/--config-file), they will be added to the
+project manifest file.
 """
 import os
 import logging
@@ -17,13 +17,13 @@ def arg_parser(parser):
         'path',
         nargs='?',
         default=os.getcwd(),
-        help='Path to a initialize a project'
+        help='directory where project files should be created/updated'
     )
 
     parser.add_argument(
         '-f', '--force',
         action='store_true',
-        help='Force overwrite of project.yaml'
+        help='force overwrite of project.yaml'
     )
 
     parser.add_argument(

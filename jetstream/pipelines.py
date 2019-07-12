@@ -10,24 +10,31 @@ MANIFEST_FILENAME = 'pipeline.yaml'
 class InvalidPipeline(ValueError):
     pass
 
-# Manifest file example
-# This manifest is also available as config data
-# when rendering workflows. So, it can be a good
-# place to store extra variables that may be used
-# in the templates.
-#
-# __pipeline__:
-#   name: phoenix
-#   version: 1.0
-#   main: main.jst
-#   author: Ryan Richholt
-#   ...
-# foo: bar
-# constants:
-#   these: can be anything
 
 class Pipeline:
-    """Represents a pipeline installed on the system."""
+    """Represents a pipeline installed on the system.
+    Pipelines are any directory with a manifest: pipeline.yaml. If the
+    manifest does not contain required fields: "__pipeline__" with "name",
+    "version" and "main", InvalidPipeline will be raised.
+
+    Manifest file example:
+
+    # This manifest is also available as config data
+    # when rendering workflows. So, it can be a good
+    # place to store extra variables that may be used
+    # in the templates.
+
+    __pipeline__:
+      name: phoenix
+      version: 1.0
+      main: main.jst
+      author: Ryan Richholt
+      ...
+    foo: bar
+    constants:
+      these: can be anything
+
+    """
     def __init__(self, path):
         self.path = os.path.abspath(os.path.expanduser(path))
 
@@ -54,34 +61,52 @@ class Pipeline:
         return f'<Pipeline: {self.name} ({self.version})>'
 
 
-def pipelines_iter(home=None):
-    home = home or jetstream.settings['pipelines']['home'].get(str)
+def is_pipeline(path):
+    """Returns True if given path is likely a pipeline"""
+    manifest_path = os.path.join(path, MANIFEST_FILENAME)
+    if os.path.isdir(path) and os.path.exists(manifest_path):
+        return True
+    else:
+        return False
 
-    for directory in home.split(':'):
-        for filename in os.listdir(directory):
-            path = os.path.join(directory, filename)
-            manifest_path = os.path.join(path, MANIFEST_FILENAME)
-            if os.path.isdir(path) and os.path.exists(manifest_path):
+
+def pipelines_iter(searchpath=None):
+    """Yields all pipelines found in pipeline home (taken from settings file or
+    defaulting to user home directory)."""
+    settings_searchpath = jetstream.settings['pipelines']['searchpath'].get(str)
+    searchpath = searchpath or settings_searchpath
+    log.debug(f'Pipelines search path: {searchpath}')
+
+    paths_to_search = searchpath.split(':')
+    paths_to_search = [os.path.expanduser(p) for p in paths_to_search]
+
+    for x in paths_to_search:
+        log.debug(f'Searching for pipelines in: {x}')
+        for filename in os.listdir(x):
+            path = os.path.join(x, filename)
+            if is_pipeline(path):
                 try:
                     yield Pipeline(path)
                 except Exception:
                     log.warning(f'Failed to load: {path}')
 
 
-def list_pipelines(home=None):
-    return list(pipelines_iter(home))
+def list_pipelines(*args, **kwargs):
+    """Returns all pipelines found in pipeline home as a list"""
+    return list(pipelines_iter(*args, **kwargs))
 
 
-def get_pipeline(name, version=None, home=None):
+def get_pipeline(name, version=None, *args, **kwargs):
+    """Get a pipeline by name and version(optional)"""
     if version is not None:
         version = str(version)
-        for p in pipelines_iter(home):
+        for p in pipelines_iter(*args, **kwargs):
             # TODO can we allow > < = syntax here?
             if p.name == name and p.version == version:
                 return p
     else:
         matches = []
-        for p in pipelines_iter(home):
+        for p in pipelines_iter(*args, **kwargs):
             if p.name == name:
                 matches.append(p)
 

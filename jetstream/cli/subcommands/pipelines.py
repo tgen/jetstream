@@ -1,12 +1,11 @@
 """Run a pipeline.
 
 Pipelines are Jetstream templates that have been documented with version
-information and added to the jetstream pipelines directory. This command
-allows pipelines to be referenced by name and automatically includes the
-pipeline scripts and constants in the run."""
+information and added to a jetstream pipelines directory. This command
+allows pipelines to be referenced by name and automatically includes any
+pipeline scripts and constants in the run. """
 import logging
 import os
-import sys
 import jetstream
 from jetstream.cli.subcommands import run
 
@@ -29,8 +28,8 @@ def arg_parser(parser):
     pipelines = parser.add_argument_group('pipeline options')
 
     pipelines.add_argument(
-        '--pipelines-home',
-        help='override path to the pipelines home',
+        '--searchpath',
+        help='override path to the pipelines searchpath',
     )
 
     pipelines.add_argument(
@@ -43,17 +42,21 @@ def arg_parser(parser):
 def main(args):
     log.debug(f'{__name__} {args}')
 
-    if args.pipelines_home:
-        jetstream.settings['pipelines']['home'] = args.pipelines_home
+    if args.searchpath:
+        jetstream.settings['pipelines']['searchpath'] = args.searchpath
 
     if args.path:
+        # splits the pipeline at @ and takes remaining value as version
         pipeline, *version = args.path.rsplit('@', 1)
         version = next(iter(version), None)
+
         args.pipeline = pipeline = jetstream.get_pipeline(pipeline, version)
         args.path = os.path.join(pipeline.path, pipeline.info['main'])
 
-        if 'bin' in pipeline.info:
-            bin_path = os.path.join(pipeline.path, pipeline.manifest['bin'])
+        # If bin is declared in the pipeline manifest it should be prepended
+        # to the evironment variable PATH
+        if pipeline.info.get('bin'):
+            bin_path = os.path.join(pipeline.path, pipeline.info['bin'])
             os.environ['PIPELINE_BIN'] = str(bin_path)
             os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
@@ -65,4 +68,4 @@ def main(args):
             print(ps)
         else:
             log.error(f'No pipeline name given!')
-            sys.exit(1)
+            raise SystemExit(1)

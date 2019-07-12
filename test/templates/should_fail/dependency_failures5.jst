@@ -1,0 +1,17 @@
+- name: task1
+  cmd: |
+    echo this should  run
+
+{% for i in range(2, 10) %}
+- name: task{{ i }}
+  after: task1
+  cmd: echo this should fail && exit 1
+
+{% endfor %}
+
+{% for i in range(10, 100) %}
+- name: task{{ i }}
+  after: task{{ i - 1 }}
+  cmd: echo this should not run
+
+{% endfor %}

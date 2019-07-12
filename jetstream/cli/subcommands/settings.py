@@ -1,8 +1,6 @@
 """Configure Jetstream application settings.
 
-Use "jetstream settings -v" to see all current settings, or "-c" to create a
-new user application settings file. See "jetstream settings -h" to for more info
-on application settings.
+See "jetstream settings -h" to for more info on application settings.
 """
 import json
 import logging
@@ -13,7 +11,7 @@ log = logging.getLogger('jetstream.cli')
 template = """# Jetstream Common User Settings
 backend: {backend}
 pipelines:
-  home: {pipelines_home}
+  home: {pipelines_home}:~/
 
 """
 
@@ -58,9 +56,9 @@ def arg_parser(parser):
     )
 
     create.add_argument(
-        '-P', '--pipelines-home',
+        '-P', '--pipelines-searchpath',
         default='null',
-        help='pipelines home directory to use when initializing a user'
+        help='pipelines searchpath to use when initializing a user'
              'settings file'
     )
 
@@ -94,6 +92,10 @@ def main(args):
                 fp.write(settings)
             log.info(f'Created settings file at: {path}')
     else:
-        info = f"Current setup:\npath: {path}\nexists: {os.path.exists(path)}"
+        if os.path.exists(path):
+            info = f'User application settings will be loaded from: {path}'
+        else:
+            info = 'No user settings file found. Use "jetstream settings -c ' \
+                   '" to initialize a settings file.'
         print(__doc__)
         print(info)

@@ -19,6 +19,7 @@ arguments to template.
 
 """
 import logging
+import glob
 import pickle
 import random
 import re
@@ -89,13 +90,22 @@ class Workflow:
         else:
             return True
 
-    def find(self, pattern, fallback=utils.sentinel):
+    def find(self, pattern, style='regex', fallback=utils.sentinel):
         """Find tasks by matching the pattern with the task ID. If no matches
         are found, and fallback is not set, a ValueError will be raised. If
-        fallback is set, it will be returned when no matches are found."""
-        log.debug('Find: {}'.format(pattern))
-        regex = compile(pattern)
-        matches = set([t for t in self if regex.match(t.name)])
+        fallback is set, it will be returned when no matches are found.
+        Regex patterns are used by default. Set format to glob for glob
+        patterns. """
+        log.debug(f'Find({style}): {pattern}')
+
+        if style == 'regex':
+            regex = compile(pattern)
+            matches = set([t for t in self if regex.match(t.name)])
+        elif style == 'glob':
+            matches = set([t for t in self if glob.fnmatch.fnmatch(t.name, pattern)])
+        else:
+            msg = f'Unrecognized pattern style: {style}'
+            raise ValueError(msg)
 
         if matches:
             return matches
@@ -430,7 +440,13 @@ def mash(G, H):
         log.debug(f'Checking {task}')
         if task in G:
             log.debug(f'also exists in G')
-            if task.identity != G[task.name].identity:
+            g_task = G[task.name]
+            if g_task.is_failed():
+                log.debug(f'status is failed, replacing in workflow..')
+                workflow.pop(task.name)
+                workflow.add(task)
+                modified.add(task)
+            elif task.identity != g_task.identity:
                 log.debug(f'but identity is different, replacing in workflow..')
                 workflow.pop(task.name)
                 workflow.add(task)

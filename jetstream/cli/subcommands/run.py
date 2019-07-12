@@ -1,4 +1,5 @@
-"""Run Jetstream from a template, module, or workflow"""
+"""Run a template, module, or workflow.
+"""
 import argparse
 import logging
 import jetstream
@@ -10,14 +11,13 @@ log = logging.getLogger('jetstream.cli')
 def arg_parser(parser):
     parser.add_argument(
         'path',
-        help='path to a template, module, or workflow file. '
-             '(if using "pipelines" command, the name of the pipeline)'
+        help='path to a template, module, workflow file or pipeline name'
     )
 
     parser.add_argument(
         '-o', '--out',
-        help='path to save the workflow progress (this will be set '
-             'automatically if working with a project) [%(default)s]'
+        help='path to save the workflow progress [automatically set if working '
+             'with a project]'
     )
 
     parser.add_argument(
@@ -42,8 +42,7 @@ def arg_parser(parser):
     parser.add_argument(
         '--format',
         choices=['template', 'module', 'workflow'],
-        help='workflow format - if this is None, it will be inferred '
-             'from the extension of the path [%(default)s]'
+        help='workflow format [inferred from the extension of the path]'
     )
 
     parser.add_argument(
@@ -58,16 +57,15 @@ def arg_parser(parser):
     parser.add_argument(
         '--existing-workflow',
         help='path to an existing workflow file that will be merged into run '
-             '(this will be set automatically if working with a project)'
+             '[automatically set if working with a project]'
     )
 
     parser.add_argument(
         '--template-dir',
         action='append',
         default=[],
-        dest='search_path',
         help='directory to add to search path for loading templates, this can '
-             'be used multiple times'
+             'be used multiple times [automatically set with pipelines command]'
     )
 
     parser.add_argument(
@@ -108,7 +106,7 @@ def render_only(args):
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config,
-        search_path=args.search_path
+        search_path=args.template_dir
     )
     if args.out:
         with open(args.out, 'w') as fp:
@@ -123,7 +121,7 @@ def build_only(args):
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config,
-        search_path=args.search_path
+        search_path=args.template_dir
     )
     wf.graph()
     if args.out:
@@ -150,16 +148,30 @@ def from_workflow(args):
 
 
 def check_for_failures(tasks):
-    failures = [task for task in tasks if task.is_failed()]
-    if failures:
+    fails = []
+    skips = []
+    for task in tasks:
+        if task.is_failed():
+            if task.is_skipped():
+                skips.append(task)
+            else:
+                fails.append(task)
+
+    if fails or skips:
+        log.info(f'{len(fails)+len(skips)} total tasks failed:')
         for i in range(5):
             try:
-                task = failures.pop(-1)
-                log.info(f'{task.name} failed')
+                task = fails.pop(-1)
+                log.info(f'{task} {task.state.get("label")}')
             except IndexError:
                 break
         else:
-            log.info(f'and {len(failures)} other tasks...')
+            if fails:
+                log.info(f'...and {len(fails)} more failed!')
+
+        if skips:
+            log.info(f'{len(skips)} tasks were skipped due to '
+                     f'failed dependencies')
 
         raise RuntimeError('Some tasks failed')
 
@@ -171,8 +183,7 @@ def run(args):
     3) run the combined workflow
     4) raise a RuntimeError if any tasks failed
     """
-    cls, params = jetstream.lookup_backend(args.backend)
-    args.runner = jetstream.Runner(cls, params)
+    args.runner = jetstream.Runner(backend=args.backend)
 
     format = _resolve_format(args)
 
@@ -205,12 +216,14 @@ def run(args):
         wf.path = args.out
 
     wf.reset(args.reset_method)
-    args.runner.start(
-        workflow=wf,
-        project=args.project
-    )
 
-    check_for_failures(wf.tasks.values())
+    try:
+        args.runner.start(
+            workflow=wf,
+            project=args.project
+        )
+    finally:
+        check_for_failures(wf.tasks.values())
 
 
 
@@ -224,7 +237,7 @@ def main(args):
         else:
             run(args)
     except RuntimeError:
-        log.error('There were task failures during the run.')
+        log.error('There were errors during the run.')
         raise SystemExit(1)
     except TimeoutError:
         log.error('Failed to acquire project lock, there may be a run pending.')
