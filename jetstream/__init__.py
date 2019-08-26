@@ -43,8 +43,8 @@ from jetstream.runner import Runner
 from jetstream.templates import environment, render_template
 from jetstream.workflows import Workflow, Task, load_workflow, save_workflow, \
     random_workflow
-from jetstream.pipelines import Pipeline, InvalidPipeline, get_pipeline, \
-    pipelines_iter, list_pipelines
+from jetstream.pipelines import Pipeline, InvalidPipeline, find_pipelines, list_pipelines,\
+    get_pipeline
 
 
 def lookup_backend(name=None):
@@ -71,7 +71,7 @@ def start_logging(profile=None):
     """Logging is only set up with a NullHandler by default. This function sets
     up logging with the chosen settings profile. """
     if profile is None:
-        if sys.stderr.isatty():
+        if sys.stdin and sys.stdin.isatty() and sys.stdout and sys.stdout.isatty():
             profile = 'interactive'
         else:
             profile = 'basic'
