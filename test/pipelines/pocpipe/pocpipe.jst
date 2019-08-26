@@ -1,0 +1,35 @@
+{% set bam %}{{ sample.name }}.bam{% endset %}
+{% set bai %}{{ sample.name }}.bai{% endset %}
+{% set samstats %}{{ sample.name }}.samstats.txt{% endset %}
+
+- name: align_and_index
+  output: 
+    - {{ bam }}
+    - {{ bai }}
+  cmd: |
+    set -ue
+    module load bwa-0.7.17
+    module load samtools/1.9
+
+    bwa mem \
+      -R '@RG\tID:{{ sample.name }}' \
+      /PROD/ashionResources/pipeline/bwa7/hs37d5.fa \
+      {{ sample.r1fastq }} \
+      {{ sample.r2fastq }} |\
+      samtools sort -O BAM - > "{{ bam }}"
+
+    samtools index "{{ bam }}"
+
+
+- name: qc
+  input: 
+    - {{ bam }}
+    - {{ bai }}
+  output: {{ samstats }}
+  cmd: |
+    set -ue
+    module load samtools/1.9
+
+    samtools stats "{{ bam }}" > "{{ samstats }}"
+
+ 
