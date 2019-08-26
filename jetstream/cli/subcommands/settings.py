@@ -34,7 +34,7 @@ pipelines:
 #     back to %HOME%\AppData\Roaming if undefined
 
 
-def arg_parser(parser):
+def add_arguments(parser):
     parser.add_argument(
         '-v', '--verbose',
         action='store_true',
