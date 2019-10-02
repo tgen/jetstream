@@ -1,19 +1,14 @@
 import os
 from setuptools import setup, find_packages
 
-package = 'jetstream'
-version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
-with open(version_file, 'r') as fp:
-    __version__ = fp.readline().strip()
-
 
 def read(fname):
     with open(os.path.join(os.path.dirname(__file__), fname)) as fp:
         return fp.read()
 
 setup(
-    name=package,
-    version=__version__,
+    name='jetstream',
+    version='1.5-b1',
     author='Ryan Richholt',
     author_email='ryan@tgen.org',
     url='https://github.com/tgen/jetstream',

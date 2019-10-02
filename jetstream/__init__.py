@@ -2,15 +2,13 @@ import logging
 import logging.config
 import os
 import sys
-from pkg_resources import get_distribution
-
 import confuse
 import ulid
 import yaml
 
 __author__ = 'Ryan Richholt'
 __email__ = 'rrichholt@tgen.org'
-__version__ = get_distribution('jetstream').version
+__version__ = '1.5-b1'
 
 
 # Configure parallel library dependencies (Used by numpy)
