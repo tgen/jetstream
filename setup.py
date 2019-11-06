@@ -1,24 +1,32 @@
 import os
 from setuptools import setup, find_packages
 
-package = 'jetstream'
-version_file = os.path.join(os.path.dirname(__file__), 'VERSION')
-with open(version_file, 'r') as fp:
-    __version__ = fp.readline().strip()
+__package__ = 'jetstream'
+src_dir = os.path.join(os.path.dirname(__file__))
+pkg_init = os.path.join(src_dir, __package__, '__init__.py')
+readme_path = os.path.join(src_dir, 'README.md')
+
+ 
+with open(pkg_init) as fp:
+    for line in fp:
+        if line.startswith('__version__'):
+            __version__ = eval(line.split('=', 1)[1])
+            break
 
 
-def read(fname):
-    with open(os.path.join(os.path.dirname(__file__), fname)) as fp:
-        return fp.read()
+with open(readme_path) as fp:
+    __readme__ = fp.read()
+
+
 
 setup(
-    name=package,
+    name=__package__,
     version=__version__,
     author='Ryan Richholt',
     author_email='ryan@tgen.org',
     url='https://github.com/tgen/jetstream',
     description='NGS analysis pipeline at TGen.',
-    long_description=read('README.md'),
+    long_description=__readme__,
     long_description_content_type='text/markdown',
     keywords='ngs pipeline automation',
     packages=find_packages(exclude=('test',)),
