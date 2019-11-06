@@ -61,20 +61,25 @@ class Runner:
         self._workflow_len = None
 
         self._loop = None
-        self._workflow = None
+        self._pipeline = None
         self._project = None
+        self._workflow = None
 
     @property
-    def workflow(self):
-        return self._workflow
+    def loop(self):
+        return self._loop
+
+    @property
+    def pipeline(self):
+        return self._pipeline
 
     @property
     def project(self):
         return self._project
 
     @property
-    def loop(self):
-        return self._loop
+    def workflow(self):
+        return self._workflow
 
     # Synchronization methods for events that should wait on tasks to return
     def notify_waiters(self):
@@ -271,17 +276,27 @@ class Runner:
             self._conc_sem.release()
             self._futures.remove(future)
 
-    def start(self, workflow, project=None):
+    def start(self, workflow, pipeline=None, project=None):
         """Called to start the runner on a workflow."""
         if project:
+            try:
+                project.lock.acquire()
+            except TimeoutError:
+                err = 'Failed to acquire project lock, there may be a run pending. If ' \
+                      'this problem persists, and a run is not pending, remove the lock ' \
+                      'file located at <project>/jetstream/pid.lock'
+                raise TimeoutError(err) from None
+
+            self._previous_directory = os.getcwd()
             os.chdir(project.paths.path)
 
+        self._pipeline = pipeline
         self._project = project
         self._workflow = workflow
         self._workflow_len = len(workflow)
         self._workflow_iterator = iter(self.workflow.graph())
         self._run_started = datetime.now()
-        self._previous_directory = os.getcwd()
+
         self._errs = False
         self._start_event_loop()
         self._start_backend()
@@ -305,4 +320,7 @@ class Runner:
                     self.backend.cancel()
 
                 self.shutdown()
-                os.chdir(self._previous_directory)
+
+                if project:
+                    project.lock.release()
+                    os.chdir(self._previous_directory)

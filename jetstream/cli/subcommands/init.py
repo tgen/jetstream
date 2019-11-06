@@ -12,7 +12,7 @@ from jetstream.cli import add_config_options_to_parser
 
 log = logging.getLogger('jetstream.cli')
 
-def arg_parser(parser):
+def add_arguments(parser):
     parser.add_argument(
         'path',
         nargs='?',
@@ -33,7 +33,7 @@ def arg_parser(parser):
     )
 
     add_config_options_to_parser(parser)
-    return parser
+
 
 
 def main(args):

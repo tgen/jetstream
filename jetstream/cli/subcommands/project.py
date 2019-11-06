@@ -7,7 +7,7 @@ import jetstream
 log = logging.getLogger('jetstream.cli')
 
 
-def arg_parser(parser):
+def add_arguments(parser):
     parser.add_argument(
         '-H', '--history',
         action='store_true'

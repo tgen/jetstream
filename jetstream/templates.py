@@ -34,17 +34,18 @@ class TemplateContext:
 
         if project is not None:
             rep = textwrap.shorten(str(project.index), 76)
-            self.sources.append(f'Project index: {rep}')
+            self.sources.append(f'Project: {rep}')
             self.stack.append(project.index)
 
         if pipeline is not None:
-            rep = textwrap.shorten(str(pipeline.manifest), 76)
-            self.sources.append(f'Pipeline manifest: {rep}')
-            self.stack.append(pipeline.manifest)
+            ctx = pipeline.get_context()
+            rep = textwrap.shorten(str(ctx), 76)
+            self.sources.append(f'Pipeline: {rep}')
+            self.stack.append(ctx)
 
         if command_args is not None:
             rep = textwrap.shorten(str(command_args), 76)
-            self.sources.append(f'Command args: {rep}')
+            self.sources.append(f'Command: {rep}')
             self.stack.append(command_args)
 
     def __str__(self):
@@ -104,11 +105,9 @@ def fromjson(value):
     return json.loads(value)
 
 
-def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
-                searchpath=None):
+def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     """Starts a Jinja2 Environment with a FileSystemLoader on the given search
-    path. This adds several features to the standard template processor.
-    """
+    path. This adds several features to the standard template processor."""
     if strict:
         undefined_handler = StrictUndefined
     else:
@@ -135,21 +134,25 @@ def environment(strict=True, trim_blocks=True, lstrip_blocks=True,
     return env
 
 
-def render_template(path=None, data=None, *, project=None, pipeline=None,
-                   command_args=None, search_path=()):
+def load_template(path, *searchpath, **kwargs):
+    """Helper function to quickly load a template from a file. Remaining args and kwargs
+    are passed to jetstream.templates.environment() """
+    template_dir = os.path.dirname(path)
+    template_name = os.path.basename(path)
+    env = environment(template_dir, *searchpath, **kwargs)
+    return env.get_template(template_name)
+
+
+def from_string(data, *searchpath, **kwargs):
+    """Helper function to quickly load a template from a string. Remaining args and kwargs
+    are passed to jetstream.templates.environment() """
+    env = environment(*searchpath, **kwargs)
+    return env.from_string(data)
+
+
+def render_template(template, project=None, pipeline=None, command_args=None):
+    """Render a template and return as a string"""
     log.info('Rendering template...')
-
-    if bool(path) == bool(data):
-        raise TypeError('build template expected path or data argument')
-
-    if path:
-        template_dir = os.path.dirname(path)
-        template_basename = os.path.basename(path)
-        env = environment(searchpath=[template_dir,] + list(search_path))
-        template = env.get_template(template_basename)
-    else:
-        env = environment(searchpath=list(search_path))
-        template = env.from_string(data)
 
     context = TemplateContext(
         project=project,
@@ -167,10 +170,13 @@ def render_template(path=None, data=None, *, project=None, pipeline=None,
     return template.render(**context)
 
 
-
-def build_template(*args, **kwargs):
-    render = render_template(*args, **kwargs)
+def load_workflow(render):
+    """Given a rendered template string, loads the tasks and returns a workflow"""
+    log.debug(f'Parsing tasks from render:\n{render}')
     tasks = jetstream.utils.yaml_loads(render)
+
+    if not tasks:
+        raise ValueError('No tasks found!')
 
     log.info('Loading tasks...')
     if isinstance(tasks, Mapping):
@@ -183,4 +189,3 @@ def build_template(*args, **kwargs):
         wf = jetstream.Workflow(tasks=tasks)
 
     return wf
-
