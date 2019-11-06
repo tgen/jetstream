@@ -11,7 +11,7 @@ log = logging.getLogger('jetstream.cli')
 template = """# Jetstream Common User Settings
 backend: {backend}
 pipelines:
-  home: {pipelines_home}:~/
+  searchpath: {pipelines_searchpath}:~/
 
 """
 
@@ -34,7 +34,7 @@ pipelines:
 #     back to %HOME%\AppData\Roaming if undefined
 
 
-def arg_parser(parser):
+def add_arguments(parser):
     parser.add_argument(
         '-v', '--verbose',
         action='store_true',
@@ -56,7 +56,7 @@ def arg_parser(parser):
     )
 
     create.add_argument(
-        '-P', '--pipelines-searchpath',
+        '-P', '--pipelines_searchpath',
         default='null',
         help='pipelines searchpath to use when initializing a user'
              'settings file'
@@ -87,7 +87,7 @@ def main(args):
             with open(path, 'w') as fp:
                 settings = template.format(
                     backend=args.backend,
-                    pipelines_home=args.pipelines_home
+                    pipelines_searchpath=args.pipelines_searchpath
                 )
                 fp.write(settings)
             log.info(f'Created settings file at: {path}')

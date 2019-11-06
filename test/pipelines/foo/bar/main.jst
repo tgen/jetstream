@@ -1,0 +1,8 @@
+- name: run_stuff
+  cmd: |
+    echo starting first task of bar pipeline in $(pwd) at $(date)
+
+- name: run_more_stuff
+  after: run_stuff
+  cmd: | 
+    echo starting secodn task of bar pipeline in $(pwd) at $(date)

@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
@@ -51,7 +52,7 @@ class SlurmBackend(BaseBackend):
         if self.sbatch_executable is None:
             self.sbatch_executable = shutil.which('sbatch') or 'sbatch'
 
-        subprocess.run([self.sbatch_executable, '--version'], check=True)
+        subprocess.run([self.sbatch_executable, '--version'], check=True, stdout=os.devnull, stderr=os.devnull)
         log.info('SlurmBackend initialized')
 
     def _bump_next_update(self):

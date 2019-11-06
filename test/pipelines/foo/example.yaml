@@ -1,0 +1,9 @@
+project:
+  name: example_main_project
+subprojects:
+  - name: example_sub_project_1
+    path: /scratch/rrichholt/bar/project1
+  - name: example_sub_project_2
+    path: /scratch/rrichholt/bar/project2
+
+  

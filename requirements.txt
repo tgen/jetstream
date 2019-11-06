@@ -1,7 +1,6 @@
 confuse==1.0.0
 decorator==4.4.0
 filelock==3.0.12
-jetstream==1.4.1b2
 Jinja2==2.10.1
 MarkupSafe==1.1.1
 networkx==2.3

@@ -1,0 +1,3 @@
+__pipeline__:
+  name: conflictingpipe
+  version: 0.1

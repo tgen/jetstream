@@ -83,13 +83,12 @@ class ConfigAction(argparse.Action):
 
         try:
             obj = loader(value)
-        except Exception:
+        except Exception as e:
             tb = traceback.format_exc()
-            msg = f'Error loading "{value}" with "{loader}":\n\n' \
-                  f'{textwrap.indent(tb, "  ")}\n' \
+            msg = f'{key} as {var_type}:\n\n{textwrap.indent(tb, "  ")}\n' \
                   f'Loader exception for "{key}" "{value}", full traceback ' \
                   f'shown above.'
-            raise argparse.ArgumentError(self, msg) from None
+            raise argparse.ArgumentError(self, msg) from e
 
         jetstream.utils.dict_update_dot_notation(namespace_dest, key, obj)
 
@@ -104,10 +103,11 @@ class ConfigAction(argparse.Action):
         try:
             return loader_fn(value)
         except Exception as e:
-            print(dir(e))
-            msg = f'"{value}" {type(e).__name__}: {e}'
-
-            raise argparse.ArgumentTypeError(msg) from None
+            tb = traceback.format_exc()
+            msg = f'\n\n{textwrap.indent(tb, "  ")}\n' \
+                  f'Loader exception for "{value}", full traceback ' \
+                  f'shown above.'
+            raise argparse.ArgumentTypeError(msg) from e
 
 
 def add_config_options_to_parser(parser):
@@ -159,6 +159,11 @@ def arg_parser():
              'a jetstream project]'
     )
 
+    common.add_argument(
+        '--pipeline',
+        help='use pipeline directory [set automatically if using pipelines command]'
+    )
+
     parser = argparse.ArgumentParser(
         prog='jetstream',
         allow_abbrev=False,
@@ -177,9 +182,9 @@ def arg_parser():
 
     parser.set_defaults(func=None)
 
-    # Dynamically import subcommand modules and add their parsers as
-    # subparser to the main parser. This is done just to simplify the
-    # process of adding subcommands to the cli. It automatically fills
+    # Dynamically import subcommand modules and add subparser to the
+    # main parser for each subcommand. This is done just to simplify the
+    # process of adding new subcommands to the cli. It automatically fills
     # in subparser help text from the docstring of the module, and calls
     # the main function with the parsed Namespace.
     subparser = parser.add_subparsers(
@@ -197,7 +202,7 @@ def arg_parser():
             parents=[shared,]
         )
         p.set_defaults(func=m.main)
-        m.arg_parser(p)
+        m.add_arguments(p)
 
     return parser
 
@@ -218,6 +223,9 @@ def main(args=None):
         cwd = os.getcwd()
         if jetstream.projects.is_project(cwd):
             args.project = jetstream.Project(cwd)
+
+    if args.pipeline:
+        args.pipeline = jetstream.Pipeline(args.pipeline)
 
     if args.func:
         args.func(args)

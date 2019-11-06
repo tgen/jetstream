@@ -7,8 +7,8 @@ log = logging.getLogger('jetstream.cli')
 __doc__ = __doc__+ '\n' + run.__doc__
 
 
-def arg_parser(parser):
-    run.arg_parser(parser)
+def add_arguments(parser):
+    run.add_arguments(parser)
 
 
 def main(args):

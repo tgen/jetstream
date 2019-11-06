@@ -1,0 +1,4 @@
+# This pipeline manifest does not have the required fields
+
+__pipeline__:
+  foo: bar

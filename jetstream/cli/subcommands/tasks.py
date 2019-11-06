@@ -30,7 +30,7 @@ TASK_DETAILS = """\
   {% endif %}
 """
 
-def arg_parser(p):
+def add_arguments(p):
     p.add_argument(
         'task_names',
         nargs='*',

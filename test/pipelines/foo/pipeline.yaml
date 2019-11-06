@@ -1,0 +1,4 @@
+__pipeline__:
+  name: foo
+  version: 0.1
+  main: main.jst
