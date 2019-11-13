@@ -29,6 +29,7 @@ class TestCliRunTemplates(TestCase):
         self.temp_dir.cleanup()
 
     def test_should_pass(self):
+        """Valid templates should pass when run"""
         templates_dir = os.path.join(TEST_TEMPLATES, 'should_pass')
         templates = os.listdir(templates_dir)
 
@@ -54,11 +55,13 @@ class TestCliModule(TestCase):
         self.temp_dir.cleanup()
 
     def test_init(self):
+        """jetstream init should create a project.yaml"""
         args = ['init', '-l', 'silent']
         cli_main(args)
         self.assertTrue(os.path.exists('jetstream/project.yaml'))
 
     def test_init_w_csv(self):
+        """jetstream init -C should auto-detect csv config file"""
         with open('config.csv', 'w') as fp:
             fp.write('foo,bar\nbaz,42\napple,banana')
         args = ['init', '-C', 'config.csv', '--config-file-type', 'csv-nh']
@@ -69,6 +72,7 @@ class TestCliModule(TestCase):
         self.assertEqual(third_row[1], 'banana')
 
     def test_init_w_csv_nh(self):
+        """jetstream init -C with csv-nh type set"""
         with open('config.csv', 'w') as fp:
             fp.write('foo,bar\nbaz,42\napple,banana')
         args = ['init', '-C', 'config.csv']
@@ -79,6 +83,7 @@ class TestCliModule(TestCase):
         self.assertEqual(second_row['bar'], 'banana')
 
     def test_init_w_json(self):
+        """jetstream init -C with a json config file"""
         with open('config.json', 'w') as fp:
             fp.write('{"foo": "bar", "baz": 42}')
         args = ['init', '-C', 'config.json']
@@ -88,6 +93,7 @@ class TestCliModule(TestCase):
         self.assertEqual(p.index['baz'], 42)
 
     def test_init_w_yaml(self):
+        """jetstream init -C with a yaml config file"""
         with open('config.yaml', 'w') as fp:
             fp.write('foo: bar\nbaz: 42')
         args = ['init', '-C', 'config.yaml']
@@ -107,6 +113,7 @@ class TestCliModule(TestCase):
         self.assertEqual(p.index['baz'], 42)
 
     def test_reinit(self):
+        """running jetstream init again should not affect project id"""
         args = ['init',]
         cli_main(args)
         p = jetstream.Project()
@@ -118,6 +125,7 @@ class TestCliModule(TestCase):
         self.assertEqual(p.info['id'], p2.info['id'])
 
     def test_run(self):
+        """run simple workflow with localbackend"""
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
@@ -125,6 +133,7 @@ class TestCliModule(TestCase):
         cli_main(args)
 
     def test_run_w_vars(self):
+        """run simple wokrflow with a couple variables passed as args"""
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null\n')
 
@@ -141,6 +150,7 @@ class TestCliModule(TestCase):
         cli_main(args)
 
     def test_tasks(self):
+        """jetstream tasks cmd should show list of tasks"""
         p = jetstream.init()
 
         with open('testwf.jst', 'w') as fp:
@@ -154,6 +164,7 @@ class TestCliModule(TestCase):
             cli_main(args)
 
     def test_render(self):
+        """jetstream render should just render and print the template"""
         render_test = """{% for i in range(tasks) %} 
                                                                         
                               ##//#/##/##                            
@@ -202,6 +213,7 @@ class TestCliModule(TestCase):
         cli_main(args)
 
     def test_build(self):
+        """jetstream build should just render and build the template"""
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
@@ -209,5 +221,6 @@ class TestCliModule(TestCase):
         cli_main(args)
 
     def test_settings(self):
+        """jetstream settings should give information about settings"""
         args = ['settings', ]
         cli_main(args)

@@ -179,16 +179,20 @@ class Workflow:
 
     def reset_task(self, task):
         task.reset()
+
+        # Here we trace any reset directives and also reset those tasks
         try:
             reset_directive = task.directives['reset']
-            for item in reset_directive:
-                if item == 'predecessors' or item == 'parents':
-                    for t in self.graph.predecessors(task):
-                        self.reset_task(t)
-                else:
-                    self.reset_task(self.tasks[item])
         except KeyError:
-            pass
+            return
+        
+        for item in reset_directive:
+            if item == 'predecessors' or item == 'parents':
+                for t in self.graph.predecessors(task):
+                    self.reset_task(t)
+            else:
+                self.reset_task(self.tasks[item])
+    
                 
     def save(self, path=None):
         save_workflow(self, path or self.path)

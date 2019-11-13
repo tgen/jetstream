@@ -211,7 +211,6 @@ class WorkflowDependencies(TestCase):
         wf.reset_task(t3)
         self.assertEqual(t1.status, 'new')
     
-
     def test_reset_task_name(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='taskA')
@@ -222,8 +221,19 @@ class WorkflowDependencies(TestCase):
         self.assertEqual(t1.status, 'complete')
         wf.reset_task(t3)
         self.assertEqual(t1.status, 'new')
-    
 
+    def test_reset_task_name_neg(self):
+        wf = jetstream.Workflow()
+        t1 = wf.new_task(name='taskA')
+        t2 = wf.new_task(name='taskB', after='taskA')
+        t3 = wf.new_task(name='taskC', after='taskB', reset='taskZ')
+        for t in wf:
+            t.complete()
+        self.assertEqual(t1.status, 'complete')
+
+        with self.assertRaises(KeyError) as ctx:
+            wf.reset_task(t3)
+    
     def test_workflow_mash(self):
         wf1 = jetstream.random_workflow(n=10)
         wf2 = jetstream.random_workflow(n=20)

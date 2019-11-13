@@ -44,6 +44,12 @@ setup(
         'filelock',
         'confuse'
     ],
+    extras_require={
+        'dev': [
+            'nose',
+            'coverage',
+        ]
+    },
     package_data={
         'jetstream': ['config_default.yaml']
     },
