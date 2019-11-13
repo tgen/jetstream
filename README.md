@@ -29,8 +29,6 @@ After installing, there are two ways to work with Jetstream: 1) via the
 command-line utility or 2) as a Python package. The majority of this guide 
 will cover the command-line interface which is the most common use case. 
 
-## Command-line
-
 After installing with Pip, the command line utility can be launched with
 `jetstream`, and help can be accessed with the `-h/--help` options. If 
 the command is not found, see the detailed [installation](#installation) 
@@ -40,15 +38,6 @@ help below.
 $ jetstream -h
 ```
 
-## Python package
-
-```python
-import jetstream
-wf = jetstream.Workflow()
-wf.new_task(name='task1', cmd='echo hello world')
-wf.new_task(name='task2', after='task1', cmd='echo all done')
-graph = wf.graph()
-```
 
 # Introduction
 
