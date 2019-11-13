@@ -45,14 +45,14 @@ def main(args):
     if args.verbose and args.pipeline:
         # Direct pipeline path given, just load and show details
         ctx = args.pipeline.get_context()
-        jetstream.utils.yaml_dump(ctx, sys.stdout)
+        jetstream.utils.dump_yaml(ctx, sys.stdout)
     elif args.verbose and args.name:
         # Find a pipeline and show details
         pipeline, *version = args.name.rsplit('@', 1)
         version = next(iter(version), None)
         args.pipeline = jetstream.get_pipeline(pipeline, version, searchpath=searchpath)
         ctx = args.pipeline.get_context()
-        jetstream.utils.yaml_dump(ctx, sys.stdout)
+        jetstream.utils.dump_yaml(ctx, sys.stdout)
     elif args.pipeline:
         # Direct pipeline path give, just load and run
         run.main(args)

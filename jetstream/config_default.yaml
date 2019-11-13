@@ -16,17 +16,33 @@ backend: local
 # loading functions
 dynamic_import: true
 
-# Sets up the loader functions that jetstream.utils.load_file will use for
-# auto loading files based on extension
-load_file:
-  txt: jetstream.utils.load_table
-  csv: jetstream.utils.load_table
-  mer: jetstream.utils.load_table
-  tsv: jetstream.utils.load_table
+# Config data is handled with loaders (for files) and parsers (for data passed
+# as arguments). These settings configure the functions that will be used for
+# loading or parsing items when given with -c/--config arguments.
+loaders:
+  csv: jetstream.utils.load_csv
+  csv-nh: jetstream.utils.load_csv_nh
+  file: jetstream.utils.load_file
   json: jetstream.utils.load_json
+  mer: jetstream.utils.load_csv
+  tsv: jetstream.utils.load_tsv
+  tsv-nh: jetstream.utils.load_tsv_nh
+  txt: jetstream.utils.load_txt
   yaml: jetstream.utils.load_yaml
   yml: jetstream.utils.load_yaml
 
+parsers:
+  csv: jetstream.utils.parse_csv
+  csv-nh: jetstream.utils.parse_csv_nh
+  json: jetstream.utils.parse_json
+  mer: jetstream.utils.parse_csv
+  tsv: jetstream.utils.parse_tsv
+  tsv-nh: jetstream.utils.parse_tsv_nh
+  txt: jetstream.utils.parse_txt
+  yaml: jetstream.utils.parse_yaml
+  yml: jetstream.utils.parse_yaml
+  url: urllib.parse.urlparse
+  uri: urllib.parse.urlparse
 
 # =================================== Runner ==================================
 # These settings modify the workflow runner internal behaviors and can result
@@ -82,38 +98,6 @@ backends:
 # the pipelines command
 pipelines:
   searchpath: ~/
-
-
-# =================================== Templates ===============================
-# Templates are a method for building workflows from text documents. In order
-# to recycle a workflow for several project, variables can be used to add
-# dynamic features. The value of these variables will be loaded for rendering
-# the template prior to a run. Variables will be loaded from this config file
-# first, followed by user config files, and ultimately from special command-line
-# arguments called kvargs (more on those below). The last value loaded for a
-# variable will be whats used to render the template.
-#
-# Kvargs are arbitrary keyword arguments that include an explicit type
-# declaration. Jetstream uses kvargs to load variable data when rendering
-# templates. The format for kvargs is "--<type><separator><key> <value>". These
-# settings determine how kvargs will be handled and which functions will be
-# used for a given argument type.
-#
-# If allow_dynamic_import is true, loaders will imported dynamically.
-# Otherwise, only the builtins module will be searched for a loader function.
-kvargs:
-  allow_dynamic_import: true
-  separator: ":"
-  loaders:
-    str: str
-    int: int
-    float: float
-    bool: jetstream.utils.parse_bool
-    json: jetstream.utils.json_loads
-    yaml: jetstream.utils.yaml_loads
-    url: urllib.parse.urlparse
-    uri: urllib.parse.urlparse
-    file: jetstream.utils.load_file
 
 
 # ================================== Logging ==================================

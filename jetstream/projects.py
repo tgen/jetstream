@@ -34,12 +34,11 @@ WORKFLOW_FILENAME = 'workflow.pickle'
 
 class PidFileLock(filelock.SoftFileLock):
     """This FileLock subclass adds extra info to the lock file upon acquire"""
-
     def acquire(self, *args, **kwargs):
         super(PidFileLock, self).acquire(*args, **kwargs)
         with open(self.lock_file, 'w') as fp:
             info = jetstream.utils.Fingerprint(pid=True)
-            jetstream.utils.yaml_dump(info.to_dict(), fp)
+            jetstream.utils.dump_yaml(info.to_dict(), fp)
 
 
 class ProjectPaths:
@@ -81,7 +80,7 @@ class Project:
         self.lock = PidFileLock(self.paths.pid_path, timeout=timeout)
 
         try:
-            self.index = jetstream.utils.load_file(self.paths.index_path)
+            self.index = jetstream.utils.load_yaml(self.paths.index_path)
             self.info = self.index['__project__']
         except FileNotFoundError as e:
             err = f'Project index not found: {e}'
@@ -106,7 +105,7 @@ class Project:
             path = os.path.join(self.paths.history_dir, name)
             try:
                 with open(path, 'x') as fp:
-                    jetstream.utils.yaml_dump(fingerprint, fp)
+                    jetstream.utils.dump_yaml(fingerprint, fp)
                 return path
             except FileExistsError:
                 time.sleep(1)
@@ -138,7 +137,7 @@ class Project:
     def update_index(self, data):
         self.index = jetstream.utils.config_stack(self.index, data)
         with open(self.paths.index_path, 'w') as fp:
-            jetstream.utils.yaml_dump(self.index, fp)
+            jetstream.utils.dump_yaml(self.index, fp)
         self.add_to_history('Updated index data', data=self.index)
 
 
@@ -163,7 +162,7 @@ def init(path=None, config=None, id=None):
     config.update(__project__=fingerprint)
 
     with open(paths.index_path, 'w') as fp:
-        jetstream.utils.yaml_dump(config, fp)
+        jetstream.utils.dump_yaml(config, fp)
 
     wf = jetstream.Workflow()
     wf.save(paths.workflow_path)

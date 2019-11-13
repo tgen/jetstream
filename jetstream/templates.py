@@ -173,7 +173,7 @@ def render_template(template, project=None, pipeline=None, command_args=None):
 def load_workflow(render):
     """Given a rendered template string, loads the tasks and returns a workflow"""
     log.debug(f'Parsing tasks from render:\n{render}')
-    tasks = jetstream.utils.yaml_loads(render)
+    tasks = jetstream.utils.parse_yaml(render)
 
     if not tasks:
         raise ValueError('No tasks found!')

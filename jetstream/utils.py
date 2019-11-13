@@ -178,6 +178,28 @@ def dict_lookup_dot_notation(d, path):
     return v
 
 
+def dump_json(obj, *args, sort_keys=True, **kwargs):
+    """Attempt to dump `obj` to a JSON file"""
+    return json.dump(obj, sort_keys=sort_keys, *args, **kwargs)
+
+
+def dumps_json(obj, *args, sort_keys=True, **kwargs):
+    """Attempt to dump `obj` to a JSON string"""
+    return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
+
+
+def dump_yaml(obj, stream):
+    """Attempt to dump `obj` to a YAML file"""
+    return yaml.dump(obj, stream=stream, default_flow_style=False)
+
+
+def dumps_yaml(obj):
+    """Attempt to dump `obj` to a YAML string"""
+    stream = io.StringIO()
+    yaml.dump(obj, stream=stream, default_flow_style=False)
+    return stream.getvalue()
+
+
 def dynamic_import(path):
     """Imports functions from other libraries when needed"""
     m, _, f = path.rpartition('.')
@@ -258,20 +280,6 @@ def is_scalar(obj):
         return True
 
 
-def json_loads(data):
-    """Load json data"""
-    return json.loads(data)
-
-
-def json_dumps(obj, *args, sort_keys=True, **kwargs):
-    """Attempt to convert `obj` to a JSON string"""
-    return json.dumps(obj, sort_keys=sort_keys, *args, **kwargs)
-
-
-def json_dump(obj, *args, sort_keys=True, **kwargs):
-    return json.dump(obj, sort_keys=sort_keys, *args, **kwargs)
-
-
 def filter_records(records, criteria):
     """Given a list of mapping objects (`records`) and a criteria mapping,
     this function returns a list of objects that match filter criteria."""
@@ -299,136 +307,121 @@ def find(path, name=None):
                 yield os.path.join(dirname, f)
 
 
+def parse_bool(data):
+    """Parse a string value to bool"""
+    if data.lower() in ('yes', 'true',):
+        return True
+    elif data.lower() in ('no', 'false',):
+        return False
+    else:
+        err = f'"{data}" could not be interpreted as a boolean'
+        raise TypeError(err)
+
+
+def parse_csv(data):
+    """Parse csv with headers, returns list of dicts"""
+    return parse_table(data, dialect='unix', headers=True)
+
+
+def parse_csv_nh(data):
+    """Parse csv with no header, returns list of lists"""
+    return parse_table(data, dialect='unix', headers=False)
+
+
+def parse_json(data):
+    return json.loads(data)
+
+
+def parse_table(data, dialect='unix', headers=True, ordered=False):
+    """Attempts to load a table file in any format. Returns a list of 
+    dictionaries (or list of lists if no header is available). This requires 
+    does not handle comment lines."""    
+    if headers:
+        rows = csv.DictReader(data.splitlines(), dialect=dialect)
+        if not ordered:
+            rows = [dict(r) for r in rows]
+    else:
+        rows = csv.reader(data.splitlines(), dialect=dialect)
+
+    return list(rows)
+
+    
+def parse_tsv(data):
+    """Parse tsv with headers, returns list of dicts"""
+    return parse_table(data, dialect='excel-tab', headers=True)
+
+
+def parse_tsv_nh(data):
+    """Parse tsv with no header, returns list of lists"""
+    return parse_table(data, dialect='excel-tab', headers=False)
+
+
+def parse_txt(data):
+    """Parse txt data, returns list of lines"""
+    return data.splitlines()
+
+
+def parse_yaml(data):
+    return yaml.safe_load(data)
+
+
+def _load(path):
+    # todo, if path is valid uri, download
+    with open(path, 'r') as fp:
+        return fp.read()
+
+
 def load_file(path, filetype=None):
     """Attempts to load a data file from path, raises :ValueError
-    if an suitable loader function is not found in get_file_loaders"""
-    file_loaders = jetstream.settings['load_file'].get(dict)
-
-    if filetype is not None:
-        try:
-            loader_name = file_loaders[filetype]
-            fn = dynamic_import(loader_name)
-            return fn(path)
-        except KeyError:
-            err = f'No loader defined for {filetype}'
-            raise ValueError(err)
-    else:
-        for ext, loader_name in file_loaders.items():
+    if an suitable loader function is not found in loaders"""
+    if filetype is None:
+        for ext, fn in loaders.items():
             if path.endswith(ext):
-                fn = dynamic_import(loader_name)
                 return fn(path)
         else:
             err = f'No loader extension pattern matched path: {path}'
             raise ValueError(err)
+    else:
+        try:
+            return loaders[filetype](path)
+        except KeyError:
+            err = f'No loader defined for {filetype}'
+            raise ValueError(err)
+
+
+def load_tsv(path):
+    """Load tsv with headers, returns list of dicts"""
+    return parse_tsv(_load(path))
+
+
+def load_csv(path):
+    """Load csv with headers, returns list of dicts"""
+    return parse_csv(_load(path))
+
+
+def load_tsv_nh(path):
+    """Load tsv with no header, returns list of lists"""
+    return parse_tsv_nh(_load(path))
+
+
+def load_csv_nh(path):
+    """Load csv with no header, returns list of lists"""
+    return parse_csv_nh(_load(path))
 
 
 def load_json(path):
     """Load a json file from path"""
-    with open(path, 'r') as fp:
-        return json.load(fp)
+    return parse_json(_load(path))
 
 
-def load_table(path, dialect=None, ordered=False, key=None):
-    """Attempts to load a table file in any format. Returns a list of
-    dictionaries. This requires the table to have a header row, and does not
-    handle comment lines.
-
-    "key" can be used to return a dictionary instead of a list. The key column
-    must have a unique value for each row. Here is an
-    example of the two different ways a table could be loaded:
-
-    ..
-        t = jetstream.utils.load_table('fastqs2.csv')
-
-        [
-            {
-                'uid': '1',
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq1.gz',
-                'r2fastq': '/path/to/r2fastq1.gz'
-            },
-            {
-                'uid': '2',
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq2.gz',
-                'r2fastq': '/path/to/r2fastq2.gz'
-            },
-            {
-                'uid': '3',
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq3.gz',
-                'r2fastq': '/path/to/r2fastq3.gz'
-            }
-        ]
-
-        t = jetstream.utils.load_table('fastqs2.csv', key='uid')
-
-        {
-            '1': {
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq1.gz',
-                'r2fastq': '/path/to/r2fastq1.gz'
-                },
-            '2': {
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq2.gz',
-                'r2fastq': '/path/to/r2fastq2.gz'
-                },
-            '3': {
-                'sample': 'sampleA',
-                'r1fastq': '/path/to/r1fastq3.gz',
-                'r2fastq': '/path/to/r2fastq3.gz'
-                }
-        }
-
-    :param path: Path to a table file.
-    :param dialect: Instance of csv.Dialect, will be sniffed if dialect is None.
-    :param ordered: Return OrderedDict.
-    :param key: Return a dictionary instead of a list where items can be
-        referenced by their key.
-    :returns: If key is given :dict, otherwise a :list
-    :rtype: dict, list"""
-    with open(path, 'r') as fp:
-        data = fp.read()
-
-    if dialect is None:
-        dialect = csv.Sniffer().sniff(data)
-        log.debug(f'Sniffed dialect: {dialect.__dict__} for "{path}"')
-
-    rows = list(csv.DictReader(data.splitlines(), dialect=dialect))
-
-    if not ordered:
-        rows = [dict(r) for r in rows]
-
-    if key:
-        new_rows = {}
-
-        for row in rows:
-            k = row.pop(key)
-            if k in new_rows:
-                raise ValueError(f'Duplicate key instance: {k}')
-            else:
-                new_rows[k] = row
-
-        rows = new_rows
-
-    return rows
+def load_txt(path):
+    """Load plain text file as list of lines"""
+    return parse_txt(_load(path))
 
 
 def load_yaml(path):
     """Load a yaml file from `path`"""
-    with open(path, 'r') as fp:
-        return yaml.safe_load(fp.read())
-
-
-def parse_bool(value):
-    """Convert a string value to bool"""
-    if value.lower() in ('yes', 'true',):
-        return True
-    elif value.lower() in ('no', 'false',):
-        return False
-    else:
-        raise TypeError(f'"{value}" could not be interpreted as a boolean')
+    return parse_yaml(_load(path))
 
 
 def read_lines_allow_gzip(path):
@@ -474,17 +467,5 @@ def remove_prefix(string, prefix):
         return string
 
 
-def yaml_loads(data):
-    """Load yaml data"""
-    return yaml.safe_load(data)
-
-
-def yaml_dumps(obj):
-    """Attempt to convert `obj` to a YAML string"""
-    stream = io.StringIO()
-    yaml.dump(obj, stream=stream, default_flow_style=False)
-    return stream.getvalue()
-
-
-def yaml_dump(obj, stream):
-    return yaml.dump(obj, stream=stream, default_flow_style=False)
+loaders = {k: dynamic_import(v) for k, v in jetstream.settings['loaders'].get(dict).items()}
+parsers = {k: dynamic_import(v) for k, v in jetstream.settings['parsers'].get(dict).items()}

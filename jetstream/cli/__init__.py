@@ -34,33 +34,36 @@ _subcommands = OrderedDict(
 class ConfigAction(argparse.Action):
     """ConfigAction is an argparse action that allows an arbitrary configuration
     object to be built entirely from command arguments. An example for how to
-    use these actions is included in add_config_options_to_parser(). """
-    DEFAULT_LOADERS = {
-        '': str,
+    use these actions is included in add_config_options_to_parser().
+    
+    If this action was assigned to the argument "-c/--config":
+
+    <cmd> -c int:answer 42 -c str:foo 42 
+
+    When parsed, these args would add a dictionary to the argparse namespace 
+    destination "config":
+
+    args = parser.parse_arguments()
+    args.config
+    {'answer': 42, 'foo': '42'}
+
+    """
+    parsers = {}
+    _default_parsers = {
         'str': str,
         'int': int,
         'float': float,
         'bool': lambda x: x.lower() == 'true',
         'json': json.loads,
-        'file': jetstream.utils.load_file,
-        'file:json': jetstream.utils.load_json,
-        'file:yaml': jetstream.utils.load_yaml,
-        'file:tsv': jetstream.utils.load_table,
-        'file:csv': jetstream.utils.load_table
     }
 
-    def __init__(self, delim=':', loaders=None, nargs=2,
-                 *args, **kwargs):
+    loaders = {}
+    _default_loaders = {}  
+
+    def __init__(self, delim=':', *args, **kwargs):
         self.delim = delim
-
-        if loaders is None:
-            self.loaders = ConfigAction.DEFAULT_LOADERS
-        else:
-            self.loaders = loaders
-
-        if nargs != 2:
-            raise ValueError('nargs should always be 2 for ConfigAction')
-
+        self.loaders = self.get_loaders()
+        self.parsers = self.get_parsers()
         super(ConfigAction, self).__init__(*args, nargs=2, **kwargs)
 
     def __call__(self, parser, namespace, values, option_string=None, **kwargs):
@@ -74,44 +77,54 @@ class ConfigAction(argparse.Action):
         key, value = values
         var_type, _, key = key.rpartition(self.delim)
 
+        if var_type == '':
+            var_type = 'str'
+
         try:
-            loader = self.loaders[var_type]
-        except KeyError:
-            msg = f'No loader function found for "{var_type}". Available types' \
-                  f'are: {",".join(self.loaders.keys())}'
+            if var_type.startswith('file:'):
+                fn = self.loaders[var_type[5:]]
+            else:
+                fn = self.parsers[var_type]
+        except KeyError:  
+            msg = f'No function found for "{var_type}". Available types' \
+                  f'are: {", ".join(self.get_type_choices())}'
             raise argparse.ArgumentError(self, msg)
 
         try:
-            obj = loader(value)
+            obj = fn(value)
         except Exception as e:
             tb = traceback.format_exc()
             msg = f'{key} as {var_type}:\n\n{textwrap.indent(tb, "  ")}\n' \
-                  f'Loader exception for "{key}" "{value}", full traceback ' \
-                  f'shown above.'
+                  f'Error loading config argument: "{key}" with value: ' \
+                  f'"{value}", full traceback shown above.'
             raise argparse.ArgumentError(self, msg) from e
 
         jetstream.utils.dict_update_dot_notation(namespace_dest, key, obj)
 
-    @staticmethod
-    def config_file(value):
-        if not os.path.exists(value):
-            msg = f'{value} does not exist'
-            raise argparse.ArgumentTypeError(msg)
+    def get_loaders(self):
+        loaders = self._default_loaders.copy()
+        loaders.update(self.loaders)
+        return loaders
 
-        loader_fn = ConfigAction.DEFAULT_LOADERS['file']
+    def get_parsers(self):
+        parsers = self._default_parsers.copy()
+        parsers.update(self.parsers)
+        return parsers
 
-        try:
-            return loader_fn(value)
-        except Exception as e:
-            tb = traceback.format_exc()
-            msg = f'\n\n{textwrap.indent(tb, "  ")}\n' \
-                  f'Loader exception for "{value}", full traceback ' \
-                  f'shown above.'
-            raise argparse.ArgumentTypeError(msg) from e
+    def get_type_choices(self):
+        parsers = list(self.parsers.keys())
+        loaders = ['file:' + k for k in self.loaders.keys()]
+        return parsers + loaders
+
+
+class UpgradedConfigAction(ConfigAction):
+    loaders = jetstream.utils.loaders
+    parsers = jetstream.utils.parsers
 
 
 def add_config_options_to_parser(parser):
     """Adds the -c/--config and -C/--config-file options to an arg parser"""
+    act = UpgradedConfigAction(None, [None, None], None)
     config = parser.add_argument_group(
         'config variables',
         description='These options are used to add data that is available for '
@@ -119,26 +132,29 @@ def add_config_options_to_parser(parser):
                     '"-c" or data can be loaded in bulk from files with "-C". '
                     'Individual items should follow the syntax '
                     '"-c <[type:]key> <value>". These options can be used '
-                    'multiple times.'
+                    'multiple times. Types can be: '
+                    f'{", ".join(act.get_type_choices())}'
     )
     # These options indicate an addition to the args.config object.
     config.add_argument(
         '-c', '--config',
-        action=ConfigAction,
+        action=UpgradedConfigAction,
+        default={},
         metavar=('TYPE:KEY', 'VALUE'),
         help='add a single template variable'
     )
 
-    # This option allows an monolithic config file to be loaded and stored and
-    # overwrite the destination args.config. Additionally, the user can supply
-    # -c arguments after a -C in order to modify parts of the loaded config
-    # file.
+    # This option allows an monolithic config file to be loaded. Any additional
+    # -c config arguments will update this config file.
     config.add_argument(
         '-C', '--config-file',
-        dest='config',
         metavar='PATH',
-        type=ConfigAction.config_file,
-        help='load template variables from a file'
+        help='load template variables from a config file'
+    )
+
+    config.add_argument(
+        '--config-file-type',
+        help=f'force config file to be loaded as specific file type.'
     )
 
 
@@ -216,6 +232,27 @@ def main(args=None):
     log.info(f'Version: {pkg_resources.get_distribution("jetstream")}')
     log.debug(f'Command args: {sys.argv}')
     log.debug(f'Settings files:\n{setting_src}')
+
+    # Config item shuffle to get the monolithic config file to serve as the
+    # base and then update it with the individual config items. If a config
+    # file is loaded that does not yield a dictionary, it will be converted
+    # to a dictionary with the contents loaded under __config_file__.
+    if hasattr(args, 'config'):
+        final = {}
+        if args.config_file:
+            if args.config_file_type:
+                config_file = jetstream.utils.load_file(
+                    args.config_file, 
+                    filetype=args.config_file_type
+                )
+            else:
+                config_file = jetstream.utils.load_file(args.config_file)     
+            if not isinstance(config_file, dict):
+                final = {'__config_file__': config_file}
+            else:
+                final.update(config_file)
+        final.update(args.config)
+        args.config = final
 
     if args.project:
         args.project = jetstream.Project(args.project)
