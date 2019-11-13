@@ -138,17 +138,17 @@ def _iter_targetted_tasks(args, wf):
     if args.task_names:
         # We need to search the workflow and possibly query the graph
         if args.descendants or args.ancestors:
-            graph = wf.graph()
+            wf.reload_graph()
 
         for task in _search_workflow(args, wf):
             yield task
 
             if args.descendants:
-                for task in graph.descendants(task):
+                for task in wf.graph.descendants(task):
                     yield task
 
             if args.ancestors:
-                for task in graph.ancestors(task):
+                for task in wf.graph.ancestors(task):
                     yield task
     else:
         # Just report on all tasks in the workflow

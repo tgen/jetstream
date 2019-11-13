@@ -132,8 +132,7 @@ class WorkflowDependencies(TestCase):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1', output='banana.txt')
         t2 = wf.new_task(name='task2', input='banana.txt')
-        graph = wf.graph()
-        deps = set(graph.successors(t1))
+        deps = set(wf.graph.successors(t1))
         self.assertEqual(deps, {t2,})
 
     def test_successors_2(self):
@@ -141,8 +140,7 @@ class WorkflowDependencies(TestCase):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1', output=['banana.txt', 'banana2.txt'])
         t2 = wf.new_task(name='task2', input=['banana.txt', 'banana2.txt'])
-        graph = wf.graph()
-        deps = set(graph.successors(t1))
+        deps = set(wf.graph.successors(t1))
         self.assertEqual(deps, {t2,})
 
     def test_predecessors_1(self):
@@ -150,8 +148,7 @@ class WorkflowDependencies(TestCase):
         t1 = wf.new_task(name='task1', output='log1.txt')
         t2 = wf.new_task(name='task2', output='log2.txt')
         t3 = wf.new_task(name='task3', input=['log1.txt', 'log2.txt'])
-        graph = wf.graph()
-        deps = set(graph.predecessors(t3))
+        deps = set(wf.graph.predecessors(t3))
         self.assertEqual(deps, {t1, t2})
 
     def test_neg_self_dependency(self):
@@ -159,44 +156,73 @@ class WorkflowDependencies(TestCase):
         does nothing. """
         wf = jetstream.Workflow()
         t = wf.new_task(name='task', after='task')
-        graph = wf.graph()
-        deps = set(graph.predecessors(t))
+        deps = set(wf.graph.predecessors(t))
         self.assertEqual(deps, set())
 
     def test_add_task_w_after(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1', )
         t2 = wf.new_task(name='task2', after='task1')
-        graph = wf.graph()
-        deps = set(graph.predecessors(t2))
+        deps = set(wf.graph.predecessors(t2))
         self.assertEqual(deps, {t1,})
 
     def test_add_task_w_before(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1')
         t2 = wf.new_task(name='task2', before='task1')
-        graph = wf.graph()
-        deps = set(graph.predecessors(t1))
+        deps = set(wf.graph.predecessors(t1))
         self.assertEqual(deps, {t2,})
 
     def test_is_ready(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='task1')
         t2 = wf.new_task(name='task2', after='task1')
-        graph = wf.graph()
-        self.assertEqual(graph.is_ready(t1), True)
-        self.assertEqual(graph.is_ready(t2), False)
+        self.assertEqual(wf.graph.is_ready(t1), True)
+        self.assertEqual(wf.graph.is_ready(t2), False)
 
     def test_dependent_failure(self):
         wf = jetstream.Workflow()
         t1 = wf.new_task(name='hello')
         t2 = wf.new_task(name='goodbye', after='hello')
-        graph = wf.graph()
-        graph.skip_descendants(t1)
+        wf.graph.skip_descendants(t1)
         self.assertTrue(t2.is_done())
         self.assertTrue(t2.is_failed())
         self.assertTrue(t2.is_skipped())
         self.assertFalse(t2.is_complete())
+
+    def test_reset_parents(self):
+        wf = jetstream.Workflow()
+        t1 = wf.new_task(name='taskA')
+        t2 = wf.new_task(name='taskB', after='taskA', reset='parents')
+        for t in wf:
+            t.complete()
+        self.assertEqual(t1.status, 'complete')
+        wf.reset_task(t2)
+        self.assertEqual(t1.status, 'new')
+
+    def test_reset_task_parents_recursive(self):
+        wf = jetstream.Workflow()
+        t1 = wf.new_task(name='taskA')
+        t2 = wf.new_task(name='taskB', after='taskA', reset='parents')
+        t3 = wf.new_task(name='taskC', after='taskB', reset='parents')
+        for t in wf:
+            t.complete()
+        self.assertEqual(t1.status, 'complete')
+        wf.reset_task(t3)
+        self.assertEqual(t1.status, 'new')
+    
+
+    def test_reset_task_name(self):
+        wf = jetstream.Workflow()
+        t1 = wf.new_task(name='taskA')
+        t2 = wf.new_task(name='taskB', after='taskA')
+        t3 = wf.new_task(name='taskC', after='taskB', reset='taskA')
+        for t in wf:
+            t.complete()
+        self.assertEqual(t1.status, 'complete')
+        wf.reset_task(t3)
+        self.assertEqual(t1.status, 'new')
+    
 
     def test_workflow_mash(self):
         wf1 = jetstream.random_workflow(n=10)
@@ -233,7 +259,8 @@ class WorkflowIteration(TestCase):
 
     def test_graph(self):
         wf = jetstream.random_workflow(n=25, timeout=1)
-        wf.graph()
+        wf.reload_graph()
+        wf.graph
 
     def test_graph_iter(self):
         """While tasks are pending but workflow is not complete, the
@@ -242,7 +269,7 @@ class WorkflowIteration(TestCase):
         wf = jetstream.Workflow()
 
         t = wf.new_task(name='task')
-        i = iter(wf.graph())
+        i = iter(wf.graph)
         self.assertIs(next(i), t)
         self.assertIs(next(i), None)
         self.assertIs(next(i), None)

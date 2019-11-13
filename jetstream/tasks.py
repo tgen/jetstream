@@ -41,6 +41,7 @@ class TaskDirectiveProcessor:
         'before-re': 'coerce_list',
         'after-re': 'coerce_list',
         'input-re': 'coerce_list',
+        'reset': 'coerce_list',
     }
 
     def __call__(self, directives):

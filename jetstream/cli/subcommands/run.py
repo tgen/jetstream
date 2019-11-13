@@ -74,7 +74,7 @@ def template(template, args):
     wf = jetstream.templates.load_workflow(render)
 
     if args.build_only:
-        wf.graph()  # Validates the edges
+        wf.reload_graph()  # Validates the edges
         if args.out:
             wf.save(args.out)
         else:

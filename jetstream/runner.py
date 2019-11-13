@@ -233,7 +233,8 @@ class Runner:
         if exec_directive:
             env = {'runner': self, 'task': task}
             exec(exec_directive, None, env)
-            self._workflow_iterator = iter(self.workflow.graph())
+            self._workflow_graph = self.workflow.reload_graph()
+            self._workflow_iterator = iter(self.workflow.graph)
 
     def preflight(self):
         """Called prior to start"""
@@ -294,7 +295,7 @@ class Runner:
         self._project = project
         self._workflow = workflow
         self._workflow_len = len(workflow)
-        self._workflow_iterator = iter(self.workflow.graph())
+        self._workflow_iterator = iter(self.workflow.graph)
         self._run_started = datetime.now()
 
         self._errs = False

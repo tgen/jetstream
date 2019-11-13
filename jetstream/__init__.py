@@ -41,8 +41,8 @@ from jetstream.runner import Runner
 from jetstream.templates import environment, render_template
 from jetstream.workflows import Workflow, Task, load_workflow, save_workflow, \
     random_workflow
-from jetstream.pipelines import Pipeline, InvalidPipeline, find_pipelines, list_pipelines,\
-    get_pipeline
+from jetstream.pipelines import Pipeline, InvalidPipeline, find_pipelines, \
+    list_pipelines, get_pipeline
 
 
 def lookup_backend(name=None):

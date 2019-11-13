@@ -12,7 +12,7 @@ Tasks - are the fundamental unit of a workflow and contain: the commands that
   state, etc. 
  
 Workflows - are containers for tasks that can connect them together in a 
-  DAG (see `Workflow.graph()`). Workflows are used to save progress for runs by
+  DAG (see `Workflow.graph`). Workflows are used to save progress for runs by
   pickling the entire object. When a new run is started, it can be merged with 
   the project workflow to only run new tasks, this is accomplished with the 
   `mash` function in the workflows module.
