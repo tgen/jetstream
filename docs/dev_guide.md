@@ -1,8 +1,42 @@
 # Developers guide
 
-
 > This guide describes implementation details and is not intended for regular
 users.
+
+
+# Contributions and Releases
+
+## Adding features to the project
+
+To add new features to the project, follow this checklist
+
+- [ ] Create feature branch (if you've been working in dev, and just realized
+      you need to move to a feature branch see 
+      [this post](https://stackoverflow.com/a/1628584/3924113))
+- [ ] Make required changes for feature
+- [ ] Update README and doc/ items to reflect current code
+  - [ ] Update TOC (just paste whole doc into auto-TOC generator)
+- [ ] Update changelog with changes since last release
+- [ ] Commit and push
+- [ ] Open pull request to **develop** branch
+
+
+## Creating a new release
+
+Only project adminstrators can create a new release. After all features and
+bug fixes have been integrated for a specific release, follow this checklist
+to create it:
+
+- [ ] Create release branch
+- [ ] Merge in any new features for this new release
+- [ ] Bump version in two places:
+  - [ ] setup.py
+  - [ ] jetstream/__init__.py
+- [ ] Open a pull request to **master** branch
+- [ ] Create new release and tag on Github
+
+
+# Design details
 
 The jetstream package is built around four main classes: Tasks, Workflows, 
 Runners, and Backends.
@@ -38,6 +72,9 @@ Backend - Backends are how the runner is configured to execute tasks on various
   early. Also, a `cancel` method can be added to the backend, which will be 
   called when the runner shuts down early (ie keyboard interrupt). 
 
+Here is an example of what a backend needs. Notice the coroutines instead of
+standard function defs.
+
 .. code-block:: python
 
     async def anothercoro():
@@ -66,12 +103,11 @@ Backend - Backends are how the runner is configured to execute tasks on various
 
             return task
 
-Other modules are intended to help generate these core objects and organizing 
+Other modules are intended to help generate these core objects and organize
 work into projects. 
 
 
-Task identity
-==============
+## Task identity
 
 The Task class defines the objects that are added to the DAG. One goal of this 
 project was to build an engine that could identify tasks that have already been 
@@ -92,8 +128,7 @@ any descendants of that task also need to be reset.
 
 
 
-Templates
-===========
+## Templates
 
 Templates are a method for generating Task objects (and ultimately a Workflow) 
 from a plain-text documents and configuration data. For any given pipeline

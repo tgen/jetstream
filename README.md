@@ -1,20 +1,12 @@
 # Jetstream
 
 Jetstream is a pipeline development framework written as a pure Python package 
-and command line utility. It supports complex workflows modeled as directed-
+and command-line utility. It supports complex workflows modeled as directed-
 acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
 
 
-Jetstream supports a variety of use cases to fit your individual needs:
-
-- Run simple workflows like scripts for jobs that require just a few options
-
-- Create projects that keep track of logs, configuration, and progress
-
-- Or, design pipelines to solve complex problems with: customizable
-  configuration files, check-pointing, and version control.
-
 # Table of contents
+
 
 # Usage
 
@@ -38,41 +30,79 @@ help below.
 $ jetstream -h
 ```
 
+## Build
 
-# Introduction
+The building blocks of a Jetstream pipeline are [templates](docs/templates.md). 
+Templates are scripts that describe the steps required for a pipeline. Some
+pipelines can be a single template file. Other pipelines will require several 
+template and supporting data files (see [pipelines](docs/pipelines.md)). 
 
-Jetstream pipelines are built by creating templates, then running those templates
-by providing input data and a destination project. Simple pipelines may just need
-to be a single template file, more complex use cases may have several template files
-stored together in a directory with a `pipelines.yaml` manifest file. Detailed 
-documentation for templates and pipelines can be found in the docs.
-
-Templates are a way to create a set of reusable _tasks_ that can run with multiple 
-sets of input data. You can think of templates like a declarative scripting language 
+Templates describe a set of reusable _tasks_ that can be run for multiple sets 
+of input data. You can think of templates like a declarative scripting language 
 for building pipelines. Here is an example template file:
 
 ```
-# save as example.jst
-
 - name: hello_world
-  cmd: echo "hello {{ name }}"
+  cmd: echo "{{ greeting }} world"
   
 ```
 
-It can be run with the command-line tool:
+Complex pipelines can be designed with modular templates and organized into
+packages. Packaged pipelines can also include supporting data, documentation, 
+etc. that can be referenced in the template files.
+
+Using the template file above as an example, it can be placed in a directory
+along with a pipeline manifest file. If this directory is in the searchpath
+for Jetstream pipelines (user home directory by default), the pipeline can 
+be run by name with the `jetstream pipelines` command.
+
+
+## Run
+
+Single template files can be run with the `run` command. Referring to the 
+example template shown above.
 
 ```
-$ jetstream run example.jst -c name world
+$ jetstream run example.jst -c greeting hola
 ```
 
 
-# Intro Vignette
+Pipelines can be run with the `--pipeline` option:
 
-As a basic introduction, we'll create and run a pipeline that performs somatic 
-variant calling on genome sequencing data. Jetstream template files are the 
-building blocks for pipelines. They are simple text documents that containin a 
-set of _tasks_ to run. It may help to think of templates like scripts that 
-Jetstream can interpret and execute. 
+```
+$ jetstream run --pipeline ~/foo
+```
+
+Or, pipelines can also be referenced by name and version using the `pipelines` 
+command
+
+```
+$ jetstream pipelines foo@1.0
+```
+
+TODO run on projects
+
+## Inspect
+
+Jetstream can track data about pipeline runs in order to:
+
+- Resume runs that fail or need to be paused
+- Investigate problems that occur when running the pipeline
+- Gather inMining run data for insights
+
+TODO save in projects vs workflows
+
+
+
+# Vignette
+
+This section will walk through a typical use case, and demonstrate the basics of
+creating and running a pipeline on projects. As a basic introduction, we'll
+create and run a pipeline that performs somatic variant calling on genome
+sequencing data. Jetstream template files are the building blocks for pipelines.
+They are simple text documents that containin a set of _tasks_ to run. It may
+help to think of templates like scripts that Jetstream can interpret and
+execute. 
 
 * To get started, copy the following code to a new file. We'll dive into the 
 details later, for now, just save it to a new file called `somatic_caller.jst`
@@ -174,21 +204,22 @@ reference_fasta:
 ```
 </details>
 
-* Now that we have a template and an input config file we can run the pipeline.
-In order for Jetstream to save progress and run logs, we need to create a new
-project directory. When running pipelines inside of a jetstream project directory
-logs will be organized, and progress data will allow you to pause/restart/resume
-runs. Use the following command to initialize a new project:
+* Now that we have a template and an input config file we can run the
+pipeline. In order for Jetstream to save progress and run logs, we need to
+create a new project directory. When running pipelines inside of a jetstream
+project directory logs will be organized, and progress data will allow you to
+pause/restart/resume runs. Use the following command to initialize a new
+project:
 
 ```shell
 jetstream init js_somatic_tutorial
 ```
 
-* Before running the pipeline, we'll verify that the template and config data are
-valid with the render feature. This option will fill in all of the variables in
-the template with data from our config file, and show us the final commands that 
-will be executed when the pipeline runs. Use the following command to render the
-template (notice the `-C` is a capital c):
+* Before running the pipeline, we'll verify that the template and config data
+are valid with the render feature. This option will fill in all of the
+variables in the template with data from our config file, and show us the
+final commands that  will be executed when the pipeline runs. Use the
+following command to render the template (notice the `-C` is a capital c):
 
 ```shell
 jetstream render somatic_caller.jst -C inputs.yaml
@@ -196,12 +227,13 @@ jetstream render somatic_caller.jst -C inputs.yaml
 
 * You should have received an error that there was no value provided for the 
 variable `threads`. This was intentionally omitted from our config file to 
-demonstrate some of the options for providing config data. Several values can be
-given with a config file using `-C/--config-file` options, or single config values
-can be given with the `-c/--config` options. Since we don't know what kind of 
-computer you're using to run this pipeline, so we'll let you decide the number
-of threads to use. Here's how you would supply that value via the command line, 
-replace 4 with the number of processor cores you would like to use:
+demonstrate some of the options for providing config data. Several values can
+be given with a config file using `-C/--config-file` options, or single config
+values can be given with the `-c/--config` options. Since we don't know what
+kind of  computer you're using to run this pipeline, so we'll let you decide
+the number of threads to use. Here's how you would supply that value via the
+command line,  replace 4 with the number of processor cores you would like to
+use:
 
 ```shell
 jetstream render somatic_caller.jst -C inputs.yaml -c int:threads 4
@@ -224,9 +256,9 @@ the runner will exit with a zero.
 After the runner completes, we can `cd js_somatic_tutorial` and see the results.
 
 * Inside the directory you should see the output data files, along with a 
-`jetstream` index directory that contains data generated by the runner. There are 
-several subcommands that can be used to inspect projects and get information about
-the tasks that were executed. Try the following commands:
+`jetstream` index directory that contains data generated by the runner. There
+are  several subcommands that can be used to inspect projects and get
+information about the tasks that were executed. Try the following commands:
 
 ```
 # See details about the project and current status

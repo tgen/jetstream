@@ -67,15 +67,6 @@ class Pipeline:
             return f'<Pipeline(Not loaded yet): {self.path}>'
         return f'<Pipeline {self.name} ({self.version}): {self.path}>'
 
-    def set_environment_variables(self):
-        bin_path = os.path.join(self.path, 'bin')
-        if os.path.exists(bin_path):
-            os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
-
-        if self.env:
-            for k, v in self.env.items():
-                os.environ[k] = v
-
     def get_context(self):
         ctx = self.manifest.copy()
         ctx['__pipeline__']['path'] = self.path
