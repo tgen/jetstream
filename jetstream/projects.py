@@ -74,9 +74,8 @@ class Project:
 
     """
     def __init__(self, path=None):
-        path = path or os.getcwd()
         timeout = jetstream.settings['projects']['lock_timeout'].get(int)
-        self.paths = ProjectPaths(path)
+        self.paths = ProjectPaths(path or os.getcwd())
         self.lock = PidFileLock(self.paths.pid_path, timeout=timeout)
 
         try:
@@ -90,7 +89,7 @@ class Project:
             raise FileNotFoundError(err) from None
 
     def __repr__(self):
-        return f'<Project path={self.paths.path}>'
+        return f'<Project path={self.path}>'
 
     def add_to_history(self, note=None, data=None):
         tries = jetstream.settings['projects']['history_max_tries'].get(int)
@@ -134,6 +133,10 @@ class Project:
         except FileNotFoundError:
             return jetstream.Workflow(path=self.paths.workflow_path)
 
+    @property
+    def path(self):
+        return self.paths.path
+    
     def update_index(self, data):
         self.index = jetstream.utils.config_stack(self.index, data)
         with open(self.paths.index_path, 'w') as fp:

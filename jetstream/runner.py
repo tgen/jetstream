@@ -248,6 +248,7 @@ class Runner:
                     'Autosave is enabled, but no path has been set for this '
                     'workflow. Progress will not be saved.'
                 )
+        self.set_environment_variables()
 
     def shutdown(self):
         """Called after shutdown"""
@@ -276,6 +277,22 @@ class Runner:
             self.notify_waiters()
             self._conc_sem.release()
             self._futures.remove(future)
+
+    def set_environment_variables(self):
+        if self.pipeline:
+            os.environ['JS_PIPELINE_PATH'] = self.pipeline.path
+            os.environ['JS_PIPELINE_NAME'] = self.pipeline.name
+            os.environ['JS_PIPELINE_VERSION'] = self.pipeline.version
+            bin_path = os.path.join(self.pipeline.path, 'bin')
+            if os.path.exists(bin_path):
+                os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
+
+            if self.pipeline.env:
+                for k, v in self.env.items():
+                    os.environ[k] = v
+
+        if self.project:
+            os.environ['JS_PROJECT_PATH'] = self.project.path
 
     def start(self, workflow, pipeline=None, project=None):
         """Called to start the runner on a workflow."""
