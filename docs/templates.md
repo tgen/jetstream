@@ -54,7 +54,10 @@ And here is a template with 100 tasks:
 The foundation of template syntax is [YAML](docs/yaml_help.md). Each task 
 starts with a hyphen, `-`, and then a set of task directives are 
 given as `directive: value` lines. This is YAML syntax for describing a 
-sequence of mappings. 
+sequence of mappings.
+
+Directives are the instructions that the runner will use to determine _when_
+and _how_ to execute the task. See [Tasks](docs/tasks.md) for more information.
 
 Variables and logic can be included to make templates dynamic. In the example
 above, the `{{ greeting }}` will be filled in with data provided by the user
