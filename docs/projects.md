@@ -32,3 +32,10 @@ using projects:
 | Run Logs     | Saved in project   | Printed to stdout with LocalBackend or varies by backend |
 | History      | Saved in project   | Not available                           |
 
+
+## Project environment variables
+
+When running with a project, the following environmnet variable will be 
+exported:
+
+- `JS_PROJECT_PATH`: The path to the current project

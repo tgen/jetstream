@@ -112,9 +112,9 @@ $ jetstream pipelines hello_world -c greeting hola
 
 When running pipelines, several environment variables will be exported:
 
-- JS_PIPELINE_PATH
-- JS_PIPELINE_NAME
-- JS_PIPELINE_VERSION
+- `JS_PIPELINE_PATH`: The path to the pipeline
+- `JS_PIPELINE_NAME`: The name of the pipeline
+- `JS_PIPELINE_VERSION`: The version of the pipeline
 
 These can be useful for introspection, logging, or using extra files packaged
 with the pipeline. For example, a task command could reference data files
