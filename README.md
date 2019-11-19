@@ -7,8 +7,21 @@ acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
 
 # Table of contents
 
+- [Jetstream](#jetstream)
+- [Getting Started](#getting-started)
+  * [Build](#build)
+  * [Run](#run)
+  * [Inspect](#inspect)
+- [Learn More](#learn-more)
+  * [Templates](docs/templates.md)
+  * [Pipelines](docs/pipelines.md)
+  * [Projects](docs/projects.md)
+- [Vignette](#vignette)
+- [Installation](#installation)
+  * [Troubleshooting: Command not found after install](#troubleshooting--command-not-found-after-install)
 
-# Usage
+
+# Getting Started
 
 Jetstream can be installed with pip. See [installation](#installation) for more
 info:
@@ -35,11 +48,13 @@ $ jetstream -h
 The building blocks of a Jetstream pipeline are [templates](docs/templates.md). 
 Templates are scripts that describe the steps required for a pipeline. Some
 pipelines can be a single template file. Other pipelines will require several 
-template and supporting data files (see [pipelines](docs/pipelines.md)). 
+template and supporting data files. 
 
 Templates describe a set of reusable _tasks_ that can be run for multiple sets 
 of input data. You can think of templates like a declarative scripting language 
-for building pipelines. Here is an example template file:
+for building pipelines. 
+
+Here is an example template file:
 
 ```
 - name: hello_world
@@ -49,38 +64,36 @@ for building pipelines. Here is an example template file:
 
 Complex pipelines can be designed with modular templates and organized into
 packages. Packaged pipelines can also include supporting data, documentation, 
-etc. that can be referenced in the template files.
-
-Using the template file above as an example, it can be placed in a directory
-along with a pipeline manifest file. If this directory is in the searchpath
-for Jetstream pipelines (user home directory by default), the pipeline can 
-be run by name with the `jetstream pipelines` command.
+etc. that can be referenced in the template files. See 
+[pipelines](docs/pipelines.md) for details.
 
 
 ## Run
 
-Single template files can be run with the `run` command. Referring to the 
-example template shown above.
+Jetstream encourages project-oriented workflows. With this pattern, work is 
+divided into separate directories (projects), and pipelines are executed on
+specific projects. Projects are directories where a pipeline run will execute
+and output files will be saved. Using projects makes it easier to organize logs
+and run metadata. It also allows for incremental changes in a pipeline to be
+applied without re-running the entire workflow.
+
+Projects can be created with the `init` command:
+
+```
+$ jetstream init <path to project>
+```
+
+Now, [templates](docs/templates.md) can be run with the `run` command:
 
 ```
 $ jetstream run example.jst -c greeting hola
 ```
 
-
-Pipelines can be run with the `--pipeline` option:
-
-```
-$ jetstream run --pipeline ~/foo
-```
-
-Or, pipelines can also be referenced by name and version using the `pipelines` 
-command
+[Pipelines](docs/pipelines.md) can be run by name with the `pipelines` command:
 
 ```
-$ jetstream pipelines foo@1.0
+$ jetstream pipelines foo_pipe
 ```
-
-TODO run on projects
 
 ## Inspect
 
@@ -88,16 +101,28 @@ Jetstream can track data about pipeline runs in order to:
 
 - Resume runs that fail or need to be paused
 - Investigate problems that occur when running the pipeline
-- Gather inMining run data for insights
+- Gather run and task data for secondary analysis
 
-TODO save in projects vs workflows
+The following commands can be used for inspecting Jetstream projects:
 
+- `jetstream project` for viewing project summary or details
+
+- `jetstream tasks` for viewing summary or details for specific tasks
+
+- `jetstream pipelines` can be used to inspect pipeline details
+
+
+# Learn More
+
+- [Templates](docs/templates.md)
+- [Pipelines](docs/pipelines.md)
+- [Projects](docs/projects.md)
 
 
 # Vignette
 
-This section will walk through a typical use case, and demonstrate the basics of
-creating and running a pipeline on projects. As a basic introduction, we'll
+This section will walk through a typical use case that demonstrates the basics
+of creating and running a pipeline on projects. As a basic introduction, we'll
 create and run a pipeline that performs somatic variant calling on genome
 sequencing data. Jetstream template files are the building blocks for pipelines.
 They are simple text documents that containin a set of _tasks_ to run. It may
@@ -273,7 +298,7 @@ jetstream tasks -v
 
 # Installation
 
-> TGen users on Dback can load the latest version of Python with 
+> TGen users on Diamondback can load the latest version of Python with 
   `module load python`.
 
 This is a Python package and requires Python3. Installation guides for 
@@ -281,17 +306,10 @@ Mac/Windows/Linux are available from the
 [Hitchiker's Guide to Python][install_help] After Python3 is installed, you can 
 install Jetstream with Pip (next step).
 
-
-Install via HTTPS (requires entering Github username and password)
-
-```shell
-pip3 install --upgrade --user git+https://github.com/tgen/jetstream.git@master
-```
-
-Install via SSH (requires SSH keys to be configured in Github profile)
+Install with Pip
 
 ```shell
-pip3 install --upgrade --user git+ssh://git@github.com/tgen/jetstream.git@master
+pip install git+https://github.com/tgen/jetstream.git@master
 ```
 
 ## Troubleshooting: Command not found after install

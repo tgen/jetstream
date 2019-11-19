@@ -146,5 +146,10 @@ Workflow. Each item in the document will instantiate a new Task object. All the
 task objects get added to a Workflow. 
 
 Templates allow for a small amount of logic as well, for example we can create 
-a task for each item in some list entirely in the template. 
+a task for each item in some list entirely in the template. But, there is no
+parser/lexer/etc inside Jetstream for this syntax. The document rendering
+is handled entirely by the Jinja2 template engine. After rendering the tasks
+are loaded by a relatively simple YAML parsing operation. This templating
+on top of the structured document is remarkably powerful when it comes to 
+building complex workflows. 
 

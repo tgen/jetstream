@@ -1,16 +1,19 @@
 # Pipelines
 
-Pipelines that require several template files and supporting data should be 
-organized into a pipeline directory. This directory needs to include the 
-template files and also a manifest file: `pipeline.yaml` to describe the 
-contents.
+Pipelines are a method for packaging Jetstream templates in order to stay  
+organized and improve usability. Pipelines encourage programming best-practices 
+like documenation, modularization, and versioning.
 
-Pipelines can be used with most Jestream commands with the `-p/--pipeline`
-option. If pipeline is located in the searchpath for Jetstream pipelines (user
-home directory by default), then the pipeline can be run by name with the
-`jetstream pipelines <name>` command. Multiple versions of the same pipeline
-can also be installed and referenced with:
-`jetstream pipelines <name>@<version>`.
+Jetstream pipelines are directories with a pipeline manifest file. To be 
+considered a pipeline, the directory needs to include the workflow templates and
+also a [manifest file](#pipeline-manifest-files): `pipeline.yaml`. The directory
+can also contain any supplementary files like documentation, reference data,
+binaries, scripts, etc. Pipelines located in the
+[searchpath](#pipeline-searchpath-lookup), can be run by name with the
+`jetstream pipelines <name>` command. Pipelines can also be used with many other
+Jestream commands via the `-p/--pipeline` option. Multiple versions of the same
+pipeline can also be installed and referenced with: `jetstream pipelines
+<name>@<version>`.
 
 Here is an example of the directory tree for a `hello_world` pipeline. The 
 contents of each file are also shown below:
@@ -41,15 +44,18 @@ __pipeline__:
 ```
 
 
-## Pipeline lookup
+## Pipeline searchpath lookup
 
 When using the `jetstream pipelines` command, a search is performed for any
 pipeline matching the name and optionally version number. If version number is
 omitted, the latest version will be used. Jetstream looks for pipelines in 
-any directory included in the pipelines searchpath. The default location is 
+any directory included in the pipelines *searchpath*. The default location is 
 the user home directory, but this value can be changed in the user config file 
-(see `jestream settings`). Pipelines can also be located inside any other 
-pipeline directory.
+(see `jestream settings`). Pipelines can also be nested inside any other 
+pipeline directory. The *searchpath* behaves much like the \*nix `PATH`
+variable: multiple locations can be specified by separating with colons 
+`<first path>:<second path>`, the first pipeline matching the search criteria
+will be returned.
 
 
 ## Pipeline Manifest files
@@ -122,8 +128,8 @@ included in the pipeline:
 
 ```
 
-It's also a great way to keep pipeline code short by moving cmds into external
-scripts:
+It's also a great way to keep pipeline code short by moving long commands into 
+external scripts:
 
 ```
 - name: run_pipeline_script
