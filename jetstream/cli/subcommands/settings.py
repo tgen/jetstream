@@ -75,7 +75,7 @@ def main(args):
 
     if args.verbose:
         full = jetstream.settings.flatten()
-        print(jetstream.utils.yaml_dumps(json.loads(json.dumps(full))))
+        print(jetstream.utils.dumps_yaml(json.loads(json.dumps(full))))
         return
 
     if args.create:

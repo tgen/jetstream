@@ -44,7 +44,7 @@ class Fingerprint:
         return vars(self)
 
     def to_yaml(self):
-        return yaml_dumps(vars(self))
+        return dumps_yaml(vars(self))
 
     def to_json(self):
         return json_dumps(vars(self), sort_keys=True)
