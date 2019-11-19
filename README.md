@@ -13,9 +13,10 @@ acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
   * [Run](#run)
   * [Inspect](#inspect)
 - [Learn More](#learn-more)
-  * [Templates](docs/templates.md)
   * [Pipelines](docs/pipelines.md)
   * [Projects](docs/projects.md)
+  * [Tasks](docs/tasks.md)
+  * [Templates](docs/templates.md)
 - [Vignette](#vignette)
 - [Installation](#installation)
   * [Troubleshooting: Command not found after install](#troubleshooting--command-not-found-after-install)
@@ -23,25 +24,23 @@ acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
 
 # Getting Started
 
-Jetstream can be installed with pip. See [installation](#installation) for more
-info:
+Jetstream can be installed with Pip:
 
 ```shell
 pip install git+https://github.com/tgen/jetstream.git@master
 ```
 
-After installing, there are two ways to work with Jetstream: 1) via the 
-command-line utility or 2) as a Python package. The majority of this guide 
-will cover the command-line interface which is the most common use case. 
-
 After installing with Pip, the command line utility can be launched with
 `jetstream`, and help can be accessed with the `-h/--help` options. If 
 the command is not found, see the detailed [installation](#installation) 
-help below.
+help below. There are two ways to work with Jetstream: 1) via the 
+command-line utility or 2) as a Python package. The majority of this guide 
+will cover the command-line interface which is the most common use case. 
 
 ```shell
 $ jetstream -h
 ```
+
 
 ## Build
 
