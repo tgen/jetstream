@@ -113,7 +113,7 @@ def run(wf, args):
 
     if args.out:
         wf.path = args.out
-    print(wf.graph.nodes())
+
     wf.reset(args.reset_method)
 
     try:
