@@ -188,4 +188,6 @@ def load_workflow(render):
         tasks = [jetstream.Task(**t) for t in tasks]
         wf = jetstream.Workflow(tasks=tasks)
 
+    wf.reload_graph()
     return wf
+
