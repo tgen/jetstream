@@ -207,7 +207,7 @@ class WorkflowGraph:
     for the next available task. If a change to the graph occurs during
     iteration, these lists should be recalculated. """
     def __init__(self, workflow):
-        log.info('Building workflow graph...')
+        log.info(f'Building workflow graph for {workflow}...')
         self.workflow = workflow
         self.G = nx.DiGraph()
         self.nodes = self.G.nodes
@@ -458,9 +458,17 @@ def mash(G, H):
     :param H: Another Workflow
     :return: Workflow
     """
-    log.info(f'Mashing G:{G.path}:{len(G)} tasks with H:{H.path}:{len(H)} tasks')
-    tasks = [task.copy() for task in G]
-    workflow = jetstream.Workflow(tasks, props=G.props.copy())
+    # If either workflow is empty, just copy the tasks in the other and return.
+    # note that the props always come from G
+    if len(H) <= 0:
+        log.debug('wf H is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
+    elif len(G) <= 0:
+        log.debug('wf G is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in H], props=G.props.copy())
+    
+    log.info(f'Mashing G:{G.path}:{G.summary()} with H:{H.path}:{H.summary()}')
+    workflow = jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
     new = set()
     modified = set()
 
@@ -489,7 +497,7 @@ def mash(G, H):
     log.debug('Identifying tasks that need to be reset...')
     aff = new.union(modified)
     to_reset = set()
-    graph = workflow.graph
+    graph = workflow.reload_graph()
 
     for task in aff:
         if task.name in graph.G:

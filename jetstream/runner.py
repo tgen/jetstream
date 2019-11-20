@@ -314,7 +314,6 @@ class Runner:
         self._workflow_len = len(workflow)
         self._workflow_iterator = iter(self.workflow.graph)
         self._run_started = datetime.now()
-
         self._errs = False
         self._start_event_loop()
         self._start_backend()

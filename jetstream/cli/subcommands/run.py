@@ -74,12 +74,10 @@ def template(template, args):
     wf = jetstream.templates.load_workflow(render)
 
     if args.build_only:
-        wf.reload_graph()  # Validates the edges
         if args.out:
             wf.save(args.out)
-        else:
-            print(wf)
-            return
+        log.info('Workflow built successfully!') 
+        return
 
     run(wf, args)
 
@@ -115,7 +113,7 @@ def run(wf, args):
 
     if args.out:
         wf.path = args.out
-
+    print(wf.graph.nodes())
     wf.reset(args.reset_method)
 
     try:
