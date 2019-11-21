@@ -224,7 +224,7 @@ def guess_max_forks(default=500):
     try:
         res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
         return res
-    except FileNotFoundError as e:
+    except subprocess.CalledProcessError as e:
         log.exception(e)
         return default
 
