@@ -47,7 +47,7 @@ class Fingerprint:
         return dumps_yaml(vars(self))
 
     def to_json(self):
-        return json_dumps(vars(self), sort_keys=True)
+        return dumps_json(vars(self), sort_keys=True)
 
 
 def coerce_tuple(obj):
