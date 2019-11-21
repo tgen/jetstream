@@ -225,7 +225,7 @@ def guess_max_forks(default=500):
         res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
         return res
     except subprocess.CalledProcessError as e:
-        log.exception(e)
+        log.debug('Guessing max forks with ulimit -u failed, using default')
         return default
 
 
