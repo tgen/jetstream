@@ -16,7 +16,6 @@ from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
 from multiprocessing import cpu_count
-from pkg_resources import get_distribution
 from socket import gethostname
 from uuid import getnode, uuid4
 
@@ -31,7 +30,7 @@ class Fingerprint:
     def __init__(self, note=None, id=None, pid=False):
         self.datetime = datetime.utcnow().isoformat()
         self.user = getuser()
-        self.version = str(get_distribution("jetstream"))
+        self.version = str(jetstream.__version__)
         self.args = ' '.join(sys.argv)
         self.hostname = gethostname()
         self.pwd = os.getcwd()
