@@ -120,6 +120,23 @@ class Pipeline:
         self.main = main
         self.manifest = manifest
 
+    def set_environment_variables(self):
+        if self.manifest is None:
+            e = "Pipeline.set_environment_variables() called before validate()"
+            raise ValueError(e)
+
+        os.environ['JS_PIPELINE_PATH'] = self.path
+        os.environ['JS_PIPELINE_NAME'] = self.name
+        os.environ['JS_PIPELINE_VERSION'] = self.version
+
+        bin_path = self.manifest.get('bin')
+        if os.path.exists(bin_path):
+            os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
+
+        if self.env:
+            for k, v in self.env.items():
+                os.environ[k] = v
+
 
 
 def find_pipelines(*dirs):
