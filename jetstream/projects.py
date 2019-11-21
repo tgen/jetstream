@@ -136,6 +136,9 @@ class Project:
     @property
     def path(self):
         return self.paths.path
+
+    def set_environment_variables(self):
+        os.environ['JS_PROJECT_PATH'] = self.path
     
     def update_index(self, data):
         self.index = jetstream.utils.config_stack(self.index, data)
