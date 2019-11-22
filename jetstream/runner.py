@@ -280,18 +280,10 @@ class Runner:
 
     def set_environment_variables(self):
         if self.pipeline:
-            os.environ['JS_PIPELINE_PATH'] = self.pipeline.path
-            os.environ['JS_PIPELINE_NAME'] = self.pipeline.name
-            os.environ['JS_PIPELINE_VERSION'] = self.pipeline.version
-            bin_path = os.path.join(self.pipeline.path, 'bin')
-            if os.path.exists(bin_path):
-                os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
-
-            if self.pipeline.env:
-                for k, v in self.env.items():
-                    os.environ[k] = v
+            self.pipeline.set_environment_variables()
 
         if self.project:
+            self.project.set_environment_variables()
             os.environ['JS_PROJECT_PATH'] = self.project.path
 
     def start(self, workflow, pipeline=None, project=None):

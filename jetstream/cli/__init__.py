@@ -193,7 +193,7 @@ def arg_parser():
     parser.add_argument(
         '-v', '--version',
         action='version',
-        version=pkg_resources.get_distribution('jetstream').version
+        version=jetstream.__version__
     )
 
     parser.set_defaults(func=None)
@@ -229,7 +229,7 @@ def main(args=None):
 
     jetstream.start_logging(args.logging)
     setting_src = '\n'.join((str(s) for s in jetstream.settings.sources))
-    log.info(f'Version: {pkg_resources.get_distribution("jetstream")}')
+    log.info(f'Version: {jetstream.__version__}')
     log.debug(f'Command args: {sys.argv}')
     log.debug(f'Settings files:\n{setting_src}')
 
