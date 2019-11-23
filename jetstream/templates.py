@@ -105,13 +105,18 @@ def fromjson(value):
     return json.loads(value)
 
 
-def getenv(value):
+def env(value):
     return os.environ[value]
+    
+
+def getenv(value, default=None):
+    return os.environ.get(value, default)
 
 
 def setenv(key, value):
     os.environ[key] = value
     return '' 
+
 
 def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     """Starts a Jinja2 Environment with a FileSystemLoader on the given search
