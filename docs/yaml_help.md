@@ -1,6 +1,6 @@
 # Understanding YAML
 
-YAML is a spec that allows common data structures in to be stored as unambiguous 
+YAML is a spec that allows common data structures to be stored as unambiguous 
 plain-text. YAML is the foundation of the workflow template syntax, so it's 
 important to have a good grasp on the fundamentals. The full specification can 
 be found [here](http://yaml.org), this section is just meant as a crash course 

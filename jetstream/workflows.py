@@ -44,6 +44,7 @@ class Workflow:
         self.props = props or {}
         self.path = path
         self.version = version or jetstream.__version__
+        self._graph = None
 
     def __contains__(self, item):
         if isinstance(item, str):
@@ -70,6 +71,7 @@ class Workflow:
     def __setstate__(self, d):
         """Enables checking versions when workflows are loaded"""
         self.__dict__ = d
+        self._graph = None
         self.check_versions()
 
     def add(self, task):
@@ -98,7 +100,9 @@ class Workflow:
         patterns. """
         log.debug(f'Find({style}): {pattern}')
 
-        if style == 'regex':
+        if style == 'exact':
+            matches = set(list(self.tasks.get(pattern, None)))
+        elif style == 'regex':
             regex = compile(pattern)
             matches = set([t for t in self if regex.match(t.name)])
         elif style == 'glob':
@@ -115,8 +119,11 @@ class Workflow:
         else:
             return fallback
 
+    @property
     def graph(self):
-        return WorkflowGraph(self)
+        if self._graph is None:
+            self._graph = WorkflowGraph(self)
+        return self._graph
 
     def new_task(self, *args, **kwargs):
         task = Task(*args, **kwargs)
@@ -125,6 +132,10 @@ class Workflow:
 
     def pop(self, task_name):
         return self.tasks.pop(task_name)
+
+    def reload_graph(self):
+        self._graph = WorkflowGraph(self)
+        return self._graph
 
     def reset(self, method):
         """Resets state for tasks in this workflow
@@ -150,22 +161,39 @@ class Workflow:
         """Resets state for all tasks"""
         log.critical('Reset: Resetting state for all tasks...')
         for task in self:
-            task.reset()
+            self.reset_task(task)
 
     def resume(self):
         """Resets state for any "pending" tasks """
         log.info('Resume: Resetting state for any pending tasks...')
         for task in self:
             if task.status == 'pending':
-                task.reset()
+                self.reset_task(task)
 
     def retry(self):
         """Resets state for any "pending" or "failed" tasks """
         log.info('Retry: Resetting state for any pending or failed tasks...')
         for task in self:
             if task.status in ('pending', 'failed', 'skipped'):
-                task.reset()
+                self.reset_task(task)
 
+    def reset_task(self, task):
+        task.reset()
+
+        # Here we trace any reset directives and also reset those tasks
+        try:
+            reset_directive = task.directives['reset']
+        except KeyError:
+            return
+        
+        for item in reset_directive:
+            if item == 'predecessors' or item == 'parents':
+                for t in self.graph.predecessors(task):
+                    self.reset_task(t)
+            else:
+                self.reset_task(self.tasks[item])
+    
+                
     def save(self, path=None):
         save_workflow(self, path or self.path)
 
@@ -179,7 +207,7 @@ class WorkflowGraph:
     for the next available task. If a change to the graph occurs during
     iteration, these lists should be recalculated. """
     def __init__(self, workflow):
-        log.info('Building workflow graph...')
+        log.info(f'Building workflow graph for {workflow}...')
         self.workflow = workflow
         self.G = nx.DiGraph()
         self.nodes = self.G.nodes
@@ -430,9 +458,17 @@ def mash(G, H):
     :param H: Another Workflow
     :return: Workflow
     """
-    log.info(f'Mashing G:{G.path}:{len(G)} tasks with H:{H.path}:{len(H)} tasks')
-    tasks = [task.copy() for task in G]
-    workflow = jetstream.Workflow(tasks, props=G.props.copy())
+    # If either workflow is empty, just copy the tasks in the other and return.
+    # note that the props always come from G
+    if len(H) <= 0:
+        log.debug('wf H is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
+    elif len(G) <= 0:
+        log.debug('wf G is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in H], props=G.props.copy())
+    
+    log.info(f'Mashing G:{G.path}:{G.summary()} with H:{H.path}:{H.summary()}')
+    workflow = jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
     new = set()
     modified = set()
 
@@ -461,7 +497,7 @@ def mash(G, H):
     log.debug('Identifying tasks that need to be reset...')
     aff = new.union(modified)
     to_reset = set()
-    graph = workflow.graph()
+    graph = workflow.reload_graph()
 
     for task in aff:
         if task.name in graph.G:

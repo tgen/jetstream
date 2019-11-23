@@ -7,7 +7,7 @@ import jetstream
 log = logging.getLogger('jetstream.cli')
 
 
-def arg_parser(parser):
+def add_arguments(parser):
     parser.add_argument(
         '-H', '--history',
         action='store_true'
@@ -35,10 +35,10 @@ def main(args):
 
         if args.history:
             for item in args.project.history_iter():
-                print(jetstream.utils.yaml_dumps(item))
+                print(jetstream.utils.dumps_yaml(item))
         else:
             summary = project_summary(args.project)
-            print(jetstream.utils.yaml_dumps(summary))
+            print(jetstream.utils.dumps_yaml(summary))
 
     else:
         err = 'No project given! Must be run inside a project, or use ' \

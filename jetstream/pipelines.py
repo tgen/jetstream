@@ -17,6 +17,17 @@ class Pipeline:
     manifest does not contain required fields: "__pipeline__" with "name",
     "version" and "main", InvalidPipeline will be raised.
 
+    Pipeline features:
+        - Quickly reference workflow templates by a name and version
+        - Stored config data is available when rendering the template
+        - Stored supporting scripts/binaries are added to PATH when running
+        - Stored environment variables are added to env when running
+
+        TODO FUTURE:
+        -  Packaged and deployed to remote hosts for backends without
+           a shared filesystem. Otherwise all the included files would
+           not be accessible when the commands run.
+
     Manifest file example:
 
     # This manifest is also available as config data
@@ -29,36 +40,163 @@ class Pipeline:
       version: 1.0
       main: main.jst
       author: Ryan Richholt
+      env:
+        FOO: BAZ
       ...
     foo: bar
     constants:
       these: can be anything
 
     """
-    def __init__(self, path):
+    def __init__(self, path=None, validate=True):
+        if path is None:
+            path = os.getcwd()
+
         self.path = os.path.abspath(os.path.expanduser(path))
+        self.name = None
+        self.version = None
+        self.main = None
+        self.manifest = None
+        self.env = None
 
-        if not os.path.isdir(self.path):
-            raise InvalidPipeline(f'"{self.path}" is not a directory')
-
-        self.manifest_path = os.path.join(self.path, MANIFEST_FILENAME)
-        self.manifest = jetstream.utils.load_file(self.manifest_path)
-
-        try:
-            self.info = info = self.manifest['__pipeline__']
-            self.name = info['name']
-            self.main = info['main']
-            self.version = str(info['version'])
-        except KeyError as e:
-            err = f'{self.path}: manifest missing key "{e}"'
-            raise InvalidPipeline(err) from None
-
-        if not self.name.isidentifier():
-            err = f'{self.path}: "{self.name}" is not a valid identifier'
-            raise InvalidPipeline(err)
+        if validate:
+            self.validate()
 
     def __repr__(self):
-        return f'<Pipeline: {self.name} ({self.version})>'
+        if self.name is None:
+            return f'<Pipeline(Not loaded yet): {self.path}>'
+        return f'<Pipeline {self.name} ({self.version}): {self.path}>'
+
+    def get_context(self):
+        ctx = self.manifest.copy()
+        ctx['__pipeline__']['path'] = self.path
+        return ctx
+
+    def load_manifest(self):
+        manifest_path = os.path.join(self.path, MANIFEST_FILENAME)
+        return jetstream.utils.load_file(manifest_path)
+
+    def load_template(self):
+        path = os.path.join(self.path, self.main)
+        return jetstream.templates.load_template(path)
+
+    def validate(self):
+        """Loads the manifest, sets instance attributes, and validates the contents"""
+        manifest = self.load_manifest()
+
+        try:
+            pipeline_info = manifest['__pipeline__']
+        except KeyError as e:
+            err = 'Pipeline manifest missing "__pipeline__" section'
+            raise InvalidPipeline(err) from e
+
+        try:
+            name = pipeline_info['name']
+        except KeyError as e:
+            err = 'Pipeline info section missing "name" field'
+            raise InvalidPipeline(err) from e
+
+        if not name.isidentifier():
+            err = f'{self.path}: "{name}" is not a valid identifier'
+            raise InvalidPipeline(err)
+
+        try:
+            main = pipeline_info['main']
+        except KeyError:
+            main = 'main.jst'
+
+        main_path = os.path.join(self.path, main)
+        if not os.path.exists(main_path):
+            err = f'Pipeline main not found: {main_path}'
+            raise InvalidPipeline(err)
+
+        try:
+            version = str(pipeline_info['version'])
+        except KeyError:
+            version = '0.0.0'
+
+        self.name = name
+        self.version = version
+        self.main = main
+        self.manifest = manifest
+
+    def set_environment_variables(self):
+        if self.manifest is None:
+            e = "Pipeline.set_environment_variables() called before validate()"
+            raise ValueError(e)
+
+        os.environ['JS_PIPELINE_PATH'] = self.path
+        os.environ['JS_PIPELINE_NAME'] = self.name
+        os.environ['JS_PIPELINE_VERSION'] = self.version
+
+        bin_path = self.manifest.get('bin')
+        if os.path.exists(bin_path):
+            os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
+
+        if self.env:
+            for k, v in self.env.items():
+                os.environ[k] = v
+
+
+
+def find_pipelines(*dirs):
+    """Generator yields all pipelines in given directories. Any pipeline found will also
+    be searched for nested pipelines. """
+    for dirname in dirs:
+        dirname = os.path.abspath(os.path.expanduser(dirname))
+
+        if not os.path.isdir(dirname):
+            log.debug(f'Not a directory that exists, skipping {dirname}')
+            continue
+
+        log.debug(f'Searching for pipelines in: {dirname}')
+        for filename in os.listdir(dirname):
+            path = os.path.join(dirname, filename)
+
+            # Here we check if the item is likely to be a pipeline, this filters
+            # out standard files, and prevents trying to instantiate and validate
+            # a pipeline object for every directory we encounter.
+            if is_pipeline(path):
+                try:
+                    p = Pipeline(path)
+                    log.debug(f'Found {p} at {path}')
+                    yield p
+                except :
+                    log.debug(f'Failed to load: {path}')
+
+                yield from find_pipelines(path)
+
+
+def get_pipeline(name, version=None, searchpath=None):
+    """Get a pipeline by name and version(optional)"""
+    if searchpath is None:
+        searchpath = [os.path.expanduser('~'),]
+
+    if version is None:
+        # Find all but then sort by version and return the latest
+        matches = []
+        for p in find_pipelines(*searchpath):
+            if p.name == name:
+                matches.append(p)
+
+        if matches:
+            s = sorted(matches, key=lambda p: LooseVersion(p.version))
+            return s[-1]
+    else:
+        # Find a match with name and version
+        version = str(version)
+        for p in find_pipelines(*searchpath):
+            # TODO can we allow > < = syntax here?
+            if p.name == name and LooseVersion(p.version) == LooseVersion(version):
+                return p
+
+
+    if version is None:
+        msg = f'Pipeline "{name}" not found!'
+    else:
+        msg = f'Pipeline "{name}({version})" not found!'
+
+    raise FileNotFoundError(msg)
 
 
 def is_pipeline(path):
@@ -70,105 +208,7 @@ def is_pipeline(path):
         return False
 
 
-def pipelines_iter(searchpath=None):
-    """Yields all pipelines found in pipeline home (taken from settings file or
-    defaulting to user home directory)."""
-    settings_searchpath = jetstream.settings['pipelines']['searchpath'].get(str)
-    searchpath = searchpath or settings_searchpath
-    log.debug(f'Pipelines search path: {searchpath}')
+def list_pipelines(*dirs):
+    """Returns all pipelines found as a list"""
+    return list(find_pipelines(*dirs))
 
-    paths_to_search = searchpath.split(':')
-    paths_to_search = [os.path.expanduser(p) for p in paths_to_search]
-
-    for x in paths_to_search:
-        log.debug(f'Searching for pipelines in: {x}')
-        for filename in os.listdir(x):
-            path = os.path.join(x, filename)
-            if is_pipeline(path):
-                try:
-                    yield Pipeline(path)
-                except Exception:
-                    log.warning(f'Failed to load: {path}')
-
-
-def list_pipelines(*args, **kwargs):
-    """Returns all pipelines found in pipeline home as a list"""
-    return list(pipelines_iter(*args, **kwargs))
-
-
-def get_pipeline(name, version=None, *args, **kwargs):
-    """Get a pipeline by name and version(optional)"""
-    if version is not None:
-        version = str(version)
-        for p in pipelines_iter(*args, **kwargs):
-            # TODO can we allow > < = syntax here?
-            if p.name == name and p.version == version:
-                return p
-    else:
-        matches = []
-        for p in pipelines_iter(*args, **kwargs):
-            if p.name == name:
-                matches.append(p)
-
-        if matches:
-            s = sorted(matches, key=lambda p: LooseVersion(p.version))
-            return s[-1]
-
-    if version is not None:
-        msg = f'Pipeline "{name} ({version})" not found!'
-    else:
-        msg = f'Pipeline "{name} (latest)" not found!'
-
-    raise FileNotFoundError(msg)
-
-
-# TODO New feature - load workflows directly from a python module:
-# # Tools for loading workflows from a python module
-# def _find_modules(instance):
-#     def is_mod(attr):
-#         if attr.startswith('_'):
-#             return False
-#
-#         try:
-#             fn = getattr(instance, attr)
-#         except AttributeError:
-#             return False
-#
-#         if not callable(fn):
-#             return False
-#
-#         return getattr(fn, 'is_module', False)
-#
-#     return filter(is_mod, dir(instance))
-#
-#
-# def _pipeline_module(fn):
-#     """Decorator applied to Pipeline methods to make them automatically
-#     fire when the pipeline is instantiated"""
-#     fn.is_module = True
-#     return fn
-#
-#
-# def _load_mod(filepath):
-#     dirn = os.path.dirname(filepath)
-#     base = os.path.basename(filepath)
-#     name, ext = os.path.splitext(base)
-#     old_path = sys.path.copy()
-#     old_modules = sys.modules.copy()
-#
-#     try:
-#         sys.path.insert(1, dirn)
-#         spec = importlib.util.spec_from_file_location(name, filepath)
-#         mod = importlib.util.module_from_spec(spec)
-#         spec.loader.exec_module(mod)
-#     finally:
-#         sys.path = old_path
-#         sys.modules = old_modules
-#
-#     return mod
-#
-#
-# def _find_tasks(mod):
-#     for k, v in mod.__dict__.items():
-#         if isinstance(v, jetstream.Task):
-#             yield v

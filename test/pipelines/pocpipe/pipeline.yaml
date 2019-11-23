@@ -1,0 +1,6 @@
+__pipeline__:
+  name: pocpipe
+  version: 0.1
+  main: pocpipe.jst
+
+ 
