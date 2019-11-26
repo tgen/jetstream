@@ -1,6 +1,7 @@
 # This template stress tests lots of concurrent tasks.
 # The tasks will complete very quickly, but still spawn
 # a new process.
+# No stdout expected.
 {% set tasks = tasks|default(3000) %}
 {% for i in range(tasks) %}
 

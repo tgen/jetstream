@@ -1,6 +1,7 @@
 # This template stresses the max forks on a system by spawning many cmds at 
 # once. The runner should prevent the crashes/errors by limiting the 
 # maximum number of task cmds that can be forked at once.
+# No stdout expected.
 {% set tasks = tasks|default(3000) %}
 {% for i in range(tasks) %}
 - name: stress_sleep30_{{ i }}
