@@ -170,7 +170,8 @@ def find_pipelines(*dirs):
 def get_pipeline(name, version=None, searchpath=None):
     """Get a pipeline by name and version(optional)"""
     if searchpath is None:
-        searchpath = [os.path.expanduser('~'),]
+        searchpath = jetstream.settings['pipelines']['searchpath'].get()
+        searchpath = searchpath.split(':')
 
     if version is None:
         # Find all but then sort by version and return the latest
