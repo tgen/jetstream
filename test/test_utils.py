@@ -4,8 +4,9 @@ import tempfile
 from random import Random
 from unittest import TestCase
 
-# Seed the rng so these tests are deterministic
-random = Random(42)
+jetstream.settings.clear()
+jetstream.settings.read(user=False)
+random = Random(42)  # Seed the rng so these tests are deterministic
 
 
 class UtilsTests(TestCase):

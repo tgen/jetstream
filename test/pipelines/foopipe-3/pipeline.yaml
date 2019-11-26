@@ -1,0 +1,5 @@
+__pipeline__:
+  name: foopipe_3
+  version: 0.1
+  main: main.jst
+

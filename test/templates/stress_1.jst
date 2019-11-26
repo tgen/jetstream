@@ -4,9 +4,9 @@
 # No stdout expected.
 {% set tasks = tasks|default(3000) %}
 {% for i in range(tasks) %}
-- name: stress_sleep30_{{ i }}
+- name: stress_sleep_{{ i }}
   cpus: 0
-  cmd: sleep 10
+  cmd: sleep 5
 
 {% endfor %}
 

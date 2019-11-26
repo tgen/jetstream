@@ -77,17 +77,15 @@ class PipelineLookup(TestCaseWithTempDir):
         """find_pipelines should find the pipelines"""
         gen = jetstream.pipelines.find_pipelines(TEST_PIPELINES)
         pipelines = list(gen)
-
-        # or
         pipelines = jetstream.pipelines.list_pipelines(TEST_PIPELINES)
 
     def test_get_pipeline_1(self):
         """Get pipeline should be able to lookup a pipeline by name"""
-        jetstream.pipelines.get_pipeline('foo', searchpath=[TEST_PIPELINES,])
+        jetstream.pipelines.get_pipeline('foopipe_1', searchpath=[TEST_PIPELINES,])
 
     def test_get_pipeline_2(self):
         """Get pipeline shold be able to lookup a pipeline by name and version"""
-        jetstream.pipelines.get_pipeline('foo', version=0.1, searchpath=[TEST_PIPELINES,])
+        jetstream.pipelines.get_pipeline('foopipe_1', version=0.1, searchpath=[TEST_PIPELINES,])
 
     def test_get_pipeline_3(self):
         """Get pipeline should fail to lookup a pipeline we dont have"""
@@ -101,9 +99,5 @@ class PipelineLookup(TestCaseWithTempDir):
 
     def test_get_pipeline_5(self):
         """Get pipeline shold be able to lookup a pipeline by name and version string"""
-        jetstream.pipelines.get_pipeline('foo', version='0.1', searchpath=[TEST_PIPELINES, ])
+        jetstream.pipelines.get_pipeline('foopipe_1', version='0.1', searchpath=[TEST_PIPELINES, ])
 
-
-class PipelineRunning(TestCaseWithTempDir):
-    def test_run_pipeline_1(self):
-        pass

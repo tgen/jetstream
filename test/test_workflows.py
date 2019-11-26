@@ -5,6 +5,8 @@ from random import Random
 from jetstream.tasks import Task
 from unittest import TestCase
 
+jetstream.settings.clear()
+jetstream.settings.read(user=False)
 # Seed the rng because otherwise there's a small chance
 # of generating a negative control string that matches
 # the id pattern.

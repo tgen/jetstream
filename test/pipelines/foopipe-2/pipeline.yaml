@@ -1,0 +1,6 @@
+__pipeline__:
+  name: foopipe_2
+  main: main.jst
+  version: 0.1
+  bin: bin
+

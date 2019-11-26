@@ -2,6 +2,9 @@ from unittest import TestCase
 from jetstream import Workflow, tasks
 from jetstream.tasks import Task
 
+jetstream.settings.clear()
+jetstream.settings.read(user=False)
+
 
 class TaskBasics(TestCase):
     def test_init(self):
