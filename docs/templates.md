@@ -23,11 +23,11 @@ templates and supporting data files (see [pipelines](docs/pipelines.md)).
 
 # Syntax 
 
-Templates describe a set _tasks_ that can be run for multiple projects. You can 
-think of templates like a declarative scripting language for building pipelines. 
-They usually have variable components that will be filled-in with project data 
-at runtime. Once the variables are filled-in, the tasks will be *rendered*, or 
-finalized commands ready to execute.
+Templates describe a set of [tasks](tasks.md) that can be run for multiple projects. 
+You can think of templates like a declarative scripting language for building 
+pipelines. They usually have variable components that will be filled-in with 
+project data at runtime. Once the variables are filled-in, the tasks will be 
+*rendered*, or finalized commands ready to execute.
 
 Here is an example workflow template with one task to complete:
 
@@ -70,7 +70,7 @@ given as `directive: value` lines. This is YAML syntax for describing a
 sequence of mappings.
 
 Directives are the instructions that the runner will use to determine _when_
-and _how_ to execute the task. See [Tasks](docs/tasks.md) for more information.
+and _how_ to execute the task. See [Tasks](tasks.md) for more information.
 
 Variables and logic can be included to make templates dynamic. In the example
 above, the `{{ greeting }}` will be filled in with data provided by the user
