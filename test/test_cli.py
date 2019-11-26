@@ -3,8 +3,6 @@ import sys
 import tempfile
 import jetstream
 from unittest import TestCase
-from contextlib import redirect_stdout
-from io import StringIO
 from jetstream.cli import main as cli_main
 
 jetstream.settings.clear()
@@ -14,119 +12,11 @@ TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
 TEST_PIPELINES = os.path.join(TESTS_DIR, 'pipelines')
 
 
-class TestCliRunTemplates(TestCase):
-    """Tests that run workflow templates stored externally in
-    test/test_templates """
-    longMessage = True
-
+class TestCli(TestCase):
     def setUp(self):
-        """ All of these tests take place in the context of a project
+        """All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliRunTemplates, self).setUp()
-        self.original_dir = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self.temp_dir.name)
-
-    def tearDown(self):
-        os.chdir(self.original_dir)
-        self.temp_dir.cleanup()
-
-    def template(self, template_filename):
-        """Runs a template from the test template directory"""
-        path = os.path.join(TEST_TEMPLATES, template_filename)
-        args = ('run', path)
-        cli_main(args)
-       
-    def test_helloworld_1(self):
-        """single helloworld task"""
-        self.template('helloworld_1.jst')
-
-    def test_dependencies_1(self):
-        """dependencies can be declared with before/after"""
-        self.template('dependencies_1.jst')
-    
-    def test_dependencies_2(self):
-        """dependencies can be declared with input/output"""
-        self.template('dependencies_2.jst')
-
-    def test_dependencies_3(self):
-        """tasks with dependencies can be added during run with exec"""
-        self.template('dependencies_3.jst')
-
-    def test_inheritance_1(self):
-        """templates can include code from other templates"""
-        self.template('inheritance_1.jst')
-
-    def test_logging_1(self):
-        """templates can log to stderr with log global fn"""
-        self.template('logging_1.jst')
-
-    def test_mapping_1(self):
-        """templates can include properties mapping at the top"""
-        self.template('mapping_1.jst')
-
-    def test_retry_1(self):
-        """tasks can include retry directive that allows tasks to fail and
-        then be run again"""
-        self.template('retry_1.jst')
-
-    def test_stress_1(self):
-        """runs should not crash due to forking limits"""
-        self.template('stress_1.jst')
-
-    def test_stress_2(self):
-        """runs should be able to process lots of concurrent tasks"""
-        self.template('stress_2.jst')
-
-    def test_stress_3(self):
-        """tasks with no command should complete very fast"""
-        self.template('stress_3.jst')
-
-
-class TestCliRunPipelines(TestCase):
-    """Tests that run workflow templates stored externally in
-    test/test_templates """
-    longMessage = True
-
-    def setUp(self):
-        """ All of these tests take place in the context of a project
-        directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliRunPipelines, self).setUp()
-        self.original_dir = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self.temp_dir.name)
-
-    def tearDown(self):
-        os.chdir(self.original_dir)
-        self.temp_dir.cleanup()
-
-    def pipeline(self, pipeline_name):
-        jetstream.settings['pipelines']['searchpath'] = TEST_PIPELINES
-        args = ('pipelines', pipeline_name)
-        cli_main(args)
-
-    def test_foopipe_1(self):
-        """the most basic pipeline requires pipeline.yaml and main template"""
-        self.pipeline('foopipe_1')
-
-    def test_foopipe_2(self):
-        """other pipeline features include bin directory"""
-        self.pipeline('foopipe_2')
-
-    def test_foopipe_3(self):
-        """pipelines nested in other pipelines can be discovered as well"""
-        self.pipeline('foopipe_3')
-
-    def test_foopipe_4(self):
-        """pipeline variables are exported and allow files to be accessed"""
-        self.pipeline('foopipe_4')
-
-
-class TestCliModule(TestCase):
-    def setUp(self):
-        """ All of these tests take place in the context of a project
-        directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliModule, self).setUp()
+        super(TestCli, self).setUp()
         self.original_dir = os.getcwd()
         self.temp_dir = tempfile.TemporaryDirectory()
         os.chdir(self.temp_dir.name)
@@ -210,7 +100,7 @@ class TestCliModule(TestCase):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = ['run', '--backend', 'local', 'testwf.jst',]
+        args = ['run', 'testwf.jst',]
         cli_main(args)
 
     def test_run_w_vars(self):
@@ -221,7 +111,6 @@ class TestCliModule(TestCase):
         args = [
             'run',
             'testwf.jst',
-            '--backend', 'local',
             '-c', 'str:name', 'Philip J. Fry',
             '-c', 'bool:ok', 'true',
             '-c', 'int:number', '42',
@@ -235,14 +124,13 @@ class TestCliModule(TestCase):
         p = jetstream.init()
 
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: "true"\n  stdout: /dev/null\n')
+            fp.write('- cmd: "true"\n')
 
-        args = ['run', '--backend', 'local', 'testwf.jst', '--project', p.paths.path]
+        args = ['run', 'testwf.jst', '--project', p.paths.path]
         cli_main(args)
 
         args = ['tasks', '--project', p.paths.path]
-        with redirect_stdout(StringIO()):
-            cli_main(args)
+        cli_main(args)
 
     def test_render(self):
         """jetstream render should just render and print the template"""

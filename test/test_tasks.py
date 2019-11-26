@@ -1,4 +1,5 @@
 from unittest import TestCase
+import jetstream
 from jetstream import Workflow, tasks
 from jetstream.tasks import Task
 
