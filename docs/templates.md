@@ -33,7 +33,7 @@ Here is an example workflow template with one task to complete:
 
 ```yaml
 - name: hello_world
-  cmd: 
+  cmd: echo "{{ greeting }} world"
   
 ```
 
