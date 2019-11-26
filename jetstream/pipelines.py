@@ -130,7 +130,7 @@ class Pipeline:
         os.environ['JS_PIPELINE_VERSION'] = self.version
 
         bin_path = self.manifest.get('bin')
-        if os.path.exists(bin_path):
+        if bin_path and os.path.exists(bin_path):
             os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
 
         if self.env:
