@@ -35,7 +35,22 @@ using projects:
 
 ## Project environment variables
 
-When running with a project, the following environmnet variable will be 
+When running workflows with a project, the following environmnet variable will be 
 exported:
 
 - `JS_PROJECT_PATH`: The path to the current project
+
+## Project progress
+
+When running workflows with a project, progress will be saved automatically in
+`<project root>/jetstream/workflow.pickle`. When running new pipelines or 
+templates in the project, the tasks are compared against the existing record and
+only executed if they are: 
+
+  - new tasks that were are not found in the project workflow file
+  - are already in the workflow file, but have a 'failed' status
+  - are already in the workflow file, but have changed (different [identity](tasks.md#identity))
+  
+ Note that the task name is used to make these comparisons. If a task name 
+ changes during updates to a template, it will be considered a new task.
+ 
