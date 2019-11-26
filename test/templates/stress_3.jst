@@ -1,0 +1,11 @@
+# This template stress tests lots of concurrent tasks.
+# The tasks will complete very quickly, they do not
+# spawn an external process. The runner completes them 
+# as soon as they are ready to spawn.
+# No stdout expected.
+{% set tasks = tasks|default(3000) %}
+{% for i in range(tasks) %}
+- name: null_{{ i }}
+  cmd: null
+
+{% endfor %}

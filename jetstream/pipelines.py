@@ -129,9 +129,11 @@ class Pipeline:
         os.environ['JS_PIPELINE_NAME'] = self.name
         os.environ['JS_PIPELINE_VERSION'] = self.version
 
-        bin_path = self.manifest.get('bin')
-        if os.path.exists(bin_path):
-            os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
+        bin_path = self.manifest['__pipeline__'].get('bin')
+        if bin_path:
+            bin_path = os.path.join(self.path, bin_path)
+            new_path = f'{bin_path}:{os.environ["PATH"]}'
+            os.environ['PATH'] = new_path
 
         if self.env:
             for k, v in self.env.items():
@@ -170,7 +172,8 @@ def find_pipelines(*dirs):
 def get_pipeline(name, version=None, searchpath=None):
     """Get a pipeline by name and version(optional)"""
     if searchpath is None:
-        searchpath = [os.path.expanduser('~'),]
+        searchpath = jetstream.settings['pipelines']['searchpath'].get()
+        searchpath = searchpath.split(':')
 
     if version is None:
         # Find all but then sort by version and return the latest

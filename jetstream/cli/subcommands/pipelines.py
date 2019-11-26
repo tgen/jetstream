@@ -38,8 +38,11 @@ def add_arguments(parser):
 
 def main(args):
     log.debug(f'{__name__} {args}')
-    searchpath = args.search_path or jetstream.settings['pipelines']['searchpath'].get()
-    searchpath = searchpath.split(':')
+    if args.search_path:
+        searchpath = args.search_path
+    else:
+        searchpath = jetstream.settings['pipelines']['searchpath'].get()
+        searchpath = searchpath.split(':') 
 
     # load and describe pipeline
     if args.verbose and args.pipeline:

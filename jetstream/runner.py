@@ -161,7 +161,12 @@ class Runner:
         """This coroutine is where the runner spends most of its time.
         It returns when the workflow raises StopIteration signalling that
         there are no more tasks to run. """
-        for task in self._workflow_iterator:
+        while 1:
+            try:
+                task = next(self._workflow_iterator)
+            except StopIteration:
+                break
+
             if task is None:
                 await self._yield()
             else:
@@ -173,6 +178,7 @@ class Runner:
                         # do not need to attempt to run the cmd
                         await self.process_cmd_directives(task)
                 else:
+                    log.info(f'Complete: {task.name}')
                     task.complete()
                     await asyncio.sleep(0)
 
@@ -252,7 +258,6 @@ class Runner:
 
     def shutdown(self):
         """Called after shutdown"""
-
         if self.autosave:
             if self.workflow.path:
                 log.info(f'Saving workflow: {self.workflow.path}')
@@ -266,6 +271,7 @@ class Runner:
             res = future.result()
             if isinstance(res, jetstream.Task):
                 if res.is_failed():
+                    log.debug(f'Skipping descendants for: {res.name}')
                     self._workflow_iterator.graph.skip_descendants(res)
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._errs = True

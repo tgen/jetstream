@@ -1,4 +1,0 @@
-__pipeline__:
-  name: bar
-  version: 0.1
-  main: main.jst

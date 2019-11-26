@@ -1,0 +1,9 @@
+# Basic template tests hello world in two steps
+# Expected stdout: "Hello, world!"
+- name: hello
+  cmd: printf 'Hello, '
+
+- name: world
+  after: hello
+  cmd: printf 'world!\n'
+

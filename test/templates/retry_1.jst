@@ -1,0 +1,18 @@
+# This task tests the retry directive. The command will fail the first
+# time it runs, but pass the second time it runs. Adding the retry 
+# directive causes the runner to resubmit the task before failing.
+# Expected stdout: "File not found!\nFile was found!"
+- name: fails_once
+  retry: 1
+  cmd: |
+    set -ue
+    filename="unlikely_filename_64de0499795484f1b70410a4cdd3d06f.txt"
+    if [ ! -f ${filename} ]; then
+      echo "File not found!"
+      touch ${filename}
+      exit 1
+    else
+      echo "File was found!"
+      rm ${filename}
+    fi
+
