@@ -1,0 +1,11 @@
+# This template stress tests lots of concurrent tasks.
+# The tasks will complete very quickly, but still spawn
+# a new process.
+{% set tasks = tasks|default(3000) %}
+{% for i in range(tasks) %}
+
+- name: stress_true_{{ i }}
+  cpus: 0
+  cmd: "true"
+
+{% endfor %}

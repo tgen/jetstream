@@ -28,17 +28,18 @@ class TestCliRunTemplates(TestCase):
         os.chdir(self.original_dir)
         self.temp_dir.cleanup()
 
-    def test_should_pass(self):
-        """Valid templates should pass when run"""
-        templates_dir = os.path.join(TEST_TEMPLATES, 'should_pass')
-        templates = os.listdir(templates_dir)
+    def run_template(self, template_filename, *args):
+        """Runs a template from the test template directory"""
+        path = os.path.join(TEST_TEMPLATES, 'hello_world.jst')
+        args = ('run', '--backend', 'local', path) + args
+        cli_main(args)
 
-        for f in templates:
-            t = os.path.join(templates_dir, f)
+    def test_hello_world(self):
+        self.run_template('hello_world.jst')
 
-            with self.subTest(msg=t):
-                args = ['run', '--backend', 'local', t, '-C', TEST_VARIABLES]
-                cli_main(args)
+    def test_dependencies(self):
+        self.run_template('dependencies.jst')
+                
 
 
 class TestCliModule(TestCase):

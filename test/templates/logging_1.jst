@@ -1,0 +1,9 @@
+# This template tests the log template global function
+# Expected stdout: "Hello, world!"
+# Also expects stderrr messages
+{{ log('logging at warning level', level='WARNING') }}
+{{ log('logging with default level info') }}
+{{ log('logging at debug level', level='DEBUG') }}
+- name: task1
+  cmd: echo 'Hello, world!' 
+

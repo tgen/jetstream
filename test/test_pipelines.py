@@ -4,7 +4,6 @@ import yaml
 import jetstream
 from unittest import TestCase
 
-
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 TEST_PIPELINES = os.path.join(TESTS_DIR, 'pipelines')
 
@@ -103,3 +102,8 @@ class PipelineLookup(TestCaseWithTempDir):
     def test_get_pipeline_5(self):
         """Get pipeline shold be able to lookup a pipeline by name and version string"""
         jetstream.pipelines.get_pipeline('foo', version='0.1', searchpath=[TEST_PIPELINES, ])
+
+
+class PipelineRunning(TestCaseWithTempDir):
+    def test_run_pipeline_1(self):
+        pass
