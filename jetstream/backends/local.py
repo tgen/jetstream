@@ -3,7 +3,7 @@ import asyncio
 import jetstream
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 
-log = logging.getLogger('jetstream.backends')
+log = logging.getLogger('jetstream.local')
 
 
 class LocalBackend(jetstream.backends.BaseBackend):

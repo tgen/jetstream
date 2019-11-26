@@ -258,7 +258,6 @@ class Runner:
 
     def shutdown(self):
         """Called after shutdown"""
-
         if self.autosave:
             if self.workflow.path:
                 log.info(f'Saving workflow: {self.workflow.path}')
@@ -272,6 +271,7 @@ class Runner:
             res = future.result()
             if isinstance(res, jetstream.Task):
                 if res.is_failed():
+                    log.debug(f'Skipping descendants for: {res.name}')
                     self._workflow_iterator.graph.skip_descendants(res)
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._errs = True
