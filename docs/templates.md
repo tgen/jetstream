@@ -23,12 +23,11 @@ templates and supporting data files (see [pipelines](docs/pipelines.md)).
 
 # Syntax 
 
-Templates describe a set of reusable _tasks_ that can be used for multiple 
-projects. You can think of templates like a declarative scripting language 
-for building pipelines. They usually have variable components that will be 
-filled-in with project-specific data at runtime. Once the variables are 
-filled-in, the tasks will be *rendered*, or finalized commands ready to execute 
-as part of a workflow.
+Templates describe a set _tasks_ that can be run for multiple projects. You can 
+think of templates like a declarative scripting language for building pipelines. 
+They usually have variable components that will be filled-in with project data 
+at runtime. Once the variables are filled-in, the tasks will be *rendered*, or 
+finalized commands ready to execute.
 
 Here is an example workflow template with one task to complete:
 
