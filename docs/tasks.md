@@ -9,6 +9,30 @@ or execution of tasks. These will be stored in the workflow and could be useful
 for downstream meta-analysis of the projects themselves (eg. performance 
 comparisons, or documenting the tasks)
 
+## Identity
+
+The identity of a task is a hash of `cmd` and `exec` directives. This identity
+is used to compare tasks against the saved progress records. If the task 
+identity has changed, the task will need to be reset along with any downstream
+tasks. 
+
+Identity is a good indicator that tasks have changed and will need to be re-run,
+but it's possible to make changes to a template that go undetected. Understanding 
+task identity will prevent you from making common mistakes:
+
+- Making changes to external scripts or utilities called by the task cmd 
+without any changes to the task. Since the cmd has not changed, the 
+identity will not change, and Jetstream will not know that the task needs
+to be rerun. Avoid this problem by tracking version information to the cmd
+and updating if any change to the external script changes.
+
+- Changing other task directives will only force a task to be reset if it
+has already failed. If the task completed successfully, or has not been 
+run yet, the task content will not be updated. 
+
+
+## Directives
+
 Here is a list of the common task directives and how they're used: 
 
 ---
