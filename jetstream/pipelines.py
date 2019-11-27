@@ -120,6 +120,25 @@ class Pipeline:
         self.main = main
         self.manifest = manifest
 
+    def set_environment_variables(self):
+        if self.manifest is None:
+            e = "Pipeline.set_environment_variables() called before validate()"
+            raise ValueError(e)
+
+        os.environ['JS_PIPELINE_PATH'] = self.path
+        os.environ['JS_PIPELINE_NAME'] = self.name
+        os.environ['JS_PIPELINE_VERSION'] = self.version
+
+        bin_path = self.manifest['__pipeline__'].get('bin')
+        if bin_path:
+            bin_path = os.path.join(self.path, bin_path)
+            new_path = f'{bin_path}:{os.environ["PATH"]}'
+            os.environ['PATH'] = new_path
+
+        if self.env:
+            for k, v in self.env.items():
+                os.environ[k] = v
+
 
 
 def find_pipelines(*dirs):
@@ -153,7 +172,8 @@ def find_pipelines(*dirs):
 def get_pipeline(name, version=None, searchpath=None):
     """Get a pipeline by name and version(optional)"""
     if searchpath is None:
-        searchpath = [os.path.expanduser('~'),]
+        searchpath = jetstream.settings['pipelines']['searchpath'].get()
+        searchpath = searchpath.split(':')
 
     if version is None:
         # Find all but then sort by version and return the latest

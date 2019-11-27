@@ -1,0 +1,10 @@
+# This template tests the ability to add properties 
+# before the tasks. These properties will be loaded 
+# as workflow props.
+# Expected stdout: "Hello, world!"
+name: myworkflow
+properties: can be added here
+tasks:
+- name: task1
+  cmd: echo 'Hello, world!'
+

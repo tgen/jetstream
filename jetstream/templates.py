@@ -105,6 +105,19 @@ def fromjson(value):
     return json.loads(value)
 
 
+def env(value):
+    return os.environ[value]
+    
+
+def getenv(value, default=None):
+    return os.environ.get(value, default)
+
+
+def setenv(key, value):
+    os.environ[key] = value
+    return '' 
+
+
 def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     """Starts a Jinja2 Environment with a FileSystemLoader on the given search
     path. This adds several features to the standard template processor."""
@@ -126,6 +139,8 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
 
     env.globals['raise'] = raise_helper
     env.globals['log'] = log_helper
+    env.globals['getenv'] = getenv
+    env.globals['setenv'] = setenv
     env.filters['fromjson'] = fromjson
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
@@ -188,4 +203,6 @@ def load_workflow(render):
         tasks = [jetstream.Task(**t) for t in tasks]
         wf = jetstream.Workflow(tasks=tasks)
 
+    wf.reload_graph()
     return wf
+

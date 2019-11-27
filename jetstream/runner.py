@@ -161,7 +161,12 @@ class Runner:
         """This coroutine is where the runner spends most of its time.
         It returns when the workflow raises StopIteration signalling that
         there are no more tasks to run. """
-        for task in self._workflow_iterator:
+        while 1:
+            try:
+                task = next(self._workflow_iterator)
+            except StopIteration:
+                break
+
             if task is None:
                 await self._yield()
             else:
@@ -173,6 +178,7 @@ class Runner:
                         # do not need to attempt to run the cmd
                         await self.process_cmd_directives(task)
                 else:
+                    log.info(f'Complete: {task.name}')
                     task.complete()
                     await asyncio.sleep(0)
 
@@ -252,7 +258,6 @@ class Runner:
 
     def shutdown(self):
         """Called after shutdown"""
-
         if self.autosave:
             if self.workflow.path:
                 log.info(f'Saving workflow: {self.workflow.path}')
@@ -266,6 +271,7 @@ class Runner:
             res = future.result()
             if isinstance(res, jetstream.Task):
                 if res.is_failed():
+                    log.debug(f'Skipping descendants for: {res.name}')
                     self._workflow_iterator.graph.skip_descendants(res)
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._errs = True
@@ -280,18 +286,10 @@ class Runner:
 
     def set_environment_variables(self):
         if self.pipeline:
-            os.environ['JS_PIPELINE_PATH'] = self.pipeline.path
-            os.environ['JS_PIPELINE_NAME'] = self.pipeline.name
-            os.environ['JS_PIPELINE_VERSION'] = self.pipeline.version
-            bin_path = os.path.join(self.pipeline.path, 'bin')
-            if os.path.exists(bin_path):
-                os.environ['PATH'] = f'{bin_path}:{os.environ["PATH"]}'
-
-            if self.pipeline.env:
-                for k, v in self.env.items():
-                    os.environ[k] = v
+            self.pipeline.set_environment_variables()
 
         if self.project:
+            self.project.set_environment_variables()
             os.environ['JS_PROJECT_PATH'] = self.project.path
 
     def start(self, workflow, pipeline=None, project=None):
@@ -314,7 +312,6 @@ class Runner:
         self._workflow_len = len(workflow)
         self._workflow_iterator = iter(self.workflow.graph)
         self._run_started = datetime.now()
-
         self._errs = False
         self._start_event_loop()
         self._start_backend()

@@ -7,14 +7,27 @@ templates and supporting data files (see [pipelines](docs/pipelines.md)).
 
 # Table of contents
 
-## Syntax 
+- [Templates](#templates)
+- [Table of contents](#table-of-contents)
+- [Syntax](#syntax)
+- [Dependencies between _Tasks_ in templates](#dependencies-between--tasks--in-templates)
+- [Variables and Logic](#variables-and-logic)
+  * [Additional globals and filters](#additional-globals-and-filters)
+    + [Globals](#globals)
+    + [Filters](#filters)
+- [Template rendering data](#template-rendering-data)
+  * [Template Data from Command-line Arguments](#template-data-from-command-line-arguments)
+  * [Template Data saved in Projects](#template-data-saved-in-projects)
+  * [Template Data saved in Pipelines](#template-data-saved-in-pipelines)
+- [Modularity](#modularity)
 
-Templates describe a set of reusable _tasks_ that can be used for multiple 
-projects. You can think of templates like a declarative scripting language 
-for building pipelines. They usually have variable components that will be 
-filled-in with project-specific data at runtime. Once the variables are 
-filled-in, the tasks will be *rendered*, or finalized commands ready to execute 
-as part of a workflow.
+# Syntax 
+
+Templates describe a set _tasks_ that can be run for multiple projects. You can 
+think of templates like a declarative scripting language for building pipelines. 
+They usually have variable components that will be filled-in with project data 
+at runtime. Once the variables are filled-in, the tasks will be *rendered*, or 
+finalized commands ready to execute.
 
 Here is an example workflow template with one task to complete:
 
@@ -72,7 +85,7 @@ $ jetstream run example.jst -c name bender
 ```
 
 
-## Dependencies between _Tasks_ in templates
+# Dependencies between _Tasks_ in templates
 
 Dependencies between tasks can be specified with "flow" directives: `before`, 
 `after`, `input` and `output`. In this example, "task2" needs to run after 
@@ -177,7 +190,7 @@ similarily input/outputs can be used:
 ```
 
 
-## Variables and Logic
+# Variables and Logic
 
 > Details for variables and logic syntax can be found here 
   [designer documentation for details](http://jinja.pocoo.org/docs/latest/templates/)
@@ -217,8 +230,45 @@ Examples:
 - And much, much more... see 
   [designer documentation for details](http://jinja.pocoo.org/docs/latest/templates/)
 
+## Additional globals and filters
 
-#### Template rendering data
+In addition to the included global functions and filters included with Jinja2, 
+several other tools have been added with Jetstream and can be used inside templates:
+
+### Globals
+
+- `raise`: Raise an error while rendering the template
+  Example: `{{ if foo < 42 }}{{ raise('foo should be at least 42') }}{{ endif }}`
+
+- `log`: Log messages to the Jetstream logger while template renders
+  Example: `{{ log('Foo is {}'.format(foo), level='CRITICAL') }}`
+
+- `env`: Returns environment variable value
+  Example: `echo foo is {{ getenv('FOO') }}`
+
+- `getenv`: Returns environment variable value, this will return None if value 
+  is not set whereas `env` will raise an error. A different fallback value can
+  be given as the second argument.
+  Example: `echo foo is {{ getenv('FOO', None) }}`
+
+- `setenv`: Sets an environment variable when the template is rendered
+  Example: `{{ setenv('FOO', '42') }}`
+
+
+### Filters
+
+- `fromjson`: Parse a json string as an object
+
+- `basename`: Returns the basename of a path
+
+- `dirname`: Returns the directory name of a path
+
+- `urlparse`: Parse a url string as an object
+
+- `sha256`: Returns sha256 hexdigest for a string
+
+
+# Template rendering data
 
 When the template is rendered, data is pulled from several sources. Each is
 explained below in further detail (highest priority first):
@@ -237,7 +287,7 @@ After these sources are loaded, they're collapsed into a single config object
 template. Higher-priority data sources will overwrite other sources.
 
 
-##### Template Data from Command-line Arguments
+## Template Data from Command-line Arguments
 
 In the example below, the variable `{{ name }}` is what we want to replace, so 
 we need to pass in config data with key `name`. To pass a single variable with 
@@ -310,7 +360,7 @@ extension of the path. But, this can be overridden with the
 supported file types for your configuration.
 
 
-#### Template Data saved in Projects
+## Template Data saved in Projects
 
 _Projects_ are an optional but very helpful feature in Jetstream. A project is 
 a directory that contains a jetstream folder and `project.yaml` (this folder 
@@ -330,7 +380,7 @@ was created. This file is always included as a config data source when
 rendering templates or running pipelines.
 
 
-#### Template Data saved in Pipelines
+## Template Data saved in Pipelines
 
 _Pipelines_ may specify additional data that is available when rendering their 
 templates. Pipelines should include a `pipeline.yaml` file. Inside this file
@@ -358,7 +408,7 @@ run_modes:
     
 ``` 
 
-## Modularity
+# Modularity
 
 Templates can be modularized, or divided into smaller pieces, to improve 
 organization and reusablility. There are a few ways to modularize code: 

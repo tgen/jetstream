@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
 from jetstream import settings
 
-log = logging.getLogger('jetstream.backends')
+log = logging.getLogger('jetstream.slurm')
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
@@ -189,7 +189,7 @@ class SlurmBackend(BaseBackend):
         self.jobs[job.jid] = job
 
         await job.event.wait()
-        log.debug('Job event was set, gathering info updating status')
+        log.debug(f'{task.name}: job info was updated')
 
         if self.sacct_fields:
             job_info = {k: v for k, v in job.job_data.items() if
@@ -203,7 +203,7 @@ class SlurmBackend(BaseBackend):
             log.info(f'Failed: {task.name}')
             task.fail(job.returncode())
 
-        log.debug(f'Slurmbackend spawn completed for {task.name}')
+        log.debug(f'Slurmbackend returning task: {task.name}')
         return task
 
 

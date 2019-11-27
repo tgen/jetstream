@@ -1,2 +1,2 @@
 #!/bin/bash
-nosetests --with-coverage --cover-package jetstream
+nosetests -v --with-coverage --cover-package jetstream

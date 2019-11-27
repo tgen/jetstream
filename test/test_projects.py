@@ -3,6 +3,9 @@ import tempfile
 import jetstream
 from unittest import TestCase
 
+jetstream.settings.clear()
+jetstream.settings.read(user=False)
+
 
 class ProjectBasics(TestCase):
     def setUp(self):

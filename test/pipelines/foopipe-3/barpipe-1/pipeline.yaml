@@ -1,0 +1,4 @@
+__pipeline__:
+  name: barpipe_1
+  version: 0.1
+  main: main.jst

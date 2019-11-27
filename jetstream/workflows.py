@@ -207,7 +207,7 @@ class WorkflowGraph:
     for the next available task. If a change to the graph occurs during
     iteration, these lists should be recalculated. """
     def __init__(self, workflow):
-        log.info('Building workflow graph...')
+        log.info(f'Building workflow graph for {workflow}...')
         self.workflow = workflow
         self.G = nx.DiGraph()
         self.nodes = self.G.nodes
@@ -458,53 +458,61 @@ def mash(G, H):
     :param H: Another Workflow
     :return: Workflow
     """
-    log.info(f'Mashing G:{G.path}:{len(G)} tasks with H:{H.path}:{len(H)} tasks')
-    tasks = [task.copy() for task in G]
-    workflow = jetstream.Workflow(tasks, props=G.props.copy())
+    # If either workflow is empty, just copy the tasks in the other and return.
+    # note that the props always come from G
+    if len(H) <= 0:
+        log.debug('wf H is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
+    elif len(G) <= 0:
+        log.debug('wf G is empty, no mashing')
+        return jetstream.Workflow([t.copy() for t in H], props=G.props.copy())
+    
+    # Determine which tasks need to be replaced in new workflow
+    log.info(f'Mashing G:{G.path}:{G.summary()} with H:{H.path}:{H.summary()}')
+    workflow = jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
     new = set()
     modified = set()
-
-    for task in H:
-        log.debug(f'Checking {task}')
-        if task in G:
-            log.debug(f'also exists in G')
-            g_task = G[task.name]
-            if g_task.is_failed():
-                log.debug(f'status is failed, replacing in workflow..')
-                workflow.pop(task.name)
-                workflow.add(task)
-                modified.add(task)
-            elif task.identity != g_task.identity:
-                log.debug(f'but identity is different, replacing in workflow..')
-                workflow.pop(task.name)
-                workflow.add(task)
-                modified.add(task)
-            else:
-                log.debug(f'and same identity so skipping...')
-        else:
-            log.debug(f'not in G, just adding to workflow...')
+    replaced = set()
+    for name, task in H.tasks.items():
+        # Check if the task from H (new workflow) is in G (old workflow)
+        try:
+            g_task = G[name]
+        except KeyError:
             workflow.add(task)
-            new.add(task)
+            new.add(name)  # Keep track of each new task for report
+            continue
 
+        if g_task.is_failed():
+            # If the task was failed in the old workflow, it's replaced with 
+            # the task from the new workflow, even if the identity hasn't 
+            # changed. Directives like cpus, mem, etc may cause a task to fail
+            # and then you'll want to rerun even though the cmd hasn't changed.
+            log.debug(f'{task} is failed in G, replacing in new workflow..')
+            workflow.tasks[name] = task
+            replaced.add(name)
+        elif task.identity != g_task.identity:
+            log.debug(f'{task} has changed, replacing in new workflow..')
+            workflow.tasks[name] = task
+            modified.add(name)
+        else:
+            continue  # same task identity and passed/new status is not changed
+    
     log.debug('Identifying tasks that need to be reset...')
-    aff = new.union(modified)
-    to_reset = set()
-    graph = workflow.graph
+    changed = new.union(modified).union(replaced)
+    affected = set()
+    graph = workflow.reload_graph()
+    for task_name in changed:
+        for item in nx.descendants(graph.G, task_name):
+            affected.add(item)
 
-    for task in aff:
-        if task.name in graph.G:
-            for d in nx.descendants(graph.G, task.name):
-                to_reset.add(d)
-                graph.G.remove_node(d)
-
-    for t in to_reset:
-        workflow[t].reset()
+    for t in affected:
+        workflow.tasks[t].reset()
 
     log.info(
         'Mash report:\n'
         f'New tasks: {len(new)}\n'
         f'Modified tasks: {len(modified)}\n'
-        f'Total reset: {len(to_reset)}'
+        f'Total tasks reset: {len(affected.union(changed))}'
     )
 
     return workflow

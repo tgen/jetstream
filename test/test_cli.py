@@ -1,51 +1,22 @@
 import os
+import sys
 import tempfile
 import jetstream
 from unittest import TestCase
-from contextlib import redirect_stdout
-from io import StringIO
 from jetstream.cli import main as cli_main
 
+jetstream.settings.clear()
+jetstream.settings.read(user=False)
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
-TEST_VARIABLES = os.path.join(TESTS_DIR, 'templates', 'variables.yaml')
+TEST_PIPELINES = os.path.join(TESTS_DIR, 'pipelines')
 
 
-class TestCliRunTemplates(TestCase):
-    """Tests that run workflow templates stored externally in
-    test/test_templates """
-    longMessage = True
-
+class TestCli(TestCase):
     def setUp(self):
-        """ All of these tests take place in the context of a project
+        """All of these tests take place in the context of a project
         directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliRunTemplates, self).setUp()
-        self.original_dir = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self.temp_dir.name)
-
-    def tearDown(self):
-        os.chdir(self.original_dir)
-        self.temp_dir.cleanup()
-
-    def test_should_pass(self):
-        """Valid templates should pass when run"""
-        templates_dir = os.path.join(TEST_TEMPLATES, 'should_pass')
-        templates = os.listdir(templates_dir)
-
-        for f in templates:
-            t = os.path.join(templates_dir, f)
-
-            with self.subTest(msg=t):
-                args = ['run', '--backend', 'local', t, '-C', TEST_VARIABLES]
-                cli_main(args)
-
-
-class TestCliModule(TestCase):
-    def setUp(self):
-        """ All of these tests take place in the context of a project
-        directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliModule, self).setUp()
+        super(TestCli, self).setUp()
         self.original_dir = os.getcwd()
         self.temp_dir = tempfile.TemporaryDirectory()
         os.chdir(self.temp_dir.name)
@@ -129,7 +100,7 @@ class TestCliModule(TestCase):
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: "true"\n  stdout: /dev/null\n')
 
-        args = ['run', '--backend', 'local', 'testwf.jst',]
+        args = ['run', 'testwf.jst',]
         cli_main(args)
 
     def test_run_w_vars(self):
@@ -140,7 +111,6 @@ class TestCliModule(TestCase):
         args = [
             'run',
             'testwf.jst',
-            '--backend', 'local',
             '-c', 'str:name', 'Philip J. Fry',
             '-c', 'bool:ok', 'true',
             '-c', 'int:number', '42',
@@ -154,18 +124,17 @@ class TestCliModule(TestCase):
         p = jetstream.init()
 
         with open('testwf.jst', 'w') as fp:
-            fp.write('- cmd: "true"\n  stdout: /dev/null\n')
+            fp.write('- cmd: "true"\n')
 
-        args = ['run', '--backend', 'local', 'testwf.jst', '--project', p.paths.path]
+        args = ['run', 'testwf.jst', '--project', p.paths.path]
         cli_main(args)
 
         args = ['tasks', '--project', p.paths.path]
-        with redirect_stdout(StringIO()):
-            cli_main(args)
+        cli_main(args)
 
     def test_render(self):
         """jetstream render should just render and print the template"""
-        render_test = """{% for i in range(tasks) %} 
+        render_test = """{% for i in range(3) %} 
                                                                         
                               ##//#/##/##                            
                             ###//##/###//##                          
@@ -209,7 +178,7 @@ class TestCliModule(TestCase):
         with open('testwf.jst', 'w') as fp:
             fp.write(render_test)
 
-        args = ['render', 'testwf.jst', '-C', TEST_VARIABLES]
+        args = ['render', 'testwf.jst']
         cli_main(args)
 
     def test_build(self):
