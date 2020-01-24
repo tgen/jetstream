@@ -89,6 +89,10 @@ backends:
       - Start
       - End
       - MaxRSS
+  dnanexus:
+    (): jetstream.backends.dnanexus.DnanexusBackend
+  local_docker:
+    (): jetstream.backends.local_docker.LocalDockerBackend
 
 
 # ================================== Pipelines ================================
