@@ -167,7 +167,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             singularity_mounts_string = " ".join( mount_strings )
     
             command_run_string = """\
-            singularity exec --nohttps \
+            singularity exec --nohttps --cleanenv \
             %s \
             %s \
             bash -c '%s'""" % ( singularity_mounts_string, singularity_image, args )
