@@ -35,6 +35,8 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         self.memory_gb = int( memory_bytes/(1024.**3) )
         self._mem_sem = BoundedSemaphore( self.memory_gb )
         self._resources_lock = Lock()
+        self._singularity_pull_lock = Lock()
+        self._singularity_pulled = []
         log.info(f'LocalSingularityBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
     async def spawn(self, task, allow_memory_overbooking = True):
@@ -166,6 +168,31 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
             singularity_mounts_string = " ".join( mount_strings )
     
+            async with self._singularity_pull_lock:
+                if singularity_image not in self._singularity_pulled:
+                pull_command_run_string = """singularity pull --nohttps %s""" % ( singularity_image, )
+                log.debug('pull_command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
+                while 1:
+                    try:
+                        log.debug('subprocess_run_sh: trying...')
+                        p = await create_subprocess_shell(
+                            pull_command_run_string,
+                            stdin=stdin,
+                            stdout=stdout,
+                            stderr=stderr,
+                            cwd=cwd,
+                            encoding=encoding,
+                            errors=errors,
+                            env=env,
+                            loop=loop,
+                            executable=executable
+                        )
+                        break
+                    except BlockingIOError as e:
+                        log.warning(f'System refusing new processes: {e}')
+                        await asyncio.sleep(self.bip)
+                self._singularity_pulled.append( singularity_image )
+        
             command_run_string = """\
             singularity exec --nohttps --cleanenv \
             %s \
