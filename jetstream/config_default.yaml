@@ -103,7 +103,7 @@ backends:
 # pipelines command. Users will need to change pipelines:home in order to use
 # the pipelines command
 pipelines:
-  searchpath: /opt/jetstream_pipelines/
+  searchpath: ~/
 
 
 # ================================== Logging ==================================

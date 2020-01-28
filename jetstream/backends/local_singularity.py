@@ -4,11 +4,11 @@ import glob
 import shlex
 import logging
 import asyncio
+import subprocess
 import jetstream
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 
 log = logging.getLogger('jetstream.backends')
-
 
 class LocalSingularityBackend(jetstream.backends.BaseBackend):
     def __init__(self, cpus=None, blocking_io_penalty=None):
@@ -36,7 +36,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         self._mem_sem = BoundedSemaphore( self.memory_gb )
         self._resources_lock = Lock()
         self._singularity_pull_lock = Lock()
-        self._pulled_singularity_images = set()
+        self._singularity_pull_cache = {}
         log.info(f'LocalSingularityBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
     async def spawn(self, task, allow_memory_overbooking = True):
@@ -74,6 +74,21 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             else:
                 raise RuntimeError('Task mem greater than system mem')
         
+        log.debug( f'going to pull {singularity_image}' )
+        try:
+            async with self._singularity_pull_lock:
+                log.debug( f'got lock {singularity_image}' )
+                if singularity_image in self._singularity_pull_cache:
+                    pass
+                else:
+                    pull_command_run_string = """singularity exec %s sleep 1""" % ( singularity_image, )
+                    p = await create_subprocess_shell( pull_command_run_string )
+                    self._singularity_pull_cache[ singularity_image ] = True
+        except CancelledError:
+            task.state['err'] = 'Runner cancelled Singularity pull'
+            return task.fail(-15)
+        log.debug( f'pulled {singularity_image}' )
+        
         try:
             async with self._resources_lock:
                 log.debug('Reserving cpus: {}'.format(task))
@@ -87,7 +102,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     memory_gb_reserved += 1
                 
                 log.debug('Resources reserved: {}'.format(task))
-                
+            
             stdin, stdout, stderr = self.get_fd_paths(task)
 
             if stdin:
@@ -151,7 +166,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
     async def subprocess_sh( self, args, *, input_filenames=[], output_filenames=[],
                              singularity_image=None, stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
-                             loop=None, executable='/bin/bash'):
+                             loop=None, executable='/bin/bash'): 
         try:
             singularity_mounts = set()
             
@@ -168,31 +183,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
             singularity_mounts_string = " ".join( mount_strings )
     
-            async with self._singularity_pull_lock:
-                if singularity_image not in self._pulled_singularity_images:
-                    pull_command_run_string = """singularity exec --nohttps %s sleep 1""" % ( singularity_image, )
-                    log.debug('pull_command_run_string:\n------BEGIN------\n{}\n------END------'.format(pull_command_run_string))
-                    while 1:
-                        try:
-                            log.debug('subprocess_run_sh: trying...')
-                            p = await create_subprocess_shell(
-                                pull_command_run_string,
-                                stdin=stdin,
-                                stdout=stdout,
-                                stderr=stderr,
-                                cwd=cwd,
-                                encoding=encoding,
-                                errors=errors,
-                                env=env,
-                                loop=loop,
-                                executable=executable
-                            )
-                            break
-                        except BlockingIOError as e:
-                            log.warning(f'System refusing new processes: {e}')
-                            await asyncio.sleep(self.bip)
-                    self._pulled_singularity_images.add( singularity_image )
-        
             command_run_string = """\
             singularity exec --nohttps --cleanenv \
             %s \
