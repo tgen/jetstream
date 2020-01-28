@@ -9,6 +9,7 @@ jetstream.settings.read(user=False)
 tests_dir = os.path.dirname(os.path.abspath(__file__))
 tests_pipelines_dir = os.path.join(tests_dir, 'pipelines')
 jetstream.settings['pipelines']['searchpath'] = tests_pipelines_dir
+jetstream.settings['log'] = 'debug'
 
 
 @pytest.fixture()
@@ -59,9 +60,9 @@ def test_resetpipe_1(cleandir):
 
 
 def test_resetpipe_2(cleandir):
+    """Test resetpipe by running twice with saving progress"""
     main('init')
 
-    """Test resetpipe by running twice with saving progress"""
     with pytest.raises(SystemExit) as e:
         # We expect this to fail the first time
         main('pipelines', 'resetpipe')
