@@ -170,7 +170,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
     
             async with self._singularity_pull_lock:
                 if singularity_image not in self._pulled_singularity_images:
-                    pull_command_run_string = """singularity pull --nohttps %s""" % ( singularity_image, )
+                    pull_command_run_string = """singularity exec --nohttps %s sleep 1""" % ( singularity_image, )
                     log.debug('pull_command_run_string:\n------BEGIN------\n{}\n------END------'.format(pull_command_run_string))
                     while 1:
                         try:
