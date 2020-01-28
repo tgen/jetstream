@@ -68,8 +68,13 @@ def guid(formatter=None):
 def start_logging(profile=None):
     """Logging is only set up with a NullHandler by default. This function sets
     up logging with the chosen settings profile. """
+    profile = profile or settings['log'].get()
+
     if profile is None:
-        if sys.stdin and sys.stdin.isatty() and sys.stdout and sys.stdout.isatty():
+        if sys.stdin \
+            and sys.stdin.isatty() \
+            and sys.stdout \
+            and sys.stdout.isatty():
             profile = 'interactive'
         else:
             profile = 'basic'
