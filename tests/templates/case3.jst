@@ -1,0 +1,40 @@
+# For this case we are testing immediate parent-child reset relationships
+
+# Parent should generate parent1.txt on the first run
+# And should produce parent2.txt on the second run,
+# assuming parent1.txt isn't delete between runs
+- name: case3_grandparent1
+  output: case3_grandparent1.txt
+  cmd: |
+    if [ ! -f case3_grandparent1.txt ]; then
+      touch case3_grandparent1.txt
+    else
+      touch case3_grandparent2.txt
+    fi
+
+# Parent should generate parent1.txt on the first run
+# And should produce parent2.txt on the second run,
+# assuming parent1.txt isn't delete between runs
+- name: case3_parent1
+  after: case3_grandparent1
+  output: case3_parent1.txt
+  cmd: |
+    if [ -f case3_grandparent1.txt ] && [ ! -f case3_grandparent2.txt ] ; then
+      touch case3_parent1.txt
+    else
+      touch case3_parent2.txt
+    fi
+
+# Child should fail during the first run as parent2.txt should not exist
+# It should then pass during the second run after it resets the parent task
+- name: case3_child1
+  after: case3_parent1
+  output: case3_child1.txt
+  reset: parents
+  cmd: |
+    if [ -f case3_parent2.txt ] ; then
+      touch case3_child1.txt
+    else
+      exit 1
+    fi
+
