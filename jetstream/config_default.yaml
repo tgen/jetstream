@@ -95,6 +95,7 @@ backends:
     (): jetstream.backends.local_docker.LocalDockerBackend
   local_singularity:
     (): jetstream.backends.local_singularity.LocalSingularityBackend
+    pullfolder: null
 
 
 # ================================== Pipelines ================================

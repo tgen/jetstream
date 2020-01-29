@@ -11,7 +11,7 @@ from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledEr
 log = logging.getLogger('jetstream.backends')
 
 class LocalSingularityBackend(jetstream.backends.BaseBackend):
-    def __init__(self, cpus=None, blocking_io_penalty=None):
+    def __init__(self, cpus=None, blocking_io_penalty=None, pullfolder=None):
         """The LocalSingularityBackend executes tasks as processes on the local machine.
 
         This contains a semaphore that limits tasks by the number of cpus
@@ -37,6 +37,9 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         self._resources_lock = Lock()
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
+        self._singularity_pullfolder = pullfolder or \
+                                       jetstream.settings['backends']['local_singularity']['pullfolder'] or \
+                                       os.getenv('SINGULARITY_PULLFOLDER', "/tmp")
         log.info(f'LocalSingularityBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
     async def spawn(self, task, allow_memory_overbooking = True):
@@ -59,6 +62,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             raise RuntimeError('Task memory units must be M or G')
 
         singularity_image = "docker://" + task.directives.get( 'docker_image' )
+        singularity_image_filename = f'{singularity_image.split("/")[-1]}.sif'
         
         cpus_reserved = 0
         memory_gb_reserved = 0
@@ -76,17 +80,30 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         
         log.debug( f'going to pull {singularity_image}' )
         try:
+            async with self._resources_lock:
+                for i in range(1):
+                    await self._cpu_sem.acquire()
+                for i in range(2):
+                    await self._mem_sem.acquire()
             async with self._singularity_pull_lock:
-                log.debug( f'got lock {singularity_image}' )
                 if singularity_image in self._singularity_pull_cache:
                     pass
                 else:
-                    pull_command_run_string = """singularity exec %s sleep 1""" % ( singularity_image, )
-                    p = await create_subprocess_shell( pull_command_run_string )
-                    self._singularity_pull_cache[ singularity_image ] = True
-        except CancelledError:
-            task.state['err'] = 'Runner cancelled Singularity pull'
-            return task.fail(-15)
+                    singularity_image_filename_fullpath = f'{self._singularity_pullfolder}/{singularity_image_filename}'
+                    if os.path.exists( singularity_image_filename_fullpath ):
+                        pass
+                    else:
+                        pull_command_run_string = f'singularity pull --dir {self._singularity_pullfolder} --name {singularity_image_filename} {singularity_image}'
+                        log.info( f'pulling {pull_command_run_string}' )
+                        _p = await create_subprocess_shell( pull_command_run_string )
+                    self._singularity_pull_cache[ singularity_image ] = singularity_image_filename_fullpath
+        except:
+            pass
+        finally:
+            for i in range(1):
+                self._cpu_sem.release()
+            for i in range(2):
+                self._mem_sem.release()
         log.debug( f'pulled {singularity_image}' )
         
         try:
@@ -122,7 +139,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 open_fps.append(stderr_fp)
             else:
                 stderr_fp = None
-
+                    
             p = await self.subprocess_sh(
                 cmd,
                 input_filenames=input_filenames,
@@ -184,10 +201,10 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             singularity_mounts_string = " ".join( mount_strings )
     
             command_run_string = """\
-            singularity exec --nohttps --cleanenv \
+            singularity exec --cleanenv \
             %s \
             %s \
-            bash -c '%s'""" % ( singularity_mounts_string, singularity_image, args )
+            bash -c '%s'""" % ( singularity_mounts_string, self._singularity_pull_cache[ singularity_image ], args )
             
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
