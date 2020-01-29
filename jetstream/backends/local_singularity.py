@@ -78,7 +78,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             else:
                 raise RuntimeError('Task mem greater than system mem')
         
-        log.debug( f'going to pull {singularity_image}' )
+        log.debug( f'going to pull: {singularity_image}' )
         try:
             async with self._resources_lock:
                 for i in range(1):
@@ -94,8 +94,13 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                         pass
                     else:
                         pull_command_run_string = f'singularity pull --dir {self._singularity_pullfolder} --name {singularity_image_filename} {singularity_image}'
-                        log.info( f'pulling {pull_command_run_string}' )
-                        _p = await create_subprocess_shell( pull_command_run_string )
+                        log.debug( f'pulling: {pull_command_run_string}' )
+                        _p = await create_subprocess_shell( pull_command_run_string,
+                                                            stdout=asyncio.subprocess.PIPE,
+                                                            stderr=asyncio.subprocess.PIPE )
+                        stdout, stderr = await _p.communicate()
+                        log.debug( f'pulled, stdout: {stdout}' )
+                        log.debug( f'pulled, stderr: {stderr}' )
                     self._singularity_pull_cache[ singularity_image ] = singularity_image_filename_fullpath
         except:
             pass
@@ -104,7 +109,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 self._cpu_sem.release()
             for i in range(2):
                 self._mem_sem.release()
-        log.debug( f'pulled {singularity_image}' )
+        log.debug( f'pulled: {singularity_image}' )
         
         try:
             async with self._resources_lock:
