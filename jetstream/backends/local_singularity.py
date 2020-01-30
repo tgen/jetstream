@@ -7,6 +7,7 @@ import asyncio
 import subprocess
 import jetstream
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
+from pathlib import Path
 
 log = logging.getLogger('jetstream.backends')
 
@@ -200,6 +201,11 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     input_filename = os.path.abspath( input_filename )
                     input_filename_head, input_filename_tail = os.path.split( input_filename )
                     singularity_mounts.add( input_filename_head )
+            for output_filename in output_filenames:
+                output_filename = os.path.abspath( output_filename )
+                output_filename_head, output_filename_tail = os.path.split( output_filename )
+                singularity_mounts.add( output_filename_head )
+                Path( output_filename_head ).mkdir( parents=True, exist_ok=True )
             mount_strings = []
             for singularity_mount in singularity_mounts:
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
