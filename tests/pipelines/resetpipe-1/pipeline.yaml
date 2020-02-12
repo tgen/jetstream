@@ -1,0 +1,4 @@
+__pipeline__:
+  name: resetpipe
+  main: main.jst
+  version: v0.0.1

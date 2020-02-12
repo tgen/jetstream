@@ -110,7 +110,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
 
         This will always use a shell to launch the subprocess, and it prefers
         /bin/bash (can be changed via arguments)"""
-        log.debug('subprocess_run_sh: {}'.format(args))
+        log.debug(f'subprocess_sh:\n{args}')
 
         while 1:
             try:
