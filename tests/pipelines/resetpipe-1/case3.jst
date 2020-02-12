@@ -20,6 +20,7 @@
 - name: case3_parent1
   after: case3_grandparent1
   output: case3_parent1.txt
+  reset: parents
   cmd: |
     if [ -f case3_grandparent1.txt ] && [ ! -f case3_grandparent2.txt ] ; then
       touch case3_parent1.txt
