@@ -36,6 +36,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         self.memory_gb = int( memory_bytes/(1024.**3) )
         self._mem_sem = BoundedSemaphore( self.memory_gb )
         self._resources_lock = Lock()
+        self._singularity_run_sem = BoundedSemaphore( self.cpus )
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
         self._singularity_pullfolder = pullfolder or \
@@ -86,23 +87,37 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     await self._cpu_sem.acquire()
                 for i in range(2):
                     await self._mem_sem.acquire()
-            async with self._singularity_pull_lock:
-                if singularity_image in self._singularity_pull_cache:
-                    pass
-                else:
-                    singularity_image_filename_fullpath = f'{self._singularity_pullfolder}/{singularity_image_filename}'
-                    if os.path.exists( singularity_image_filename_fullpath ):
-                        pass
-                    else:
-                        pull_command_run_string = f'singularity pull --dir {self._singularity_pullfolder} --name {singularity_image_filename} {singularity_image}'
-                        log.debug( f'pulling: {pull_command_run_string}' )
-                        _p = await create_subprocess_shell( pull_command_run_string,
-                                                            stdout=asyncio.subprocess.PIPE,
-                                                            stderr=asyncio.subprocess.PIPE )
-                        stdout, stderr = await _p.communicate()
-                        log.debug( f'pulled, stdout: {stdout}' )
-                        log.debug( f'pulled, stderr: {stderr}' )
-                    self._singularity_pull_cache[ singularity_image ] = singularity_image_filename_fullpath
+            if singularity_image in self._singularity_pull_cache:
+                pass
+            else:
+                async with self._singularity_pull_lock:
+                    for i in range( self.cpus ):
+                        await self._singularity_run_sem.acquire()
+                    # singularity_image_filename_fullpath = f'{self._singularity_pullfolder}/{singularity_image_filename}'
+                    # if os.path.exists( singularity_image_filename_fullpath ):
+                    #     pass
+                    # else:
+                    #     pull_command_run_string = f'singularity pull --dir {self._singularity_pullfolder} --name {singularity_image_filename} {singularity_image}'
+                    #     log.debug( f'pulling: {pull_command_run_string}' )
+                    #     _p = await create_subprocess_shell( pull_command_run_string,
+                    #                                         stdout=asyncio.subprocess.PIPE,
+                    #                                         stderr=asyncio.subprocess.PIPE )
+                    #     stdout, stderr = await _p.communicate()
+                    #     log.debug( f'pulled, stdout: {stdout}' )
+                    #     log.debug( f'pulled, stderr: {stderr}' )
+                    # self._singularity_pull_cache[ singularity_image ] = singularity_image_filename_fullpath
+                    
+                    pull_command_run_string = f'singularity exec {singularity_image} true'
+                    log.debug( f'pulling: {pull_command_run_string}' )
+                    _p = await create_subprocess_shell( pull_command_run_string,
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.PIPE )
+                    stdout, stderr = await _p.communicate()
+                    log.debug( f'pulled, stdout: {stdout}' )
+                    log.debug( f'pulled, stderr: {stderr}' )
+                    self._singularity_pull_cache[ singularity_image ] = singularity_image
+                    for i in range( self.cpus ):
+                        self._singularity_run_sem.release()
         except:
             pass
         finally:
@@ -212,7 +227,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             singularity_mounts_string = " ".join( mount_strings )
     
             command_run_string = """\
-            singularity exec --cleanenv \
+            singularity exec --cleanenv --nv \
             %s \
             %s \
             bash -c '%s'""" % ( singularity_mounts_string, self._singularity_pull_cache[ singularity_image ], args )
@@ -222,6 +237,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             while 1:
                 try:
                     log.debug('subprocess_run_sh: trying...')
+                    await self._singularity_run_sem.acquire()
                     p = await create_subprocess_shell(
                         command_run_string,
                         stdin=stdin,
@@ -238,6 +254,8 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 except BlockingIOError as e:
                     log.warning(f'System refusing new processes: {e}')
                     await asyncio.sleep(self.bip)
+                finally:
+                    self._singularity_run_sem.release()
         except Exception as e:
             log.warning(f'Exception: {e}')
             p = await create_subprocess_shell(
