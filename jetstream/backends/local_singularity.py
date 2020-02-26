@@ -5,6 +5,7 @@ import shlex
 import logging
 import asyncio
 import subprocess
+import tempfile
 import jetstream
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 from pathlib import Path
@@ -106,8 +107,8 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     #     log.debug( f'pulled, stdout: {stdout}' )
                     #     log.debug( f'pulled, stderr: {stderr}' )
                     # self._singularity_pull_cache[ singularity_image ] = singularity_image_filename_fullpath
-                    
-                    pull_command_run_string = f'singularity exec {singularity_image} true'
+                    opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
+                    pull_command_run_string = f'singularity exec {opt_https}{singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
@@ -118,8 +119,19 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     self._singularity_pull_cache[ singularity_image ] = singularity_image
                     for i in range( self.cpus ):
                         self._singularity_run_sem.release()
-        except:
-            pass
+        except Exception as e:
+            log.warning(f'Exception during resource acquisition: {e}')
+            p = await create_subprocess_shell(
+                        "exit 1;",
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=cwd,
+                        encoding=encoding,
+                        errors=errors,
+                        env=env,
+                        loop=loop,
+                        executable=executable )
         finally:
             for i in range(1):
                 self._cpu_sem.release()
@@ -225,12 +237,15 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             for singularity_mount in singularity_mounts:
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
             singularity_mounts_string = " ".join( mount_strings )
-    
-            command_run_string = """\
-            singularity exec --cleanenv --nv \
-            %s \
-            %s \
-            bash -c '%s'""" % ( singularity_mounts_string, self._singularity_pull_cache[ singularity_image ], args )
+
+            # run_script_filename = "run.bash"
+            # with open( run_script_filename, "w" ) as run_script:
+            #     run_script.write( args )
+            args_escaped = args.replace("'","\\'")
+            # log.info( args ) 
+            # log.info( args_escaped ) 
+            opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
+            command_run_string = f"""singularity exec --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash -c '{args_escaped}'"""
             
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
@@ -256,6 +271,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     await asyncio.sleep(self.bip)
                 finally:
                     self._singularity_run_sem.release()
+                    
         except Exception as e:
             log.warning(f'Exception: {e}')
             p = await create_subprocess_shell(
