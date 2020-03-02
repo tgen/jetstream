@@ -121,17 +121,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                         self._singularity_run_sem.release()
         except Exception as e:
             log.warning(f'Exception during resource acquisition: {e}')
-            p = await create_subprocess_shell(
-                        "exit 1;",
-                        stdin=stdin,
-                        stdout=stdout,
-                        stderr=stderr,
-                        cwd=cwd,
-                        encoding=encoding,
-                        errors=errors,
-                        env=env,
-                        loop=loop,
-                        executable=executable )
+            p = await create_subprocess_shell( "exit 1;" )
         finally:
             for i in range(1):
                 self._cpu_sem.release()
