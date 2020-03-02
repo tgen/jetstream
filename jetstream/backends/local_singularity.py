@@ -175,6 +175,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     
             p = await self.subprocess_sh(
                 cmd,
+                task_name=task.name,
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
                 singularity_image=singularity_image,
@@ -213,7 +214,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 
             return task
 
-    async def subprocess_sh( self, args, *, input_filenames=[], output_filenames=[],
+    async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
                              singularity_image=None, stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
                              loop=None, executable='/bin/bash'): 
@@ -238,15 +239,13 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
             singularity_mounts_string = " ".join( mount_strings )
 
-            # run_script_filename = "run.bash"
-            # with open( run_script_filename, "w" ) as run_script:
-            #     run_script.write( args )
-            args_escaped = args.replace("'","\\'")
-            # log.info( args ) 
-            # log.info( args_escaped ) 
+            os.makedirs( "jetstream/cmd", mode = 0o777, exist_ok = True )
+            run_script_filename = f"jetstream/cmd/{task_name}.bash"
+            with open( run_script_filename, "w" ) as run_script:
+                run_script.write( args )
             opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-            command_run_string = f"""singularity exec --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash -c '{args_escaped}'"""
-            
+            command_run_string = f"""singularity exec --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
+
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
             while 1:

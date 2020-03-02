@@ -108,6 +108,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
 
             p = await self.subprocess_sh(
                 cmd,
+                task_name=task.name,
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
                 docker_image=docker_image,
@@ -146,7 +147,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                 
             return task
 
-    async def subprocess_sh( self, args, *, input_filenames=[], output_filenames=[],
+    async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
                              docker_image=None, stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
                              loop=None, executable='/bin/bash'):
@@ -166,16 +167,23 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                 mount_strings.append( "-v %s:%s" % ( docker_mount, docker_mount ) )
             docker_mounts_string = " ".join( mount_strings )
     
-            command_run_string = """\
-            docker run \
-            --user $(id -u) \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v $(pwd):$(pwd) \
-            %s \
-            -w $(pwd) \
-            -e "DOCKER_MOUNTS_STRING=%s" \
-            %s \
-            bash -c '%s'""" % ( docker_mounts_string, docker_mounts_string, docker_image, args )
+            os.makedirs( "jetstream/cmd", mode = 0o777, exist_ok = True )
+            run_script_filename = f"jetstream/cmd/{task_name}.bash"
+            with open( run_script_filename, "w" ) as run_script:
+                run_script.write( args )
+            # opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
+            command_run_string = f"""docker run --user $(id -u) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
+            
+            # command_run_string = """\
+            # docker run \
+            # --user $(id -u) \
+            # -v /var/run/docker.sock:/var/run/docker.sock \
+            # -v $(pwd):$(pwd) \
+            # %s \
+            # -w $(pwd) \
+            # -e "DOCKER_MOUNTS_STRING=%s" \
+            # %s \
+            # bash -c '%s'""" % ( docker_mounts_string, docker_mounts_string, docker_image, args )
             
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
