@@ -172,7 +172,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
             with open( run_script_filename, "w" ) as run_script:
                 run_script.write( args )
             # opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-            command_run_string = f"""docker run --user $(id -u) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
+            command_run_string = f"""docker pull {docker_image} && docker run --user $(id -u) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
             
             # command_run_string = """\
             # docker run \
