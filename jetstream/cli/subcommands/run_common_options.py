@@ -29,7 +29,7 @@ def add_arguments(parser):
 
     group.add_argument(
         '--backend',
-        choices=jetstream.settings['backends'].get(dict),
+        choices=jetstream.settings['backends'].flatten(),
         default=jetstream.settings['backend'].get(str),
         help='runner backend name used for executing tasks [%(default)s]'
     )

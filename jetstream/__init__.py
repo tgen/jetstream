@@ -50,9 +50,9 @@ def lookup_backend(name=None):
     will return the class and also a dictionary of default paramters for
     instantiating the class that can be customized via config file."""
     name = name or settings['backend'].get(str)
-    params = settings['backends'][name].get(dict).copy()
-    cls = params.pop('()')
-    backend = utils.dynamic_import(cls)
+    params = settings['backends'][name].flatten()
+    class_path = params.pop('()')
+    backend = utils.dynamic_import(class_path)
     return backend, params
 
 
@@ -80,7 +80,7 @@ def start_logging(profile=None):
             profile = 'basic'
 
     profile = str(profile).lower()
-    config = settings['logging_profiles'][profile].get(dict)
+    config = settings['logging_profiles'][profile].flatten()
     logging.config.dictConfig(config)
     log.debug(f'Logging started: {profile}')
 
