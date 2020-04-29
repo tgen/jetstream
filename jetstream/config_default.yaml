@@ -96,6 +96,8 @@ backends:
   local_singularity:
     (): jetstream.backends.local_singularity.LocalSingularityBackend
     pullfolder: null
+  slurm_singularity:
+    (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
 
 
 # ================================== Pipelines ================================
