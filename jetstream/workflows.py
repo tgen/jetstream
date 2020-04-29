@@ -74,8 +74,8 @@ class Workflow:
         self._graph = None
         self.check_versions()
 
-    def add(self, task):
-        if task.name in self.tasks:
+    def add(self, task, overwrite=False):
+        if not overwrite and task.name in self.tasks:
             err = f'Duplicate task name added to workflow: {task.name}'
             raise ValueError(err)
         self.tasks[task.name] = task
@@ -185,15 +185,15 @@ class Workflow:
             reset_directive = task.directives['reset']
         except KeyError:
             return
-        
+
         for item in reset_directive:
             if item == 'predecessors' or item == 'parents':
                 for t in self.graph.predecessors(task):
                     self.reset_task(t)
             else:
                 self.reset_task(self.tasks[item])
-    
-                
+
+
     def save(self, path=None):
         save_workflow(self, path or self.path)
 
@@ -437,6 +437,11 @@ def save_workflow(workflow, path):
 def mash(G, H):
     """Mash together two Workflows
 
+    If the task was failed in the old workflow, it's replaced with
+    the task from the new workflow, even if the identity hasn't
+    changed. Directives like cpus, mem, etc may cause a task to fail
+    and then you'll want it rerun even though the cmd hasn't changed.
+
     Description::
 
         Example 1: Tasks already present remain completed
@@ -466,53 +471,51 @@ def mash(G, H):
     elif len(G) <= 0:
         log.debug('wf G is empty, no mashing')
         return jetstream.Workflow([t.copy() for t in H], props=G.props.copy())
-    
+
     # Determine which tasks need to be replaced in new workflow
-    log.info(f'Mashing G:{G.path}:{G.summary()} with H:{H.path}:{H.summary()}')
+    log.info(f'Mashing {G.summary()}({G.path}) with {H.summary()}({H.path})')
     workflow = jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
-    new = set()
-    modified = set()
-    replaced = set()
-    for name, task in H.tasks.items():
-        # Check if the task from H (new workflow) is in G (old workflow)
+    new = 0
+    modified = 0
+    modified_tasks = set()
+    for name, h_task in H.tasks.items():
         try:
             g_task = G[name]
         except KeyError:
-            workflow.add(task)
-            new.add(name)  # Keep track of each new task for report
+            log.debug(f'{h_task} not in G, adding to new workflow..')
+            workflow.add(h_task)
+            modified_tasks.add(name)
+            new += 1
             continue
 
         if g_task.is_failed():
-            # If the task was failed in the old workflow, it's replaced with 
-            # the task from the new workflow, even if the identity hasn't 
-            # changed. Directives like cpus, mem, etc may cause a task to fail
-            # and then you'll want to rerun even though the cmd hasn't changed.
-            log.debug(f'{task} is failed in G, replacing in new workflow..')
-            workflow.tasks[name] = task
-            replaced.add(name)
-        elif task.identity != g_task.identity:
-            log.debug(f'{task} has changed, replacing in new workflow..')
-            workflow.tasks[name] = task
-            modified.add(name)
+            log.debug(f'{h_task} is failed in G, replacing in new workflow..')
+            workflow.add(h_task, overwrite=True)
+            modified_tasks.add(name)
+        elif h_task.identity != g_task.identity:
+            log.debug(f'{h_task} has changed, replacing in new workflow..')
+            workflow.add(h_task, overwrite=True)
+            modified_tasks.add(name)
+            modified += 1
         else:
-            continue  # same task identity and passed/new status is not changed
-    
-    log.debug('Identifying tasks that need to be reset...')
-    changed = new.union(modified).union(replaced)
-    affected = set()
-    graph = workflow.reload_graph()
-    for task_name in changed:
-        for item in nx.descendants(graph.G, task_name):
-            affected.add(item)
+            continue
 
-    for t in affected:
-        workflow.tasks[t].reset()
+    log.debug('Identifying tasks that need to be reset...')
+    graph = workflow.reload_graph()
+    all_affected = set()
+    for task in modified_tasks:
+        all_affected.add(task)
+        for t in nx.descendants(graph.G, task):
+            all_affected.add(t)
+
+    for t in all_affected:
+        workflow.reset_task(workflow.tasks[t])
 
     log.info(
         'Mash report:\n'
-        f'New tasks: {len(new)}\n'
-        f'Modified tasks: {len(modified)}\n'
-        f'Total tasks reset: {len(affected.union(changed))}'
+        f'New tasks: {new}\n'
+        f'Modified tasks: {modified}\n'
+        f'Final: {workflow.summary()}'
     )
 
     return workflow

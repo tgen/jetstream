@@ -6,7 +6,7 @@ src_dir = os.path.join(os.path.dirname(__file__))
 pkg_init = os.path.join(src_dir, __package__, '__init__.py')
 readme_path = os.path.join(src_dir, 'README.md')
 
- 
+
 with open(pkg_init) as fp:
     for line in fp:
         if line.startswith('__version__'):
@@ -16,7 +16,6 @@ with open(pkg_init) as fp:
 
 with open(readme_path) as fp:
     __readme__ = fp.read()
-
 
 
 setup(
@@ -29,7 +28,7 @@ setup(
     long_description=__readme__,
     long_description_content_type='text/markdown',
     keywords='ngs pipeline automation',
-    packages=find_packages(exclude=('test',)),
+    packages=find_packages(exclude=('tests',)),
     include_package_data=True,
     python_requires='>=3',
     classifiers=[
@@ -46,8 +45,8 @@ setup(
     ],
     extras_require={
         'dev': [
-            'nose',
-            'coverage',
+            'pytest',
+            'pytest-cov',
         ]
     },
     package_data={

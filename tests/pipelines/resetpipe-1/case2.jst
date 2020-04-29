@@ -1,0 +1,43 @@
+# For this case we are testing immediate parent to two child reset relationships
+
+{% macro case2() %}
+
+# parent should generate case2_parent1.txt on the first run
+# And should produce case2_parent2.txt on the second run,
+# assuming case2_parent1.txt isn't delete between runs
+- name: case2_parent1
+  output: case2_parent1.txt
+  cmd: |
+    if [ ! -f case2_parent1.txt ]; then
+      touch case2_parent1.txt
+    else
+      touch case2_parent2.txt
+    fi
+
+# Child1 should fail during the first run as case2_parent2.txt should not exist
+# It should then pass during the second run after it resets the case2_parent task
+- name: case2_child1
+  after: case2_parent1
+  output: case2_child1.txt
+  reset: parents
+  cmd: |
+    if [ -f case2_parent2.txt ]; then
+      touch case2_child1.txt
+    else
+      exit 1
+    fi
+
+# Child2 should fail during the first run as case2_parent2.txt should not exist
+# It should then pass during the second run after it resets the case2_parent task
+- name: case2_child2
+  after: case2_parent1
+  output: case2_child2.txt
+  cmd: |
+    if [ -f case2_parent1.txt ]; then
+      touch case2_child1.txt
+    else
+      exit 1
+    fi
+
+{% endmacro %}
+
