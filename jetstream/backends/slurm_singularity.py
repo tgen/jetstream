@@ -62,7 +62,6 @@ class SlurmSingularityBackend(BaseBackend):
                 stderr=devnull
             )
 
-        # self._singularity_run_sem = BoundedSemaphore( self.cpus )
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
         
@@ -172,7 +171,6 @@ class SlurmSingularityBackend(BaseBackend):
         docker_image = task.directives.get( 'docker_image', None )
         if docker_image == None:
             raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        
         singularity_image = f"docker://{docker_image}"
         
         log.debug( f'going to pull: {singularity_image}' )

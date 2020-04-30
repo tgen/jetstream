@@ -37,12 +37,11 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         self.memory_gb = int( memory_bytes/(1024.**3) )
         self._mem_sem = BoundedSemaphore( self.memory_gb )
         self._resources_lock = Lock()
-        self._singularity_run_sem = BoundedSemaphore( self.cpus )
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
         log.info(f'LocalSingularityBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
-    async def spawn(self, task, allow_memory_overbooking = True):
+    async def spawn(self, task, allow_cpus_overbooking = True, allow_memory_overbooking = True):
         log.debug('Spawn: {}'.format(task))
 
         if 'cmd' not in task.directives:
@@ -61,15 +60,22 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
-        singularity_image = "docker://" + task.directives.get( 'docker_image' )
-        singularity_image_filename = f'{singularity_image.split("/")[-1]}.sif'
+        docker_image = task.directives.get( 'docker_image', None )
+        if docker_image == None:
+            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
+        singularity_image = f"docker://{docker_image}"
+        # singularity_image_filename = f'{singularity_image.split("/")[-1]}.sif'
         
         cpus_reserved = 0
         memory_gb_reserved = 0
         open_fps = list()
 
         if cpus > self.cpus:
-            raise RuntimeError('Task cpus greater than system cpus')
+            if allow_cpus_overbooking:
+                log.warning( f'Task cpus ({cpus}) greater than system cpus ({self.cpus}), {task.name}: Proceeding anyways ...' )
+                cpus = self.cpus
+            else:
+                raise RuntimeError('Task cpus greater than system cpus')
 
         if memory_gb_required_value > self.memory_gb:
             if allow_memory_overbooking:
@@ -89,8 +95,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 pass
             else:
                 async with self._singularity_pull_lock:
-                    for i in range( self.cpus ):
-                        await self._singularity_run_sem.acquire()
                     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
                     pull_command_run_string = f'singularity exec {opt_https}{singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
@@ -101,8 +105,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     log.debug( f'pulled, stdout: {stdout}' )
                     log.debug( f'pulled, stderr: {stderr}' )
                     self._singularity_pull_cache[ singularity_image ] = singularity_image
-                    for i in range( self.cpus ):
-                        self._singularity_run_sem.release()
         except Exception as e:
             log.warning(f'Exception during resource acquisition: {e}')
             p = await create_subprocess_shell( "exit 1;" )
@@ -116,7 +118,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         try:
             async with self._resources_lock:
                 log.debug('Reserving cpus: {}'.format(task))
-                for i in range(task.directives.get('cpus', 0)):
+                for i in range(cpus):
                     await self._cpu_sem.acquire()
                     cpus_reserved += 1
                 
@@ -225,7 +227,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             while 1:
                 try:
                     log.debug('subprocess_run_sh: trying...')
-                    await self._singularity_run_sem.acquire()
                     p = await create_subprocess_shell(
                         command_run_string,
                         stdin=stdin,
@@ -242,8 +243,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 except BlockingIOError as e:
                     log.warning(f'System refusing new processes: {e}')
                     await asyncio.sleep(self.bip)
-                finally:
-                    self._singularity_run_sem.release()
                     
         except Exception as e:
             log.warning(f'Exception: {e}')
