@@ -169,8 +169,11 @@ class SlurmSingularityBackend(BaseBackend):
         input_filenames = task.directives.get( 'input', [] )
         output_filenames = task.directives.get( 'output', [] )
         
-        singularity_image = "docker://" + task.directives.get( 'docker_image' )
-        singularity_image_filename = f'{singularity_image.split("/")[-1]}.sif'
+        docker_image = task.directives.get( 'docker_image', None )
+        if docker_image == None:
+            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
+        
+        singularity_image = f"docker://{docker_image}"
         
         log.debug( f'going to pull: {singularity_image}' )
         try:
