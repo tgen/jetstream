@@ -182,7 +182,7 @@ class SlurmSingularityBackend(BaseBackend):
                     # for i in range( self.cpus ):
                     #     await self._singularity_run_sem.acquire()
                     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-                    pull_command_run_string = f'singularity exec {opt_https}{singularity_image} true'
+                    pull_command_run_string = f'singularity exec --cleanenv {opt_https}{singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
@@ -571,7 +571,7 @@ def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenam
         sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
         
     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-    sbatch_script += f"#!/bin/bash\nsingularity exec --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
 
     if name == None:
         name = "script"

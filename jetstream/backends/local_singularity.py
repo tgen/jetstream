@@ -96,7 +96,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             else:
                 async with self._singularity_pull_lock:
                     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-                    pull_command_run_string = f'singularity exec {opt_https}{singularity_image} true'
+                    pull_command_run_string = f'singularity exec --cleanenv {opt_https}{singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
@@ -220,7 +220,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             with open( run_script_filename, "w" ) as run_script:
                 run_script.write( args )
             opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-            command_run_string = f"""singularity exec --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
+            command_run_string = f"""singularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
 
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
