@@ -61,7 +61,9 @@ class SlurmSingularityBackend(BaseBackend):
                 stdout=devnull,
                 stderr=devnull
             )
-
+            
+        self.max_jobs = 1024
+        self._singularity_run_sem = BoundedSemaphore( self.max_jobs ) # To ensure pulls have exclusive use of singularity
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
         
@@ -179,8 +181,8 @@ class SlurmSingularityBackend(BaseBackend):
                 pass
             else:
                 async with self._singularity_pull_lock:
-                    # for i in range( self.cpus ):
-                    #     await self._singularity_run_sem.acquire()
+                    for i in range( self.max_jobs ):
+                        await self._singularity_run_sem.acquire()
                     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
                     pull_command_run_string = f'singularity exec --cleanenv {opt_https}{singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
@@ -191,8 +193,8 @@ class SlurmSingularityBackend(BaseBackend):
                     log.debug( f'pulled, stdout: {stdout}' )
                     log.debug( f'pulled, stderr: {stderr}' )
                     self._singularity_pull_cache[ singularity_image ] = singularity_image
-                    # for i in range( self.cpus ):
-                    #     self._singularity_run_sem.release()
+                    for i in range( self.max_jobs ):
+                         self._singularity_run_sem.release()
         except Exception as e:
             log.warning(f'Exception during singularity prepull: {e}')
             p = await create_subprocess_shell( "exit 1;" )
@@ -491,10 +493,10 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     return jobs
 
 
-def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenames=[],
-           stdin=None, stdout=None, stderr=None, tasks=None,
-           cpus_per_task=1, mem="2 G", walltime="1h", comment=None,
-           additional_args=None, sbatch_executable=None, retry=10):
+async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenames=[],
+                 stdin=None, stdout=None, stderr=None, tasks=None,
+                 cpus_per_task=1, mem="2 G", walltime="1h", comment=None,
+                 additional_args=None, sbatch_executable=None, retry=10):
     
     # determine input/output mounts needed
     singularity_mounts = set()
@@ -598,6 +600,7 @@ def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenam
     
     remaining_tries = int(retry)
     while 1:
+        await self._singularity_run_sem.acquire()
         try:
             p = subprocess.run(submit_sbatch_args, stdout=subprocess.PIPE, check=True)
             break
@@ -608,6 +611,8 @@ def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenam
                 time.sleep(60)
             else:
                 raise
+        finally:
+            self._singularity_run_sem.release()
 
     jid = p.stdout.decode().strip().split()[-1]
     job = SlurmBatchJob(jid)
