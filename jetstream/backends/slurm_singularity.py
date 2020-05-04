@@ -202,9 +202,10 @@ class SlurmSingularityBackend(BaseBackend):
 
         log.debug( f'pulled: {singularity_image}' )
         
-        job = sbatch(
+        job = await sbatch(
             cmd=task.directives['cmd'],
             singularity_image=singularity_image,
+            singularity_run_sem=self._singularity_run_sem,
             name=task.name,
             input_filenames=input_filenames,
             output_filenames=output_filenames,
@@ -493,7 +494,8 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     return jobs
 
 
-async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenames=[],
+async def sbatch(cmd, singularity_image, singularity_run_sem=None,
+                 name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
                  additional_args=None, sbatch_executable=None, retry=10):
@@ -603,7 +605,8 @@ async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_f
     
     remaining_tries = int(retry)
     while 1:
-        await self._singularity_run_sem.acquire()
+        if singularity_run_sem is not None:
+            await singularity_run_sem.acquire()
         try:
             p = subprocess.run(submit_sbatch_args, stdout=subprocess.PIPE, check=True)
             break
@@ -615,7 +618,8 @@ async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_f
             else:
                 raise
         finally:
-            self._singularity_run_sem.release()
+            if singularity_run_sem is not None:
+                singularity_run_sem.release()
 
     jid = p.stdout.decode().strip().split()[-1]
     job = SlurmBatchJob(jid)
