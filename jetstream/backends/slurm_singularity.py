@@ -495,7 +495,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
-                 cpus_per_task=1, mem="2 G", walltime="1h", comment=None,
+                 cpus_per_task=1, mem="2G", walltime="1h", comment=None,
                  additional_args=None, sbatch_executable=None, retry=10):
     
     # determine input/output mounts needed
@@ -568,9 +568,12 @@ async def sbatch(cmd, singularity_image, name=None, input_filenames=[], output_f
         else:
             sbatch_args.extend(additional_args)
     
+    sbatch_args.extend(['--output', "%x-%j.out"])
+    sbatch_args.extend(['--error', "%x-%j.err"])
+        
     sbatch_script = "#!/bin/bash\n"
     for i in range( 0, len(sbatch_args), 2 ):
-        sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
+        sbatch_script += f"#SBATCH {sbatch_args[i]}={sbatch_args[i+1]}\n"
         
     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
     sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
