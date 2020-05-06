@@ -8,6 +8,7 @@ import pathlib
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -66,6 +67,13 @@ class SlurmSingularityBackend(BaseBackend):
         self._singularity_run_sem = BoundedSemaphore( self.max_jobs ) # To ensure pulls have exclusive use of singularity
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
+        
+        signal.signal(signal.SIGABRT, self.cancel)
+        signal.signal(signal.SIGHUP, self.cancel)
+        signal.signal(signal.SIGIOT, self.cancel)
+        signal.signal(signal.SIGQUIT, self.cancel)
+        signal.signal(signal.SIGTERM, self.cancel)
+        signal.signal(signal.SIGINT, self.cancel)
         
         log.info('SlurmSingularityBackend initialized')
 
