@@ -565,6 +565,8 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
 
     if mem:
         sbatch_args.extend(['--mem', mem])
+    else:
+        sbatch_args.extend(['--mem', f"{cpus_per_task*2}G"])
 
     if walltime:
         sbatch_args.extend(['-t', walltime])
