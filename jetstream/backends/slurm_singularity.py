@@ -8,6 +8,7 @@ import pathlib
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -66,6 +67,13 @@ class SlurmSingularityBackend(BaseBackend):
         self._singularity_run_sem = BoundedSemaphore( self.max_jobs ) # To ensure pulls have exclusive use of singularity
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
+        
+        signal.signal(signal.SIGABRT, self.cancel)
+        signal.signal(signal.SIGHUP, self.cancel)
+        signal.signal(signal.SIGIOT, self.cancel)
+        signal.signal(signal.SIGQUIT, self.cancel)
+        signal.signal(signal.SIGTERM, self.cancel)
+        signal.signal(signal.SIGINT, self.cancel)
         
         log.info('SlurmSingularityBackend initialized')
 
@@ -189,9 +197,9 @@ class SlurmSingularityBackend(BaseBackend):
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.PIPE )
-                    stdout, stderr = await _p.communicate()
-                    log.debug( f'pulled, stdout: {stdout}' )
-                    log.debug( f'pulled, stderr: {stderr}' )
+                    _stdout, _stderr = await _p.communicate()
+                    log.debug( f'pulled, stdout: {_stdout}' )
+                    log.debug( f'pulled, stderr: {_stderr}' )
                     self._singularity_pull_cache[ singularity_image ] = singularity_image
                     for i in range( self.max_jobs ):
                          self._singularity_run_sem.release()
@@ -547,7 +555,7 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
         sbatch_args.extend(['-o', stdout])
 
     if stderr:
-        sbatch_args.extend(['-e', stdout])
+        sbatch_args.extend(['-e', stderr])
 
     if tasks:
         sbatch_args.extend(['-n', tasks])
@@ -557,6 +565,8 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
 
     if mem:
         sbatch_args.extend(['--mem', mem])
+    else:
+        sbatch_args.extend(['--mem', f"{cpus_per_task*2}G"])
 
     if walltime:
         sbatch_args.extend(['-t', walltime])
@@ -569,13 +579,10 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
             sbatch_args.append(additional_args)
         else:
             sbatch_args.extend(additional_args)
-    
-    sbatch_args.extend(['--output', "%x-%j.out"])
-    sbatch_args.extend(['--error', "%x-%j.err"])
         
     sbatch_script = "#!/bin/bash\n"
     for i in range( 0, len(sbatch_args), 2 ):
-        sbatch_script += f"#SBATCH {sbatch_args[i]}={sbatch_args[i+1]}\n"
+        sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
         
     opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
     sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
