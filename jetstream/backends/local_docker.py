@@ -37,7 +37,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         self._resources_lock = Lock()
         log.info(f'LocalDockerBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
-    async def spawn(self, task, allow_memory_overbooking = True):
+    async def spawn(self, task, allow_cpus_overbooking = True, allow_memory_overbooking = True):
         log.debug('Spawn: {}'.format(task))
 
         if 'cmd' not in task.directives:
@@ -63,7 +63,11 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         open_fps = list()
 
         if cpus > self.cpus:
-            raise RuntimeError('Task cpus greater than system cpus')
+            if allow_cpus_overbooking:
+                log.warning( f'Task cpus ({cpus}) greater than system cpus ({self.cpus}), {task.name}: Proceeding anyways ...' )
+                cpus = self.cpus
+            else:
+                raise RuntimeError('Task cpus greater than system cpus')
 
         if memory_gb_required_value > self.memory_gb:
             if allow_memory_overbooking:
@@ -75,7 +79,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         try:
             async with self._resources_lock:
                 log.debug('Reserving cpus: {}'.format(task))
-                for i in range(task.directives.get('cpus', 0)):
+                for i in range(cpus):
                     await self._cpu_sem.acquire()
                     cpus_reserved += 1
                 
