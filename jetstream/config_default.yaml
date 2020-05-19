@@ -89,6 +89,10 @@ backends:
       - Start
       - End
       - MaxRSS
+  cloud_swift:
+    (): jetstream.backends.cloud.CloudSwiftBackend
+  cloud_parsl:
+    (): jetstream.backends.cloud.CloudParslBackend
 
 
 # ================================== Pipelines ================================
