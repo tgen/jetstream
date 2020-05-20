@@ -55,3 +55,4 @@ coverage.xml
 *.pot
 
 .Rproj.user
+jetstream-cjs/
