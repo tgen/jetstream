@@ -28,7 +28,7 @@ class TemplateContext:
     high priority --> 3) Command Args: -c/--config and -C/--config-file options
 
     """
-    def __init__(self, *, project=None, pipeline=None, command_args=None):
+    def __init__(self, *, project=None, pipeline=None, command_args=None, other_args=None):
         self.sources = []
         self.stack = []
 
@@ -42,6 +42,11 @@ class TemplateContext:
             rep = textwrap.shorten(str(ctx), 76)
             self.sources.append(f'Pipeline: {rep}')
             self.stack.append(ctx)
+        
+        if other_args is not None:
+            rep = textwrap.shorten(str(other_args), 76)
+            self.sources.append(f'Arguments: {rep}')
+            self.stack.append(other_args)
 
         if command_args is not None:
             rep = textwrap.shorten(str(command_args), 76)
@@ -105,6 +110,18 @@ def fromjson(value):
     return json.loads(value)
 
 
+def cloudpath(path, dot_index=-1):
+    split_path = path.rsplit(os.path.sep, dot_index * -1)
+    split_path[dot_index] = './' + split_path[dot_index]
+    return os.path.join(*split_path)
+
+
+def cloudbasename(path, in_cloud):
+    if in_cloud:
+        return os.path.basename(path)
+    return path
+
+
 def env(value):
     return os.environ[value]
     
@@ -146,6 +163,8 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     env.filters['dirname'] = dirname
     env.filters['urlparse'] = urlparse
     env.filters['sha256'] = sha256
+    env.filters['cloudpath'] = cloudpath
+    env.filters['cloudbasename'] = cloudbasename
     return env
 
 
@@ -165,14 +184,15 @@ def from_string(data, *searchpath, **kwargs):
     return env.from_string(data)
 
 
-def render_template(template, project=None, pipeline=None, command_args=None):
+def render_template(template, project=None, pipeline=None, command_args=None, other_args=None):
     """Render a template and return as a string"""
     log.info('Rendering template...')
 
     context = TemplateContext(
         project=project,
         pipeline=pipeline,
-        command_args=command_args
+        command_args=command_args,
+        other_args=other_args
     )
 
     sources = textwrap.indent(str(context), " " * 4)

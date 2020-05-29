@@ -361,7 +361,21 @@ def parse_txt(data):
 
 
 def parse_yaml(data):
-    return yaml.safe_load(data)
+    import math
+    # import yaml.scanner.ScannerError
+    # zfill_val = math.ceil(math.log(len(data.split('\n')), 10))
+    # for line_no, line in enumerate(data.split('\n'), start=1):
+    #     print('{}  {}'.format(str(line_no).zfill(zfill_val), line))
+    try:
+        return yaml.safe_load(data)
+    except Exception as e:
+        except_line = e.problem_mark.line + 1
+        log.info('Except line in {}'.format(except_line))
+        show_range = set(range(except_line - 50, except_line + 25))
+        for line_no, line in enumerate(data.split('\n'), start=1):
+            if line_no in show_range:
+                print('{}{}  {}'.format('>' if line_no == except_line else ' ', line_no, line))
+        raise
 
 
 def _load(path):

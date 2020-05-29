@@ -61,6 +61,7 @@ def template(template, args):
         project=args.project,
         pipeline=args.pipeline,
         command_args=args.config,
+        other_args={'backend': args.backend}
     )
 
     if args.render_only:
