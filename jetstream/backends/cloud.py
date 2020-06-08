@@ -30,7 +30,8 @@ def get_pool_info(pool_name, api_key, pworks_url="http://beta.parallel.works"):
                 'serviceport': pool_data['info']['ports']['serviceport'],
                 'controlport': pool_data['info']['ports']['controlport'],
                 'maxworkers': int(pool_data['settings']['max']),
-                'cpus': int(pool_data['info']['cpuPerWorker']) // 2
+                # 'cpus': int(pool_data['info']['cpuPerWorker']) // 2   This is temporary
+                'cpus': 8
             }
 
 
@@ -71,6 +72,10 @@ def parse_reference_input(ref_input_directive):
     for ref in ref_input_directive:
         ref_input.extend(glob.glob(ref))
     return ref_input
+
+
+def get_cloud_directive(key, task_directives, cloud_args_key='cloud_args'):
+    return task_directives.get(cloud_args_key, dict()).get(key)
 
 
 class CloudSwiftBackend(BaseBackend):
@@ -162,13 +167,30 @@ class CloudSwiftBackend(BaseBackend):
             with open(cmd_sh_path, 'w') as cmd_sh_out:
                 cmd_sh_out.write(cmd)
             
+            # log.info('one')
+            # Container as input
+            singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
+            # log.info('1')
+            import urllib
+            container_input = list()
+            transfer_container_to_remote = get_cloud_directive('transfer_container_to_remote', task.directives)
+            if (
+                singularity_container_uri is not None
+                and not urllib.parse.urlparse(singularity_container_uri).scheme
+                and transfer_container_to_remote
+            ):
+                container_input = [singularity_container_uri]
+                
+            
             # Stitch together all cog-job-submit inputs
             cjs_inputs = (
                 task.directives['input']
                 + expand_regex_path(task.directives['input-re'])
                 + parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
+                + container_input
                 + [cmd_sh_path]
             )
+            # log.info('three')
             
             # Get front matter from both the default config and the task itself
             wrapper_frontmatter = '{config_frontmatter};{directive_frontmatter}'.format(
@@ -177,8 +199,18 @@ class CloudSwiftBackend(BaseBackend):
             )
             
             # Construct cog-job-submit command
+            # singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
+            # singularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} 
+            #{self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}
+            remote_cmd = (
+                'bash {}.sh'.format(task.name) if singularity_container_uri is None
+                else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh'.format(
+                    container_uri=singularity_container_uri,
+                    task_name=task.name
+                )
+            )
             cjs_cmd = construct_cjs_cmd(
-                cmd="bash {}.sh".format(task.name),
+                cmd=remote_cmd,
                 service_url='http://beta.parallel.works:{}'.format(self.pool_info['serviceport']),
                 inputs=cjs_inputs,
                 outputs=task.directives["output"],

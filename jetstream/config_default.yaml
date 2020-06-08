@@ -91,7 +91,7 @@ backends:
       - MaxRSS
   cloud_swift:
     (): jetstream.backends.cloud.CloudSwiftBackend
-    pool_name: linuxpool
+    pool_name: azurepool
     api_key: 649cec38be4772725c5c06d4b0e4d494
     wrapper_frontmatter: 'export PATH=$PATH:/home/dominic/.conda/bin'
   cloud_parsl:

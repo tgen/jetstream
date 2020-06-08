@@ -111,6 +111,12 @@ def fromjson(value):
 
 
 def cloudpath(path, dot_index=-1):
+    parsed_path = urllib.parse.urlparse(path)
+    if parsed_path.scheme:
+        # This is a URL so pass it back unharmed
+        return path
+    
+    # This is a directory path, so transform it into a cloud path
     split_path = path.rsplit(os.path.sep, dot_index * -1)
     split_path[dot_index] = './' + split_path[dot_index]
     return os.path.join(*split_path)
