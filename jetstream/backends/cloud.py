@@ -15,6 +15,7 @@ import tempfile
 import glob
 import subprocess
 import re
+from datetime import datetime
 
 log = logging.getLogger('jetstream.local')
 # cjs_dir_path = "/home/avidalto/projects/2020/jetstream/jetstream-may/cjs-backend/"
@@ -78,6 +79,48 @@ def get_cloud_directive(key, task_directives, cloud_args_key='cloud_args'):
     return task_directives.get(cloud_args_key, dict()).get(key)
 
 
+def write_pre_script(az_sif_path, temp_container_name=None):
+    from datetime import datetime
+    temp_container_name = temp_container_name or datetime.now().strftime('%Y%m%d%H%M%S%f')
+    return r"""
+        singularity exec {az_sif_path} az login -u {az_username} -p "{az_password}"
+        
+        ACCOUNT_KEY=$(singularity exec {az_sif_path} az storage account keys list \
+            -g {resource_group} \
+            -n {storage_account_name} \
+            --query "[0].value" \
+            --output tsv)
+        
+        singularity exec {az_sif_path} az storage container create \
+            -n {temp_container_name} \
+            --account-name {storage_account_name} \
+            --account-key $ACCOUNT_KEY
+        
+        echo "Hello World" > /tmp/hello.txt
+        
+        singularity exec {az_sif_path} az storage blob upload \
+            --container-name {temp_container_name} \
+            --file /tmp/hello.txt \
+            --name hello.txt \
+            --account-name {storage_account_name} \
+            --account-key $ACCOUNT_KEY
+        
+        singularity exec {az_sif_path} az storage blob download \
+            --container-name {temp_container_name} \
+            --file /tmp/hello_download.txt \
+            --name hello.txt \
+            --account-name {storage_account_name} \
+            --account-key $ACCOUNT_KEY
+    """.format(
+        az_sif_path=az_sif_path,
+        az_username='dominic@parallelworks.com',
+        az_password='R3uCye(S<a2/pSr',
+        resource_group='cust-tgen',
+        storage_account_name='tgencustblob',
+        temp_container_name=temp_container_name
+    )
+
+
 class CloudSwiftBackend(BaseBackend):
     def __init__(self, pool_name=None, api_key=None, cpus=None, blocking_io_penalty=None, wrapper_frontmatter=None):
         """The LocalBackend executes tasks as processes on the local machine.
@@ -111,6 +154,10 @@ class CloudSwiftBackend(BaseBackend):
         
         # Store default config wrapper frontmatter
         self.wrapper_frontmatter = wrapper_frontmatter
+        
+        # If we need it, store a temporary name for a cloud container
+        self._container_name = 'jetstream_temp_{}'.format(datetime.now().strftime('%Y%m%d%H%M%S%f'))
+        self._container_created = False
         
         log.info(f'CloudSwiftBackend initialized with {self.cpus} cpus')
 
@@ -167,10 +214,8 @@ class CloudSwiftBackend(BaseBackend):
             with open(cmd_sh_path, 'w') as cmd_sh_out:
                 cmd_sh_out.write(cmd)
             
-            # log.info('one')
             # Container as input
             singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
-            # log.info('1')
             import urllib
             container_input = list()
             transfer_container_to_remote = get_cloud_directive('transfer_container_to_remote', task.directives)
