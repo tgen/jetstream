@@ -159,10 +159,10 @@ class SlurmBackend(BaseBackend):
             return task.complete()
 
         # sbatch breaks when called too frequently
-        time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
 
         async with self.sbatch_lock:
+            time.sleep(self.sbatch_delay)
             job = sbatch(
                 cmd=task.directives['cmd'],
                 name=task.name,
