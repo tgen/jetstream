@@ -56,7 +56,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
-        docker_image = task.directives.get( 'docker_image' )
+        docker_image = task.directives.get( 'docker_image' ).replace( "--nohttps ", "" )
         
         cpus_reserved = 0
         memory_gb_reserved = 0

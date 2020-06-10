@@ -55,7 +55,6 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         input_filenames = task.directives.get( 'input', [] )
         output_filenames = task.directives.get( 'output', [] )
         cpus = task.directives.get('cpus', 0)
-        docker_nohttps = bool( task.directives.get('docker_nohttps', False) )
         
         memory_gb_required_str = task.directives.get('mem', "0G")
         memory_gb_required_value = int( memory_gb_required_str[:-1] )
@@ -68,8 +67,11 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         docker_image = task.directives.get( 'docker_image', None )
         if docker_image == None:
             raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        singularity_image = f"docker://{docker_image}"
-        # singularity_image_filename = f'{singularity_image.split("/")[-1]}.sif'
+        docker_image_split = docker_image.split()
+        if len( docker_image_split ) > 1:
+            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        else:
+            singularity_image = f"docker://{docker_image}"
         
         cpus_reserved = 0
         memory_gb_reserved = 0
@@ -88,7 +90,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 memory_gb_required_value = self.memory_gb
             else:
                 raise RuntimeError('Task mem greater than system mem')
-        
+            
         log.debug( f'going to pull: {singularity_image}' )
         if singularity_image in self._singularity_pull_cache:
             pass
@@ -96,8 +98,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             async with self._singularity_pull_lock:
                 for i in range( self.cpus ):
                     await self._singularity_run_sem.acquire()
-                opt_https = "--nohttps " if docker_nohttps else ""
-                pull_command_run_string = f'singularity exec --cleanenv {opt_https}{singularity_image} true'
+                pull_command_run_string = f'singularity exec --cleanenv {singularity_image} true'
                 log.debug( f'pulling: {pull_command_run_string}' )
                 _p = await create_subprocess_shell( pull_command_run_string,
                                                     stdout=asyncio.subprocess.PIPE,
@@ -152,8 +153,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 singularity_image=singularity_image,
                 stdin=stdin_fp,
                 stdout=stdout_fp,
-                stderr=stderr_fp,
-                docker_nohttps=docker_nohttps
+                stderr=stderr_fp
             )
 
             task.state.update(
@@ -189,7 +189,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
     async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
                              singularity_image=None, stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
-                             loop=None, executable='/bin/bash', docker_nohttps=False): 
+                             loop=None, executable='/bin/bash' ): 
         try:
             singularity_mounts = set()
             
@@ -215,8 +215,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             run_script_filename = f"jetstream/cmd/{task_name}.bash"
             with open( run_script_filename, "w" ) as run_script:
                 run_script.write( args )
-            opt_https = "--nohttps " if docker_nohttps else ""
-            command_run_string = f"""singularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
+            command_run_string = f"""singularity exec --cleanenv --nv {singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
 
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
