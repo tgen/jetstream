@@ -181,7 +181,11 @@ class SlurmSingularityBackend(BaseBackend):
         docker_image = task.directives.get( 'docker_image', None )
         if docker_image == None:
             raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        singularity_image = f"docker://{docker_image}"
+        docker_image_split = docker_image.split()
+        if len( docker_image_split ) > 1:
+            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        else:
+            singularity_image = f"docker://{docker_image}"
         
         log.debug( f'going to pull: {singularity_image}' )
         try:
@@ -191,8 +195,7 @@ class SlurmSingularityBackend(BaseBackend):
                 async with self._singularity_pull_lock:
                     for i in range( self.max_jobs ):
                         await self._singularity_run_sem.acquire()
-                    opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-                    pull_command_run_string = f'singularity exec --cleanenv {opt_https}{singularity_image} true'
+                    pull_command_run_string = f'singularity exec --cleanenv {singularity_image} true'
                     log.debug( f'pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
@@ -584,8 +587,7 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
     for i in range( 0, len(sbatch_args), 2 ):
         sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
         
-    opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-    sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
 
     if name == None:
         name = "script"
