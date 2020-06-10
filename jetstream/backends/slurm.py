@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from asyncio import Lock
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
@@ -43,6 +44,7 @@ class SlurmBackend(BaseBackend):
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
+        self.sbatch_lock = Lock()
         self.job_monitor_max_fails = job_monitor_max_fails
         self.jobs = dict()
 
@@ -160,19 +162,20 @@ class SlurmBackend(BaseBackend):
         time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
 
-        job = sbatch(
-            cmd=task.directives['cmd'],
-            name=task.name,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            comment=self.slurm_job_comment(task),
-            cpus_per_task=task.directives.get('cpus'),
-            mem=task.directives.get('mem'),
-            walltime=task.directives.get('walltime'),
-            additional_args=task.directives.get('sbatch_args'),
-            sbatch_executable=self.sbatch_executable
-        )
+        async with self.sbatch_lock:
+            job = sbatch(
+                cmd=task.directives['cmd'],
+                name=task.name,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+                comment=self.slurm_job_comment(task),
+                cpus_per_task=task.directives.get('cpus'),
+                mem=task.directives.get('mem'),
+                walltime=task.directives.get('walltime'),
+                additional_args=task.directives.get('sbatch_args'),
+                sbatch_executable=self.sbatch_executable
+            )
 
         task.state.update(
             label=f'Slurm({job.jid})',

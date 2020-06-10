@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import pathlib
+import random
 import re
 import shlex
 import shutil
@@ -32,7 +33,7 @@ class SlurmSingularityBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, sacct_frequency=5, sbatch_delay=0.1,
+    def __init__(self, sacct_frequency=5, sbatch_delay=1.0,
                  sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
                  job_monitor_max_fails=5):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
@@ -46,6 +47,7 @@ class SlurmSingularityBackend(BaseBackend):
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
+        self.sbatch_lock = Lock()
         self.job_monitor_max_fails = job_monitor_max_fails
         self.jobs = dict()
 
@@ -187,7 +189,7 @@ class SlurmSingularityBackend(BaseBackend):
         else:
             singularity_image = f"docker://{docker_image}"
         
-        log.debug( f'going to pull: {singularity_image}' )
+        log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
         try:
             if singularity_image in self._singularity_pull_cache:
                 pass
@@ -196,13 +198,13 @@ class SlurmSingularityBackend(BaseBackend):
                     for i in range( self.max_jobs ):
                         await self._singularity_run_sem.acquire()
                     pull_command_run_string = f'singularity exec --cleanenv {singularity_image} true'
-                    log.debug( f'pulling: {pull_command_run_string}' )
+                    log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.PIPE )
                     _stdout, _stderr = await _p.communicate()
-                    log.debug( f'pulled, stdout: {_stdout}' )
-                    log.debug( f'pulled, stderr: {_stderr}' )
+                    log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
+                    log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
                     self._singularity_pull_cache[ singularity_image ] = singularity_image
                     for i in range( self.max_jobs ):
                          self._singularity_run_sem.release()
@@ -210,26 +212,27 @@ class SlurmSingularityBackend(BaseBackend):
             log.warning(f'Exception during singularity prepull: {e}')
             p = await create_subprocess_shell( "exit 1;" )
 
-
-        log.debug( f'pulled: {singularity_image}' )
+        log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
-        job = await sbatch(
-            cmd=task.directives['cmd'],
-            singularity_image=singularity_image,
-            singularity_run_sem=self._singularity_run_sem,
-            name=task.name,
-            input_filenames=input_filenames,
-            output_filenames=output_filenames,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            comment=self.slurm_job_comment(task),
-            cpus_per_task=task.directives.get('cpus'),
-            mem=task.directives.get('mem'),
-            walltime=task.directives.get('walltime'),
-            additional_args=task.directives.get('sbatch_args'),
-            sbatch_executable=self.sbatch_executable
-        )
+        async with self.sbatch_lock:
+            time.sleep(self.sbatch_delay)
+            job = await sbatch(
+                cmd=task.directives['cmd'],
+                singularity_image=singularity_image,
+                singularity_run_sem=self._singularity_run_sem,
+                name=task.name,
+                input_filenames=input_filenames,
+                output_filenames=output_filenames,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+                comment=self.slurm_job_comment(task),
+                cpus_per_task=task.directives.get('cpus'),
+                mem=task.directives.get('mem'),
+                walltime=task.directives.get('walltime'),
+                additional_args=task.directives.get('sbatch_args'),
+                sbatch_executable=self.sbatch_executable
+            )
 
         task.state.update(
             label=f'Slurm({job.jid})',
@@ -251,6 +254,7 @@ class SlurmSingularityBackend(BaseBackend):
         if self.sacct_fields:
             job_info = {k: v for k, v in job.job_data.items() if
                         k in self.sacct_fields}
+            log.debug(f'{task.name} job.job_data: {job.job_data}')
             task.state['slurm_sacct'] = job_info
 
         if job.is_ok():
@@ -595,20 +599,6 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
     sbatch_script_filename = os.path.abspath( sbatch_script_filename )
     with open( sbatch_script_filename, "w" ) as sbatch_script_file:
         sbatch_script_file.write( sbatch_script )
-        
-    # command_run_string = f"""singularity exec --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {run_script_filename}"""
-    # script = '#!/bin/bash\n{}'.format(command_run_string)
-
-    # create sbatch script
-    # opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-    # run_singularity_script = """#!/bin/bash\nsingularity exec --nv {opt_https}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}"""
-    # 
-    # temp = tempfile.NamedTemporaryFile()
-    # with open(temp.name, 'w') as fp:
-    #     fp.write(run_singularity_script)
-    #     
-    # args.append(command_run_string)
-    # args = [str(r) for r in args]
     
     submit_sbatch_args = [ "sbatch", f"{sbatch_script_filename}" ]
     
