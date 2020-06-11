@@ -8,9 +8,9 @@ class CloudStorageSession(ABC):
         )
         self._container_created = False
     
-    @abstractmethod
-    def provider_login(self, *args):
-        raise NotImplementedError
+    # @abstractmethod
+    # def provider_login(self, *args):
+    #     raise NotImplementedError
     
     @abstractmethod
     def upload_blob(self, filepath, blobpath=None, container=None):

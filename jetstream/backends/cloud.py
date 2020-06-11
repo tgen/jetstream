@@ -2,6 +2,7 @@ import logging
 import asyncio
 import jetstream
 from jetstream.backends import BaseBackend
+from ..cloud.azure import AzureStorageSession
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 import os
 import sys
@@ -79,50 +80,9 @@ def get_cloud_directive(key, task_directives, cloud_args_key='cloud_args'):
     return task_directives.get(cloud_args_key, dict()).get(key)
 
 
-def write_pre_script(az_sif_path, temp_container_name=None):
-    from datetime import datetime
-    temp_container_name = temp_container_name or datetime.now().strftime('%Y%m%d%H%M%S%f')
-    return r"""
-        singularity exec {az_sif_path} az login -u {az_username} -p "{az_password}"
-        
-        ACCOUNT_KEY=$(singularity exec {az_sif_path} az storage account keys list \
-            -g {resource_group} \
-            -n {storage_account_name} \
-            --query "[0].value" \
-            --output tsv)
-        
-        singularity exec {az_sif_path} az storage container create \
-            -n {temp_container_name} \
-            --account-name {storage_account_name} \
-            --account-key $ACCOUNT_KEY
-        
-        echo "Hello World" > /tmp/hello.txt
-        
-        singularity exec {az_sif_path} az storage blob upload \
-            --container-name {temp_container_name} \
-            --file /tmp/hello.txt \
-            --name hello.txt \
-            --account-name {storage_account_name} \
-            --account-key $ACCOUNT_KEY
-        
-        singularity exec {az_sif_path} az storage blob download \
-            --container-name {temp_container_name} \
-            --file /tmp/hello_download.txt \
-            --name hello.txt \
-            --account-name {storage_account_name} \
-            --account-key $ACCOUNT_KEY
-    """.format(
-        az_sif_path=az_sif_path,
-        az_username='dominic@parallelworks.com',
-        az_password='R3uCye(S<a2/pSr',
-        resource_group='cust-tgen',
-        storage_account_name='tgencustblob',
-        temp_container_name=temp_container_name
-    )
-
-
 class CloudSwiftBackend(BaseBackend):
-    def __init__(self, pool_name=None, api_key=None, cpus=None, blocking_io_penalty=None, wrapper_frontmatter=None):
+    def __init__(self, pool_name=None, api_key=None, cpus=None, blocking_io_penalty=None, wrapper_frontmatter=None,
+                 **kwargs):
         """The LocalBackend executes tasks as processes on the local machine.
 
         This contains a semaphore that limits tasks by the number of cpus
@@ -156,8 +116,9 @@ class CloudSwiftBackend(BaseBackend):
         self.wrapper_frontmatter = wrapper_frontmatter
         
         # If we need it, store a temporary name for a cloud container
-        self._container_name = 'jetstream_temp_{}'.format(datetime.now().strftime('%Y%m%d%H%M%S%f'))
-        self._container_created = False
+        self.cloud_storage = AzureStorageSession(
+            **kwargs['azure_params']
+        )
         
         log.info(f'CloudSwiftBackend initialized with {self.cpus} cpus')
 
@@ -213,6 +174,31 @@ class CloudSwiftBackend(BaseBackend):
             cmd_sh_path = os.path.join(self.cloud_scripts_dir, './{}.sh'.format(task.name))
             with open(cmd_sh_path, 'w') as cmd_sh_out:
                 cmd_sh_out.write(cmd)
+            
+            
+            
+            
+            # Upload inputs into the container
+            log.info('Making call to input data into the cloud')
+            blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
+            
+            
+            # Download data from container into the remote worker
+            log.info('Creating download sh')
+            download_sh = self.cloud_storage.download_blobs_as_bash(
+                blobs=[os.path.basename(t) for t in task.directives['input']],
+                output_paths=[path_conversion(t) for t in task.directives['input']]
+            )
+            download_sh_path = os.path.join(self.cloud_scripts_dir, './{}_download.sh'.format(task.name))
+            with open(download_sh_path, 'w') as download_sh_out:
+                download_sh_out.write(download_sh)
+            
+            
+            # Upload resulting output data to the container
+            
+            
+            
+            
             
             # Container as input
             singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
@@ -303,6 +289,9 @@ class CloudSwiftBackend(BaseBackend):
         except CancelledError:
             task.state['err'] = 'Runner cancelled Backend.spawn()'
             return task.fail(-15)
+        except Exception as e:
+            log.error('Exception: {}'.format(e))
+            raise
         finally:
             for fp in open_fps:
                 fp.close()
@@ -448,8 +437,50 @@ def map_stage_out(rpath, lwd = None):
     return "{} <- {}".format(lpath, rpath)
 
 
+def dummy_dot_in_path(path):
+    return '.' in path.split(os.path.sep)
+        
+
+def path_conversion(path):
+    if dummy_dot_in_path(path):
+        # local: /absolute/path/./to/file ----> remote: current/dir/to/file
+        # local: relative/path/./to/file ----> remote: current/dir/to/file
+        # local: current/dir/to/file <---- remote: /absolute/path/./to/file
+        # local: current/dir/to/file <---- remote: relative/path/./to/file
+        return path.rsplit('{0}.{0}'.format(os.path.sep))[-1]
+    
+    if os.path.isabs(path):
+        # local: /absolute/path/to/file ----> remote: /absolute/path/to/file
+        # local: /absolute/path/to/file <---- remote: /absolute/path/to/file
+        return path
+    
+    # local: relative/path/to/file ----> remote: current/dir/file
+    # local: current/dir/file <---- remote: relative/path/to/file
+    return path.split(os.path.sep)[-1]
+        
+
+def blob_inputs_to_remote(inputs, cloud_storage, container=None):
+    # log.info('Got inputs: {}'.format(inputs))
+    # cloud_storage.upload_blob('./temp/fastqs/GIAB_NA12878_1_CL_Whole_C1_TPFWG_K18088_SUPERFQS02_NoIndex_L002_R2_001.small.fastq.gz', force=True)
+    for input_file in inputs:
+        # log.info('Loading {} into the cloud'.format(input_file))
+        cloud_storage.upload_blob(input_file)
+    # For each input, needs to get into a container first
+    # Then downloaded from container
+    
+
+def blob_outputs_to_local():
+    pass
+    
+
+def construct_cjs_cmd2(main_cmd, service_url, inputs=None, outputs=None, cloud_downloads=None, cloud_uploads=None,
+                       stdout=None, stderr=None, redirected=False, rwd=None):
+    pass
+    
+
+
 def construct_cjs_cmd(cmd, service_url, inputs=None, outputs=None, wrapper_frontmatter=None, stdout=None, stderr=None,
-                      redirected=False, rwd=None):
+                      redirected=False, rwd=None, pre_cmd=None, post_cmd=None):
     rwd = rwd or '/tmp/pworks/{}'.format(str(randint(0, 99999)).zfill(5))
     inputs = inputs or list()
     outputs = outputs or list()
@@ -469,14 +500,16 @@ def construct_cjs_cmd(cmd, service_url, inputs=None, outputs=None, wrapper_front
     
     return (
         'cog-job-submit -provider "coaster-persistent" -attributes "maxWallTime=240:00:00" '
-        '{std} -service-contact "{service_url}"{input_maps}{output_maps} -directory "{rwd}" '
-        '/bin/bash -c "{wrapper_frontmatter};mkdir -p {rwd};cd {rwd}; {cmd}"'
+        '{std} -service-contact "{service_url}"{input_maps} -directory "{rwd}" '
+        '/bin/bash -c "{wrapper_frontmatter};mkdir -p {rwd};cd {rwd};{pre_cmd}{cmd};{post_cmd}"'
     ).format(
         std=std,
         service_url=service_url,
         input_maps=input_maps,
-        output_maps=output_maps,
+        # output_maps=output_maps,
         wrapper_frontmatter=wrapper_frontmatter.strip('; '),
         rwd=rwd,
-        cmd=cmd
+        cmd=cmd,
+        pre_cmd=pre_cmd.rstrip(';') + ';' if pre_cmd is not None else '',
+        post_cmd=post_cmd.rstrip(';') + ';' if post_cmd is not None else ''
     )

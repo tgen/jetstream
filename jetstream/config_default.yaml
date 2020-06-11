@@ -94,6 +94,10 @@ backends:
     pool_name: azurepool
     api_key: 649cec38be4772725c5c06d4b0e4d494
     wrapper_frontmatter: 'export PATH=$PATH:/home/dominic/.conda/bin'
+    azure_params:
+      az_sif_path: '/home/dominic/azure-cli_latest.sif'
+      az_storage_account_name: 'tgencustblob'
+      az_storage_account_key: 'uTXaM7dvtHuewxwvVskX7gf8VQXY5u7stsxaOmLBfBmJD3xKkh4tFq8GcXmVPf/fA6JKzUaeNpppPRwU13bZmg=='
   cloud_parsl:
     (): jetstream.backends.cloud.CloudParslBackend
 
