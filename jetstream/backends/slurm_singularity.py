@@ -33,7 +33,7 @@ class SlurmSingularityBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, sacct_frequency=5, sbatch_delay=1.0,
+    def __init__(self, sacct_frequency=5, sbatch_delay=0.5,
                  sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
                  job_monitor_max_fails=5):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
