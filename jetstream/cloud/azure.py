@@ -89,14 +89,18 @@ class AzureStorageSession(CloudStorageSession):
         # If blob path on the container isn't given, make it the same as the filepath
         blobpath = blobpath or os.path.basename(filepath)
         
+        print(f'{interaction.capitalize()}ing file {filepath}')
+        
+        # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
         cmd = (f"""
-            singularity exec {self.az_sif_path} az storage blob {interaction} 
+            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob {interaction} 
                 --container-name {container} 
                 --file {filepath} 
                 --name {blobpath} 
                 --account-name {self.storage_account_name} 
-                --account-key {self.storage_account_key}
+                --account-key {self.storage_account_key} 
         """).split()
+        print('###### {}'.format(' '.join(cmd)))
         subprocess.check_output(cmd)
     
     def upload_blob(self, filepath, blobpath=None, container=None, force=False):

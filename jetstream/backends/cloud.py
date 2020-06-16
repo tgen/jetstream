@@ -17,6 +17,8 @@ import glob
 import subprocess
 import re
 from datetime import datetime
+import urllib
+import uuid
 
 log = logging.getLogger('jetstream.local')
 # cjs_dir_path = "/home/avidalto/projects/2020/jetstream/jetstream-may/cjs-backend/"
@@ -117,8 +119,10 @@ class CloudSwiftBackend(BaseBackend):
         
         # If we need it, store a temporary name for a cloud container
         self.cloud_storage = AzureStorageSession(
-            **kwargs['azure_params']
+            **kwargs['azure_params'],
+            create_temp_container=False
         )
+        self.cloud_storage._temp_container_name = 'test'
         
         log.info(f'CloudSwiftBackend initialized with {self.cpus} cpus')
 
@@ -136,9 +140,7 @@ class CloudSwiftBackend(BaseBackend):
         if 'cmd' not in task.directives:
             return task.complete()
         
-        # To prevent shell from replacing the command locally
-        cmd = task.directives['cmd'] #.replace("$","\$")
-        # }
+        cmd = task.directives['cmd'] 
         cpus = task.directives.get('cpus', 0)
         cpus_reserved = 0
         open_fps = list()
@@ -148,132 +150,66 @@ class CloudSwiftBackend(BaseBackend):
             raise RuntimeError(
                 'Task cpus ({}) greater than available cpus ({}) in worker'.format(cpus, self.pool_info['cpus'])
             )
+        
         try:
-            stdin, stdout, stderr = self.get_fd_paths(task)
-
-            if stdin:
-                stdin_fp = open(stdin, 'r')
-                open_fps.append(stdin_fp)
-            else:
-                stdin_fp = None
-
-            if stdout:
-                stdout_fp = open(stdout, 'w')
-                open_fps.append(stdout_fp)
-            else:
-                stdout_fp = None
-
-            if stderr:
-                stderr_fp = open(stderr, 'w')
-                open_fps.append(stderr_fp)
-            else:
-                stderr_fp = None
-                
-            # Write out script to send to the cloud
-            log.debug('Writing cloud script for {}'.format(task.name))
-            cmd_sh_path = os.path.join(self.cloud_scripts_dir, './{}.sh'.format(task.name))
-            with open(cmd_sh_path, 'w') as cmd_sh_out:
-                cmd_sh_out.write(cmd)
+            # Get file descriptor paths and file pointers for this task
+            fd_paths = {
+                fd_name: fd
+                for fd_name, fd in zip(('stdin', 'stdout', 'stderr'), self.get_fd_paths(task))
+            }
+            fd_filepointers = {
+                fd_name: open(fd, fd_mode) if fd else None
+                for fd_mode, (fd_name, fd) in zip(('r', 'w', 'w'), fd_paths.items())
+            }
             
-            
-            
-            
-            # Upload inputs into the container
+            # Upload data inputs into cloud storage
             log.info('Making call to input data into the cloud')
             blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
             
+            # Upload reference inputs into cloud storage
+            reference_inputs = parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
+            blob_inputs_to_remote(reference_inputs, self.cloud_storage, blob_basename=True)        
             
-            # Download data from container into the remote worker
-            log.info('Creating download sh')
-            download_sh = self.cloud_storage.download_blobs_as_bash(
-                blobs=[os.path.basename(t) for t in task.directives['input']],
-                output_paths=[path_conversion(t) for t in task.directives['input']]
-            )
-            download_sh_path = os.path.join(self.cloud_scripts_dir, './{}_download.sh'.format(task.name))
-            with open(download_sh_path, 'w') as download_sh_out:
-                download_sh_out.write(download_sh)
-            
-            
-            # Upload resulting output data to the container
-            
-            
-            
-            
-            
-            # Container as input
+            # If the user provides a non-URL path to a container and explicitly says it should be transfer,
+            # then consider it similar to reference data and upload it to cloud storage
             singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
-            import urllib
-            container_input = list()
-            transfer_container_to_remote = get_cloud_directive('transfer_container_to_remote', task.directives)
-            if (
-                singularity_container_uri is not None
-                and not urllib.parse.urlparse(singularity_container_uri).scheme
-                and transfer_container_to_remote
-            ):
-                container_input = [singularity_container_uri]
-                
-            
-            # Stitch together all cog-job-submit inputs
-            cjs_inputs = (
-                task.directives['input']
-                + expand_regex_path(task.directives['input-re'])
-                + parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
-                + container_input
-                + [cmd_sh_path]
-            )
-            # log.info('three')
-            
-            # Get front matter from both the default config and the task itself
-            wrapper_frontmatter = '{config_frontmatter};{directive_frontmatter}'.format(
-                config_frontmatter=self.wrapper_frontmatter or '',
-                directive_frontmatter=task.directives.get('cloud_args', dict()).get('wrapper_frontmatter', '')
-            )
-            
-            # Construct cog-job-submit command
-            # singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
-            # singularity exec --cleanenv --nv {opt_https}{singularity_mounts_string} 
-            #{self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}
-            remote_cmd = (
-                'bash {}.sh'.format(task.name) if singularity_container_uri is None
-                else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh'.format(
-                    container_uri=singularity_container_uri,
-                    task_name=task.name
+            container_input = (
+                [singularity_container_uri]
+                if (
+                    singularity_container_uri is not None
+                    and not urllib.parse.urlparse(singularity_container_uri).scheme
+                    and get_cloud_directive('transfer_container_to_remote', task.directives)
                 )
+                else list()
             )
+            blob_inputs_to_remote(container_input, self.cloud_storage)
+
+            # Construct the cog-job-submit command for execution
             cjs_cmd = construct_cjs_cmd(
-                cmd=remote_cmd,
+                task_body=cmd,
                 service_url='http://beta.parallel.works:{}'.format(self.pool_info['serviceport']),
-                inputs=cjs_inputs,
-                outputs=task.directives["output"],
-                wrapper_frontmatter=wrapper_frontmatter
+                cjs_stagein=None,
+                cjs_stageout=None,
+                cloud_downloads=task.directives['input'] + reference_inputs + container_input,
+                cloud_uploads=task.directives['output'],
+                account_name=self.cloud_storage.storage_account_name,
+                account_key=self.cloud_storage.storage_account_key,
+                cloud_scripts_dir=self.cloud_scripts_dir,
+                container=self.cloud_storage._temp_container_name,
+                singularity_container_uri=singularity_container_uri,
+                task_name=task.name
             )
-            
-            # Write out cog-job-submit commands to a log for debug purposes
-            stagein = re.search(r'-stagein "(.*)" -stageout', cjs_cmd).group(1)
-            stageout = re.search(r'-stageout "(.*)" -directory', cjs_cmd).group(1)
-            with open('cjs_cmds_debug.log', 'a') as cjs_log:
-                cjs_log.write('===={}====\n'.format(task.name))
-                cjs_log.write('{}\n'.format(cjs_cmd))
-                cjs_log.write('> stagein\n')
-                for t in stagein.split(':'):
-                    cjs_log.write('{}\n'.format(t.strip()))
-                cjs_log.write('> stageout\n')
-                for t in stageout.split(':'):
-                    cjs_log.write('{}\n'.format(t.strip()))
-                cjs_log.write('\n')
             
             # Async submit as a subprocess
             p = await self.subprocess_sh(
                 cjs_cmd,
-                stdin=stdin_fp,
-                stdout=stdout_fp,
-                stderr=stderr_fp
+                **fd_filepointers
             )
 
             # Once command is executed, update task with some process metadata
             task.state.update(
-                stdout_path=stdout,
-                stderr_path=stderr,
+                stdout_path=fd_paths['stdout'],
+                stderr_path=fd_paths['stderr'],
                 label=f'CloudSwift({p.pid})',
             )
 
@@ -284,6 +220,8 @@ class CloudSwiftBackend(BaseBackend):
                 log.info(f'Failed: {task.name}')
                 return task.fail(p.returncode)
             else:
+                # Download completed data files from cloud storage
+                blob_outputs_to_local(task.directives['output'], self.cloud_storage)
                 log.info(f'Complete: {task.name}')
                 return task.complete(p.returncode)
         except CancelledError:
@@ -291,10 +229,13 @@ class CloudSwiftBackend(BaseBackend):
             return task.fail(-15)
         except Exception as e:
             log.error('Exception: {}'.format(e))
+            import traceback
+            traceback.print_exc()
             raise
         finally:
-            for fp in open_fps:
-                fp.close()
+            for fp in fd_filepointers.values():
+                if fp is not None:
+                    fp.close()
 
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
@@ -447,7 +388,7 @@ def path_conversion(path):
         # local: relative/path/./to/file ----> remote: current/dir/to/file
         # local: current/dir/to/file <---- remote: /absolute/path/./to/file
         # local: current/dir/to/file <---- remote: relative/path/./to/file
-        return path.rsplit('{0}.{0}'.format(os.path.sep))[-1]
+        return path.rsplit(f'.{os.path.sep}')[-1]
     
     if os.path.isabs(path):
         # local: /absolute/path/to/file ----> remote: /absolute/path/to/file
@@ -459,57 +400,126 @@ def path_conversion(path):
     return path.split(os.path.sep)[-1]
         
 
-def blob_inputs_to_remote(inputs, cloud_storage, container=None):
-    # log.info('Got inputs: {}'.format(inputs))
-    # cloud_storage.upload_blob('./temp/fastqs/GIAB_NA12878_1_CL_Whole_C1_TPFWG_K18088_SUPERFQS02_NoIndex_L002_R2_001.small.fastq.gz', force=True)
+def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_basename=False):
     for input_file in inputs:
-        # log.info('Loading {} into the cloud'.format(input_file))
-        cloud_storage.upload_blob(input_file)
-    # For each input, needs to get into a container first
-    # Then downloaded from container
+        cloud_storage.upload_blob(
+            input_file,
+            blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
+        )
     
 
-def blob_outputs_to_local():
-    pass
+def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=False):
+    for output_file in outputs:
+        try:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            cloud_storage.download_blob(
+                output_file,
+                blobpath=os.path.basename(output_file) if blob_basename else path_conversion(output_file)
+            )
+        except Exception as e:
+            log.info(f'Error in download: {e}')
     
 
-def construct_cjs_cmd2(main_cmd, service_url, inputs=None, outputs=None, cloud_downloads=None, cloud_uploads=None,
-                       stdout=None, stderr=None, redirected=False, rwd=None):
-    pass
-    
-
-
-def construct_cjs_cmd(cmd, service_url, inputs=None, outputs=None, wrapper_frontmatter=None, stdout=None, stderr=None,
-                      redirected=False, rwd=None, pre_cmd=None, post_cmd=None):
+def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=None, cloud_downloads=None, cloud_uploads=None,
+                       stdout=None, stderr=None, redirected=False, rwd=None, container='temp', account_name='', account_key='',
+                       cloud_scripts_dir='', task_name='', singularity_container_uri=None):
+    """
+    cloud_downloads will be a blob path
+    cloud_uploads will be remote paths, but put on cloud storage with the full relative path as the name
+    """
     rwd = rwd or '/tmp/pworks/{}'.format(str(randint(0, 99999)).zfill(5))
-    inputs = inputs or list()
-    outputs = outputs or list()
     
-    input_maps = ' : '.join([map_stage_in(inp, rwd) for inp in inputs])
+    # Create script to download data inputs onto the remote node
+    cloud_download_cmd_template = (
+        'if [[ ! -f "{blobpath}" ]];then mkdir -p {blobpath_dirname}; '
+        'singularity exec {az_sif_path} az storage blob download --name {blobpath} --file {blobpath} '
+        '--container-name {container_name} --account-name {account_name} --account-key {account_key};fi\n'
+    )
+    cloud_download_cmd = ''
+    for cloud_download in cloud_downloads or list():
+        cloud_download = path_conversion(cloud_download)
+        cloud_download_cmd += cloud_download_cmd_template.format(
+            blobpath=cloud_download,
+            blobpath_dirname=os.path.dirname(cloud_download),
+            az_sif_path='docker://mcr.microsoft.com/azure-cli',
+            container_name=container,
+            account_name=account_name,
+            account_key=account_key
+        )
+    cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', 'cloud_download_{}.sh'.format(str(uuid.uuid4())[:8]))
+    with open(cloud_download_sh_path, 'w') as down_out:
+        down_out.write(cloud_download_cmd)
+    
+    # Create script to upload data outputs from the remote node into cloud storage
+    cloud_upload_cmd_template = (
+        'singularity exec {az_sif_path} az storage blob upload --name {blobpath} --file {blobpath} '
+        '--container-name {container_name} --account-name {account_name} --account-key {account_key};\n'
+    )
+    cloud_upload_cmd = ''
+    for cloud_upload in cloud_uploads or list():
+        cloud_upload = path_conversion(cloud_upload)
+        cloud_upload_cmd += cloud_upload_cmd_template.format(
+            blobpath=cloud_upload,
+            blobpath_dirname=os.path.dirname(cloud_upload),
+            az_sif_path='docker://mcr.microsoft.com/azure-cli',
+            container_name=container,
+            account_name=account_name,
+            account_key=account_key
+        )
+    cloud_upload_sh_path = os.path.join(cloud_scripts_dir, '.', 'cloud_upload_{}.sh'.format(str(uuid.uuid4())[:8]))
+    with open(cloud_upload_sh_path, 'w') as up_out:
+        up_out.write(cloud_upload_cmd)
+    
+    # Create script to run the main task body
+    log.debug('Writing cloud script for {}'.format(task_name))
+    cmd_sh_path = os.path.join(cloud_scripts_dir, './{}.sh'.format(task_name))
+    with open(cmd_sh_path, 'w') as cmd_sh_out:
+        cmd_sh_out.write(task_body)
+        
+    # Append the three above scripts to stagein list
+    cjs_stagein = cjs_stagein or list()
+    cjs_stagein.append(cloud_download_sh_path)
+    cjs_stagein.append(cloud_upload_sh_path)
+    cjs_stagein.append(cmd_sh_path)
+    
+    # Fill template for stagein and stageout arguments
+    input_maps = ' : '.join([map_stage_in(inp, rwd) for inp in (cjs_stagein or list())])
     if input_maps:
         input_maps = ' -stagein "{}"'.format(input_maps)
-    output_maps = ' : '.join([map_stage_out(outp) for outp in outputs])
+    output_maps = ' : '.join([map_stage_out(outp) for outp in (cjs_stageout or list())])
     if output_maps:
         output_maps = ' -stageout "{}"'.format(output_maps)
     
+    # Fill in template for redirected, stdout, stderr arguments
     std = '{redirected} {stdout} {stderr}'.format(
         redirected='-redirected' if redirected else '',
         stdout=' -stdout "{}"'.format(stdout) if stdout is not None else '',
         stderr=' -stderr "{}"'.format(stderr) if stderr is not None else ''
     )
     
+    # Fill in template to execute bash scripts on the worker node
+    task_body_cmd = (
+        'bash {}.sh'.format(task_name) if singularity_container_uri is None
+        else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh'.format(
+            container_uri=singularity_container_uri,
+            task_name=task_name
+        )
+    )
+    cloud_download_cmd = 'bash {};'.format(os.path.basename(cloud_download_sh_path))
+    cloud_upload_cmd = 'bash {};'.format(os.path.basename(cloud_upload_sh_path))
+    
+    # Fill in template for complete cog-job-submit command
     return (
         'cog-job-submit -provider "coaster-persistent" -attributes "maxWallTime=240:00:00" '
-        '{std} -service-contact "{service_url}"{input_maps} -directory "{rwd}" '
-        '/bin/bash -c "{wrapper_frontmatter};mkdir -p {rwd};cd {rwd};{pre_cmd}{cmd};{post_cmd}"'
+        '{std} -service-contact "{service_url}"{input_maps}{output_maps} -directory "{rwd}" '
+        '/bin/bash -c "mkdir -p {rwd};cd {rwd};{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
     ).format(
         std=std,
         service_url=service_url,
         input_maps=input_maps,
-        # output_maps=output_maps,
-        wrapper_frontmatter=wrapper_frontmatter.strip('; '),
+        output_maps=output_maps,
         rwd=rwd,
-        cmd=cmd,
-        pre_cmd=pre_cmd.rstrip(';') + ';' if pre_cmd is not None else '',
-        post_cmd=post_cmd.rstrip(';') + ';' if post_cmd is not None else ''
+        cmd=task_body_cmd,
+        cloud_download_cmd=cloud_download_cmd,
+        cloud_upload_cmd=cloud_upload_cmd
     )
