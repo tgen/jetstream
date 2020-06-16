@@ -100,7 +100,6 @@ class AzureStorageSession(CloudStorageSession):
                 --account-name {self.storage_account_name} 
                 --account-key {self.storage_account_key} 
         """).split()
-        print('###### {}'.format(' '.join(cmd)))
         subprocess.check_output(cmd)
     
     def upload_blob(self, filepath, blobpath=None, container=None, force=False):
