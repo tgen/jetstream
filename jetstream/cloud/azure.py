@@ -83,7 +83,7 @@ class AzureStorageSession(CloudStorageSession):
             response = json.loads(subprocess.check_output(cmd).decode())
             self._container_created = response['created']
     
-    def _blob_container_interact(self, interaction, filepath, blobpath=None, container=None):
+    async def _blob_container_interact(self, interaction, filepath, blobpath=None, container=None):
         container = container or self._temp_container_name
         
         # If blob path on the container isn't given, make it the same as the filepath
@@ -100,9 +100,13 @@ class AzureStorageSession(CloudStorageSession):
                 --account-name {self.storage_account_name} 
                 --account-key {self.storage_account_key} 
         """).split()
-        subprocess.check_output(cmd)
+        # print(f'called: {cmd}')
+        # await self.subprocess_sh(cmd)
+        await self.subprocess_sh(' '.join(cmd))
+        # print('finished')
+        # subprocess.check_output(cmd)
     
-    def upload_blob(self, filepath, blobpath=None, container=None, force=False):
+    async def upload_blob(self, filepath, blobpath=None, container=None, force=False):
         if not self.storage_account_key:
             self._no_storage_account_key()
         
@@ -120,18 +124,18 @@ class AzureStorageSession(CloudStorageSession):
                 print(f'Blob {blobpath} already exists')
                 return
             
-        self._blob_container_interact(
+        await self._blob_container_interact(
             interaction='upload',
             filepath=filepath,
             blobpath=blobpath,
             container=container
         )
         
-    def download_blob(self, filepath, blobpath=None, container=None):
+    async def download_blob(self, filepath, blobpath=None, container=None):
         if not self.storage_account_key:
             self._no_storage_account_key()
         
-        self._blob_container_interact(
+        await self._blob_container_interact(
             interaction='download',
             filepath=filepath,
             blobpath=blobpath,

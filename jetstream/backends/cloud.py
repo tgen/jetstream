@@ -19,6 +19,8 @@ import re
 from datetime import datetime
 import urllib
 import uuid
+import yaml
+import time
 
 log = logging.getLogger('jetstream.local')
 # cjs_dir_path = "/home/avidalto/projects/2020/jetstream/jetstream-may/cjs-backend/"
@@ -34,8 +36,8 @@ def get_pool_info(pool_name, api_key, pworks_url="http://beta.parallel.works"):
                 'serviceport': pool_data['info']['ports']['serviceport'],
                 'controlport': pool_data['info']['ports']['controlport'],
                 'maxworkers': int(pool_data['settings']['max']),
-                # 'cpus': int(pool_data['info']['cpuPerWorker']) // 2   This is temporary
-                'cpus': 8
+                'cpus': int(pool_data['info']['cpuPerWorker']) // pool_data['settings']['jobsPerNode']  # This is temporary
+                # 'cpus': 8
             }
 
 
@@ -120,9 +122,12 @@ class CloudSwiftBackend(BaseBackend):
         # If we need it, store a temporary name for a cloud container
         self.cloud_storage = AzureStorageSession(
             **kwargs['azure_params'],
-            create_temp_container=False
+            create_temp_container=True
         )
-        self.cloud_storage._temp_container_name = 'test'
+        # self.cloud_storage._temp_container_name = 'test'
+        
+        # Initialize cloud metrics log
+        CloudMetricsLogger.init(at=os.path.join(self.project_dir, 'cloud_metrics_{}.yaml'.format(datetime.now().strftime('%Y%m%d%H%M%S'))))
         
         log.info(f'CloudSwiftBackend initialized with {self.cpus} cpus')
 
@@ -151,6 +156,8 @@ class CloudSwiftBackend(BaseBackend):
                 'Task cpus ({}) greater than available cpus ({}) in worker'.format(cpus, self.pool_info['cpus'])
             )
         
+        start_time = datetime.now()
+        bytes_sent_bundle, bytes_received_bundle = list(), list()
         try:
             # Get file descriptor paths and file pointers for this task
             fd_paths = {
@@ -163,12 +170,11 @@ class CloudSwiftBackend(BaseBackend):
             }
             
             # Upload data inputs into cloud storage
-            log.info('Making call to input data into the cloud')
-            blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
+            data_metrics = await blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
             
             # Upload reference inputs into cloud storage
             reference_inputs = parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
-            blob_inputs_to_remote(reference_inputs, self.cloud_storage, blob_basename=True)        
+            ref_metrics = await blob_inputs_to_remote(reference_inputs, self.cloud_storage, blob_basename=True)        
             
             # If the user provides a non-URL path to a container and explicitly says it should be transfer,
             # then consider it similar to reference data and upload it to cloud storage
@@ -182,7 +188,17 @@ class CloudSwiftBackend(BaseBackend):
                 )
                 else list()
             )
-            blob_inputs_to_remote(container_input, self.cloud_storage)
+            container_metrics = await blob_inputs_to_remote(container_input, self.cloud_storage)
+            
+            # Log metrics for input data
+            total_input_metrics = data_metrics + ref_metrics + container_metrics
+            for m in total_input_metrics:
+                bytes_sent_bundle.append(m)
+            bytes_sent_bundle.append({
+                'name': 'total',
+                'size': sum([max(0, t['size']) for t in total_input_metrics]),
+                'time': sum([max(0, t['time']) for t in total_input_metrics])
+            })
 
             # Construct the cog-job-submit command for execution
             cjs_cmd = construct_cjs_cmd(
@@ -199,6 +215,7 @@ class CloudSwiftBackend(BaseBackend):
                 singularity_container_uri=singularity_container_uri,
                 task_name=task.name
             )
+            log.debug(cjs_cmd)
             
             # Async submit as a subprocess
             p = await self.subprocess_sh(
@@ -221,8 +238,18 @@ class CloudSwiftBackend(BaseBackend):
                 return task.fail(p.returncode)
             else:
                 # Download completed data files from cloud storage
-                blob_outputs_to_local(task.directives['output'], self.cloud_storage)
+                output_metrics = await blob_outputs_to_local(task.directives['output'], self.cloud_storage)
                 log.info(f'Complete: {task.name}')
+                
+                # Log metrics for output data
+                for m in output_metrics:
+                    bytes_received_bundle.append(m)
+                bytes_received_bundle.append({
+                    'name': 'total',
+                    'size': sum([max(0, t['size']) for t in output_metrics]),
+                    'time': sum([max(0, t['time']) for t in output_metrics])
+                })
+                
                 return task.complete(p.returncode)
         except CancelledError:
             task.state['err'] = 'Runner cancelled Backend.spawn()'
@@ -239,6 +266,25 @@ class CloudSwiftBackend(BaseBackend):
 
             for i in range(cpus_reserved):
                 self._cpu_sem.release()
+            
+            # Get task runtime and which node it ran on
+            elapsed_time = datetime.now() - start_time
+            with open(f'.{task.name}.hostname', 'r') as hostname_log:
+                hostname = hostname_log.read().strip()
+            try:
+                os.remove(f'.{task.name}.hostname')
+            except:
+                pass  # Fail silently
+            
+            CloudMetricsLogger.write_record({
+                'task': task.name,
+                'start_datetime': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'elapsed_time': str(elapsed_time),
+                'end_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'in_files': bytes_sent_bundle,
+                'out_files': bytes_received_bundle,
+                'node': hostname
+            })
 
             return task
     
@@ -322,7 +368,6 @@ class CloudSwiftBackend(BaseBackend):
         This will always use a shell to launch the subprocess, and it prefers
         /bin/bash (can be changed via arguments)"""
         log.debug(f'subprocess_sh:\n{args}')
-        #print("{} {}".format(executable, args))
         while 1:
             try:
                 p = await create_subprocess_shell(
@@ -400,24 +445,44 @@ def path_conversion(path):
     return path.split(os.path.sep)[-1]
         
 
-def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_basename=False):
+async def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_basename=False):
+    elapsed_times = list()
     for input_file in inputs:
-        cloud_storage.upload_blob(
-            input_file,
-            blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
-        )
+        try:
+            start = time.time()
+            await cloud_storage.upload_blob(
+                input_file,
+                blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
+            )
+            elapsed_times.append({
+                'name': input_file,
+                'size': os.stat(input_file).st_size,
+                'time': time.time() - start
+            })
+        except:
+            elapsed_times.append({'name': input_file, 'size': -1, 'time': -1})
+    return elapsed_times
     
 
-def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=False):
+async def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=False):
+    elapsed_times = list()
     for output_file in outputs:
         try:
+            start = time.time()
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            cloud_storage.download_blob(
+            await cloud_storage.download_blob(
                 output_file,
                 blobpath=os.path.basename(output_file) if blob_basename else path_conversion(output_file)
             )
+            elapsed_times.append({
+                'name': output_file,
+                'size': os.stat(output_file).st_size,
+                'time': time.time() - start
+            })
         except Exception as e:
             log.info(f'Error in download: {e}')
+            elapsed_times.append({'name': output_file, 'size': -1, 'time': -1})
+    return elapsed_times
     
 
 def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=None, cloud_downloads=None, cloud_uploads=None,
@@ -446,7 +511,7 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
             account_name=account_name,
             account_key=account_key
         )
-    cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', 'cloud_download_{}.sh'.format(str(uuid.uuid4())[:8]))
+    cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_download.sh')
     with open(cloud_download_sh_path, 'w') as down_out:
         down_out.write(cloud_download_cmd)
     
@@ -466,7 +531,7 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
             account_name=account_name,
             account_key=account_key
         )
-    cloud_upload_sh_path = os.path.join(cloud_scripts_dir, '.', 'cloud_upload_{}.sh'.format(str(uuid.uuid4())[:8]))
+    cloud_upload_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_upload.sh')
     with open(cloud_upload_sh_path, 'w') as up_out:
         up_out.write(cloud_upload_cmd)
     
@@ -481,6 +546,11 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     cjs_stagein.append(cloud_download_sh_path)
     cjs_stagein.append(cloud_upload_sh_path)
     cjs_stagein.append(cmd_sh_path)
+    
+    # Append hostname out
+    hostname_out_path = f'./.{task_name}.hostname'
+    cjs_stageout = cjs_stageout or list()
+    cjs_stageout.append(hostname_out_path)
     
     # Fill template for stagein and stageout arguments
     input_maps = ' : '.join([map_stage_in(inp, rwd) for inp in (cjs_stagein or list())])
@@ -501,7 +571,7 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     task_body_cmd = (
         'bash {}.sh'.format(task_name) if singularity_container_uri is None
         else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh'.format(
-            container_uri=singularity_container_uri,
+            container_uri=singularity_container_uri if urllib.parse.urlparse(singularity_container_uri).scheme else path_conversion(singularity_container_uri),
             task_name=task_name
         )
     )
@@ -509,10 +579,10 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     cloud_upload_cmd = 'bash {};'.format(os.path.basename(cloud_upload_sh_path))
     
     # Fill in template for complete cog-job-submit command
-    return (
+    cjs_final_cmd = (
         'cog-job-submit -provider "coaster-persistent" -attributes "maxWallTime=240:00:00" '
         '{std} -service-contact "{service_url}"{input_maps}{output_maps} -directory "{rwd}" '
-        '/bin/bash -c "mkdir -p {rwd};cd {rwd};{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
+        '/bin/bash -c "mkdir -p {rwd};cd {rwd};hostname > {hostname_log};{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
     ).format(
         std=std,
         service_url=service_url,
@@ -521,5 +591,36 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
         rwd=rwd,
         cmd=task_body_cmd,
         cloud_download_cmd=cloud_download_cmd,
-        cloud_upload_cmd=cloud_upload_cmd
+        cloud_upload_cmd=cloud_upload_cmd,
+        hostname_log=hostname_out_path
     )
+    
+    with open(os.path.join(cloud_scripts_dir, f'{task_name}.cjs'), 'w') as cjs_final_out:
+        cjs_final_out.write(cjs_final_cmd + '\n')
+    
+    return cjs_final_cmd
+
+
+class CloudMetricsLogger:
+    _metrics_file = None
+    
+    @classmethod
+    def init(cls, at=None):
+        if cls._metrics_file is None:
+            _metrics_path = at or 'cloud_metrics_{}.yaml'.format(datetime.now().strftime('%Y%m%d%H%M%S'))
+            with open(_metrics_path, 'w') as cloud_metrics:
+                cloud_metrics.write(yaml.dump({
+                    'run_started': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'tasks': list()
+                }))
+            cls._metrics_file = _metrics_path
+        
+    
+    @classmethod
+    def write_record(cls, record):
+        if cls._metrics_file is not None:
+            with open(cls._metrics_file) as metrics_file:
+                db = yaml.load(metrics_file.read(), Loader=yaml.SafeLoader)
+                db['tasks'].append(record)
+            with open(cls._metrics_file, 'w') as metrics_file:
+                metrics_file.write(yaml.dump(db))
