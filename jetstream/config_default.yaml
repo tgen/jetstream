@@ -91,13 +91,19 @@ backends:
       - MaxRSS
   cloud_swift:
     (): jetstream.backends.cloud.CloudSwiftBackend
-    pool_name: azurepool
-    api_key: 649cec38be4772725c5c06d4b0e4d494
+    pw_pool_name: vmwarepool
+    # pw_pool_name: null
+    pw_api_key: 649cec38be4772725c5c06d4b0e4d494
+    # pw_api_key: null
     wrapper_frontmatter: 'export PATH=$PATH:/home/dominic/.conda/bin'
     azure_params:
       az_sif_path: '/home/dominic/azure-cli_latest.sif'
       az_storage_account_name: 'tgencustblob'
       az_storage_account_key: 'uTXaM7dvtHuewxwvVskX7gf8VQXY5u7stsxaOmLBfBmJD3xKkh4tFq8GcXmVPf/fA6JKzUaeNpppPRwU13bZmg=='
+    pool_info:
+      cpus_per_worker: 8
+      workers: 2
+      serviceurl: http://10.1.1.6:4050
   cloud_parsl:
     (): jetstream.backends.cloud.CloudParslBackend
 

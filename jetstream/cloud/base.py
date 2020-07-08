@@ -19,7 +19,7 @@ class CloudStorageSession(ABC):
         raise NotImplementedError
     
     @abstractmethod
-    async def download_blob(self, filepath, blobpath=None, container=None):
+    def download_blob(self, filepath, blobpath=None, container=None):
         raise NotImplementedError
     
     async def subprocess_sh(

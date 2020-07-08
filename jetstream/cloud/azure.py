@@ -103,10 +103,10 @@ class AzureStorageSession(CloudStorageSession):
         # print(f'called: {cmd}')
         # await self.subprocess_sh(cmd)
         await self.subprocess_sh(' '.join(cmd))
-        # print('finished')
+        print('finished')
         # subprocess.check_output(cmd)
     
-    async def upload_blob(self, filepath, blobpath=None, container=None, force=False):
+    def upload_blob(self, filepath, blobpath=None, container=None, force=False):
         if not self.storage_account_key:
             self._no_storage_account_key()
         
@@ -123,24 +123,70 @@ class AzureStorageSession(CloudStorageSession):
             if response.get('exists'):
                 print(f'Blob {blobpath} already exists')
                 return
-            
-        await self._blob_container_interact(
-            interaction='upload',
-            filepath=filepath,
-            blobpath=blobpath,
-            container=container
-        )
         
-    async def download_blob(self, filepath, blobpath=None, container=None):
+        # Do the upload stuffs
+        container = container or self._temp_container_name
+        
+        # If blob path on the container isn't given, make it the same as the filepath
+        blobpath = blobpath or os.path.basename(filepath)
+        
+        print(f'uploading file {filepath}')
+        
+        # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
+        cmd = (f"""
+            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob upload
+                --container-name {container} 
+                --file {filepath} 
+                --name {blobpath} 
+                --account-name {self.storage_account_name} 
+                --account-key {self.storage_account_key} 
+        """).split()
+        # print(f'called: {cmd}')
+        # await self.subprocess_sh(cmd)
+        # await self.subprocess_sh(' '.join(cmd))
+        subprocess.check_output(cmd)
+        
+        
+        # await self._blob_container_interact(
+        #     interaction='upload',
+        #     filepath=filepath,
+        #     blobpath=blobpath,
+        #     container=container
+        # )
+        
+    def download_blob(self, filepath, blobpath=None, container=None):
         if not self.storage_account_key:
             self._no_storage_account_key()
         
-        await self._blob_container_interact(
-            interaction='download',
-            filepath=filepath,
-            blobpath=blobpath,
-            container=container
-        )
+        # Do the download things
+        container = container or self._temp_container_name
+        
+        # If blob path on the container isn't given, make it the same as the filepath
+        blobpath = blobpath or os.path.basename(filepath)
+        
+        print(f'downloading file {filepath}')
+        
+        # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
+        cmd = (f"""
+            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob download
+                --container-name {container} 
+                --file {filepath} 
+                --name {blobpath} 
+                --account-name {self.storage_account_name} 
+                --account-key {self.storage_account_key} 
+        """).split()
+        # print(f'called: {cmd}')
+        # await self.subprocess_sh(cmd)
+        # await self.subprocess_sh(' '.join(cmd))
+        print('finished')
+        subprocess.check_output(cmd)
+        
+        # self._blob_container_interact(
+        #     interaction='download',
+        #     filepath=filepath,
+        #     blobpath=blobpath,
+        #     container=container
+        # )
     
     def download_blobs_as_bash(self, blobs, output_paths, container=None):
         print('download blobs as bash')

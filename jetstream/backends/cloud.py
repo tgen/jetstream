@@ -85,7 +85,7 @@ def get_cloud_directive(key, task_directives, cloud_args_key='cloud_args'):
 
 
 class CloudSwiftBackend(BaseBackend):
-    def __init__(self, pool_name=None, api_key=None, cpus=None, blocking_io_penalty=None, wrapper_frontmatter=None,
+    def __init__(self, pw_pool_name=None, pw_api_key=None, cpus=None, blocking_io_penalty=None, wrapper_frontmatter=None,
                  **kwargs):
         """The LocalBackend executes tasks as processes on the local machine.
 
@@ -100,8 +100,16 @@ class CloudSwiftBackend(BaseBackend):
         :param max_concurrency: Max concurrency limit
         """
         super().__init__()
-        self.pool_info = get_pool_info(pool_name, api_key)
-        log.info('Pool info: {}'.format(self.pool_info))
+        self.is_pw_pool = pw_pool_name is not None
+        if pw_pool_name is not None and pw_api_key is not None:
+            self.pool_info = get_pool_info(pw_pool_name, pw_api_key)
+            log.info('PW Pool info: {}'.format(self.pool_info))
+        else:
+            self.pool_info = {
+                'cpus': kwargs['pool_info']['cpus_per_worker'],
+                'maxworkers': kwargs['pool_info']['workers'],
+                'serviceurl': kwargs['pool_info']['serviceurl'],
+            }
         self.cpus = self.pool_info['cpus'] * self.pool_info['maxworkers']
         self.bip = blocking_io_penalty \
                    or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)
@@ -123,6 +131,7 @@ class CloudSwiftBackend(BaseBackend):
         self.cloud_storage = AzureStorageSession(
             **kwargs['azure_params'],
             create_temp_container=True
+            # create_temp_container=False
         )
         # self.cloud_storage._temp_container_name = 'test'
         
@@ -170,11 +179,11 @@ class CloudSwiftBackend(BaseBackend):
             }
             
             # Upload data inputs into cloud storage
-            data_metrics = await blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
+            data_metrics = blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
             
             # Upload reference inputs into cloud storage
             reference_inputs = parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
-            ref_metrics = await blob_inputs_to_remote(reference_inputs, self.cloud_storage, blob_basename=True)        
+            ref_metrics = blob_inputs_to_remote(reference_inputs, self.cloud_storage, blob_basename=True)        
             
             # If the user provides a non-URL path to a container and explicitly says it should be transfer,
             # then consider it similar to reference data and upload it to cloud storage
@@ -188,7 +197,7 @@ class CloudSwiftBackend(BaseBackend):
                 )
                 else list()
             )
-            container_metrics = await blob_inputs_to_remote(container_input, self.cloud_storage)
+            container_metrics = blob_inputs_to_remote(container_input, self.cloud_storage)
             
             # Log metrics for input data
             total_input_metrics = data_metrics + ref_metrics + container_metrics
@@ -203,7 +212,7 @@ class CloudSwiftBackend(BaseBackend):
             # Construct the cog-job-submit command for execution
             cjs_cmd = construct_cjs_cmd(
                 task_body=cmd,
-                service_url='http://beta.parallel.works:{}'.format(self.pool_info['serviceport']),
+                service_url='http://beta.parallel.works:{}'.format(self.pool_info['serviceport']) if self.is_pw_pool else self.pool_info['serviceurl'],
                 cjs_stagein=None,
                 cjs_stageout=None,
                 cloud_downloads=task.directives['input'] + reference_inputs + container_input,
@@ -238,7 +247,7 @@ class CloudSwiftBackend(BaseBackend):
                 return task.fail(p.returncode)
             else:
                 # Download completed data files from cloud storage
-                output_metrics = await blob_outputs_to_local(task.directives['output'], self.cloud_storage)
+                output_metrics = blob_outputs_to_local(task.directives['output'], self.cloud_storage)
                 log.info(f'Complete: {task.name}')
                 
                 # Log metrics for output data
@@ -269,9 +278,9 @@ class CloudSwiftBackend(BaseBackend):
             
             # Get task runtime and which node it ran on
             elapsed_time = datetime.now() - start_time
-            with open(f'.{task.name}.hostname', 'r') as hostname_log:
-                hostname = hostname_log.read().strip()
             try:
+                with open(f'.{task.name}.hostname', 'r') as hostname_log:
+                    hostname = hostname_log.read().strip()
                 os.remove(f'.{task.name}.hostname')
             except:
                 pass  # Fail silently
@@ -445,12 +454,12 @@ def path_conversion(path):
     return path.split(os.path.sep)[-1]
         
 
-async def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_basename=False):
+def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_basename=False):
     elapsed_times = list()
     for input_file in inputs:
         try:
             start = time.time()
-            await cloud_storage.upload_blob(
+            cloud_storage.upload_blob(
                 input_file,
                 blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
             )
@@ -464,13 +473,13 @@ async def blob_inputs_to_remote(inputs, cloud_storage, container=None, blob_base
     return elapsed_times
     
 
-async def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=False):
+def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=False):
     elapsed_times = list()
     for output_file in outputs:
         try:
             start = time.time()
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            await cloud_storage.download_blob(
+            cloud_storage.download_blob(
                 output_file,
                 blobpath=os.path.basename(output_file) if blob_basename else path_conversion(output_file)
             )
@@ -552,6 +561,12 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     cjs_stageout = cjs_stageout or list()
     cjs_stageout.append(hostname_out_path)
     
+    # Set paths for remote stdout/stderr
+    remote_stdout_path = f'./{task_name}.remote.out'
+    remote_stderr_path = f'./{task_name}.remote.err'
+    cjs_stageout.append(remote_stdout_path)
+    cjs_stageout.append(remote_stderr_path)
+    
     # Fill template for stagein and stageout arguments
     input_maps = ' : '.join([map_stage_in(inp, rwd) for inp in (cjs_stagein or list())])
     if input_maps:
@@ -569,20 +584,23 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     
     # Fill in template to execute bash scripts on the worker node
     task_body_cmd = (
-        'bash {}.sh'.format(task_name) if singularity_container_uri is None
-        else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh'.format(
+        'bash {}.sh >>{} 2>>{}'.format(task_name, remote_stdout_path, remote_stderr_path) if singularity_container_uri is None
+        else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh >>{remote_stdout_path} 2>>{remote_stderr_path}'.format(
             container_uri=singularity_container_uri if urllib.parse.urlparse(singularity_container_uri).scheme else path_conversion(singularity_container_uri),
-            task_name=task_name
+            task_name=task_name,
+            remote_stdout_path=remote_stdout_path,
+            remote_stderr_path=remote_stderr_path
         )
     )
-    cloud_download_cmd = 'bash {};'.format(os.path.basename(cloud_download_sh_path))
-    cloud_upload_cmd = 'bash {};'.format(os.path.basename(cloud_upload_sh_path))
+    cloud_download_cmd = 'bash {} >>{} 2>>{};'.format(os.path.basename(cloud_download_sh_path), remote_stdout_path, remote_stderr_path)
+    cloud_upload_cmd = 'bash {} >>{} 2>>{};'.format(os.path.basename(cloud_upload_sh_path), remote_stdout_path, remote_stderr_path)
     
     # Fill in template for complete cog-job-submit command
     cjs_final_cmd = (
         'cog-job-submit -provider "coaster-persistent" -attributes "maxWallTime=240:00:00" '
         '{std} -service-contact "{service_url}"{input_maps}{output_maps} -directory "{rwd}" '
-        '/bin/bash -c "mkdir -p {rwd};cd {rwd};hostname > {hostname_log};{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
+        '/bin/bash -c "mkdir -p {rwd};cd {rwd};hostname > {hostname_log};'
+        '{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
     ).format(
         std=std,
         service_url=service_url,
