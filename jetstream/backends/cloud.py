@@ -124,6 +124,9 @@ class CloudSwiftBackend(BaseBackend):
         self.cloud_scripts_dir = os.path.join(self.project_dir, 'cloud_scripts')
         os.makedirs(self.cloud_scripts_dir, exist_ok=True)
         
+        self.cloud_logs_dir = os.path.join(self.project_dir, 'cloud_logs')
+        os.makedirs(self.cloud_logs_dir, exist_ok=True)
+        
         # Store default config wrapper frontmatter
         self.wrapper_frontmatter = wrapper_frontmatter
         
@@ -281,6 +284,8 @@ class CloudSwiftBackend(BaseBackend):
             try:
                 with open(f'.{task.name}.hostname', 'r') as hostname_log:
                     hostname = hostname_log.read().strip()
+                subprocess.call(['mv'] +  glob.glob('*.remote.out') + [self.cloud_logs_dir])
+                subprocess.call(['mv'] +  glob.glob('*.remote.err') + [self.cloud_logs_dir])
                 os.remove(f'.{task.name}.hostname')
             except:
                 pass  # Fail silently
@@ -496,12 +501,13 @@ def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=
 
 def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=None, cloud_downloads=None, cloud_uploads=None,
                        stdout=None, stderr=None, redirected=False, rwd=None, container='temp', account_name='', account_key='',
-                       cloud_scripts_dir='', task_name='', singularity_container_uri=None):
+                       cloud_scripts_dir='.', task_name='', singularity_container_uri=None):
     """
     cloud_downloads will be a blob path
     cloud_uploads will be remote paths, but put on cloud storage with the full relative path as the name
     """
-    rwd = rwd or '/tmp/pworks/{}'.format(str(randint(0, 99999)).zfill(5))
+    # rwd = rwd or '/tmp/pworks/{}'.format(str(randint(0, 99999)).zfill(5))
+    rwd = rwd or '/tmp/pworks'
     
     # Create script to download data inputs onto the remote node
     cloud_download_cmd_template = (

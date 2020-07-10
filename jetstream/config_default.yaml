@@ -91,7 +91,7 @@ backends:
       - MaxRSS
   cloud_swift:
     (): jetstream.backends.cloud.CloudSwiftBackend
-    pw_pool_name: vmwarepool
+    pw_pool_name: azurepool
     # pw_pool_name: null
     pw_api_key: 649cec38be4772725c5c06d4b0e4d494
     # pw_api_key: null
