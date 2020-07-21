@@ -67,6 +67,7 @@ class SlurmSingularityBackend(BaseBackend):
             
         self.max_jobs = 1024
         
+        self.singularity_executable = singularity_executable
         if self.singularity_executable is None:
             self.singularity_executable = shutil.which('singularity') or 'singularity'
             
