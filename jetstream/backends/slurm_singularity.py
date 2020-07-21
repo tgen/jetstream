@@ -224,7 +224,7 @@ class SlurmSingularityBackend(BaseBackend):
             job = await sbatch(
                 cmd=task.directives['cmd'],
                 singularity_image=singularity_image,
-                singularity_executable=singularity_executable,
+                singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 name=task.name,
                 input_filenames=input_filenames,
