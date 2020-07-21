@@ -35,7 +35,7 @@ class SlurmSingularityBackend(BaseBackend):
 
     def __init__(self, sacct_frequency=5, sbatch_delay=0.5,
                  sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
-                 job_monitor_max_fails=5):
+                 job_monitor_max_fails=5, singularity_executable=None ):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -66,6 +66,10 @@ class SlurmSingularityBackend(BaseBackend):
             )
             
         self.max_jobs = 1024
+        
+        if self.singularity_executable is None:
+            self.singularity_executable = shutil.which('singularity') or 'singularity'
+            
         self._singularity_run_sem = BoundedSemaphore( self.max_jobs ) # To ensure pulls have exclusive use of singularity
         self._singularity_pull_lock = Lock()
         self._singularity_pull_cache = {}
@@ -218,6 +222,7 @@ class SlurmSingularityBackend(BaseBackend):
             time.sleep(self.sbatch_delay)
             job = await sbatch(
                 cmd=task.directives['cmd'],
+                singularity_executable=singularity_executable,
                 singularity_image=singularity_image,
                 singularity_run_sem=self._singularity_run_sem,
                 name=task.name,
@@ -509,11 +514,11 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     return jobs
 
 
-async def sbatch(cmd, singularity_image, singularity_run_sem=None,
+async def sbatch(cmd, singularity_executable="singularity",
+                 singularity_image, singularity_run_sem=None,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
-                 singularity_command="singularity",
                  additional_args=None, sbatch_executable=None, retry=10):
     
     # determine input/output mounts needed
@@ -593,7 +598,7 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
     for i in range( 0, len(sbatch_args), 2 ):
         sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
         
-    sbatch_script += f"#!/bin/bash\n{singularity_command} exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
 
     if name == None:
         name = "script"
