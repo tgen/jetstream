@@ -513,6 +513,7 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
+                 singularity_command="singularity",
                  additional_args=None, sbatch_executable=None, retry=10):
     
     # determine input/output mounts needed
@@ -579,7 +580,8 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
         sbatch_args.extend(['-t', walltime])
 
     if comment:
-        sbatch_args.extend(['--comment', comment])
+        fixed_comment = '"' + comment.replace('"',"'") + '"'
+        sbatch_args.extend(['--comment', fixed_comment])
 
     if additional_args:
         if isinstance(additional_args, str):
@@ -591,7 +593,7 @@ async def sbatch(cmd, singularity_image, singularity_run_sem=None,
     for i in range( 0, len(sbatch_args), 2 ):
         sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
         
-    sbatch_script += f"#!/bin/bash\nsingularity exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"#!/bin/bash\n{singularity_command} exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
 
     if name == None:
         name = "script"
