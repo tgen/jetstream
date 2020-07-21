@@ -222,8 +222,8 @@ class SlurmSingularityBackend(BaseBackend):
             time.sleep(self.sbatch_delay)
             job = await sbatch(
                 cmd=task.directives['cmd'],
-                singularity_executable=singularity_executable,
                 singularity_image=singularity_image,
+                singularity_executable=singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 name=task.name,
                 input_filenames=input_filenames,
@@ -514,8 +514,8 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     return jobs
 
 
-async def sbatch(cmd, singularity_executable="singularity",
-                 singularity_image, singularity_run_sem=None,
+async def sbatch(cmd, singularity_image,
+                 singularity_executable="singularity", singularity_run_sem=None,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
