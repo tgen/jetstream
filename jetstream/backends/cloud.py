@@ -21,6 +21,7 @@ import urllib
 import uuid
 import yaml
 import time
+import traceback
 
 log = logging.getLogger('jetstream.local')
 # cjs_dir_path = "/home/avidalto/projects/2020/jetstream/jetstream-may/cjs-backend/"
@@ -76,7 +77,10 @@ def parse_reference_input(ref_input_directive):
     if isinstance(ref_input_directive, str):
         ref_input_directive = [ref_input_directive]
     for ref in ref_input_directive:
-        ref_input.extend(glob.glob(ref))
+        if is_remote_uri(ref):
+            ref_input.append(ref)
+        else:
+            ref_input.extend(glob.glob(ref))
     return ref_input
 
 
@@ -268,7 +272,6 @@ class CloudSwiftBackend(BaseBackend):
             return task.fail(-15)
         except Exception as e:
             log.error('Exception: {}'.format(e))
-            import traceback
             traceback.print_exc()
             raise
         finally:
@@ -497,6 +500,157 @@ def blob_outputs_to_local(outputs, cloud_storage, container=None, blob_basename=
             log.info(f'Error in download: {e}')
             elapsed_times.append({'name': output_file, 'size': -1, 'time': -1})
     return elapsed_times
+
+
+def is_cloud_bucket_uri(uri):
+    protocol = urllib.parse.urlparse(uri).scheme
+    return protocol != '' and protocol.strip().lower() in {'s3', 'gs', 'az'}
+
+def is_remote_uri(uri):
+    return urllib.parse.urlparse(uri).scheme != ''
+
+
+def construct_cloud_download_script(cloud_downloads=None):
+    # Create script to download data inputs onto the remote node
+    cloud_download_cmd_template = (
+        'if [[ ! -f "{blobpath}" ]];then mkdir -p {blobpath_dirname}; '
+        'singularity exec {az_sif_path} az storage blob download --name {blobpath} --file {blobpath} '
+        '--container-name {container_name} --account-name {account_name} --account-key {account_key};fi\n'
+    )
+    cloud_download_cmd = ''
+    for cloud_download in cloud_downloads or list():
+        if is_remote_uri(cloud_download):
+            # TODO There is currently no mechanism to tell wget where to put the file
+            cloud_download_cmd += 'wget {}\n'.format(cloud_download)
+        else:
+            cloud_download = path_conversion(cloud_download)
+            cloud_download_cmd += cloud_download_cmd_template.format(
+                blobpath=cloud_download,
+                blobpath_dirname=os.path.dirname(cloud_download),
+                az_sif_path='docker://mcr.microsoft.com/azure-cli',
+                container_name=container,
+                account_name=account_name,
+                account_key=account_key
+            )
+    cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_download.sh')
+    with open(cloud_download_sh_path, 'w') as down_out:
+        down_out.write(cloud_download_cmd)
+
+
+def construct_customcoaster_cmd(cloud_downloads=None, cloud_uploads=None, container='temp', account_name='', account_key='',
+                                cloud_scripts_dir='.', task_name='', task_body='', stagein=None, stageout=None, 
+                                singularity_container_uri=None, rwd=None, runtask_py_path=''):
+    rwd = rwd or '/tmp/pworks'
+    
+    # Create script to download data inputs onto the remote node
+    cloud_download_cmd_template = (
+        'if [[ ! -f "{blobpath}" ]];then mkdir -p {blobpath_dirname}; '
+        'singularity exec {az_sif_path} az storage blob download --name {blobpath} --file {blobpath} '
+        '--container-name {container_name} --account-name {account_name} --account-key {account_key};fi\n'
+    )
+    cloud_download_cmd = ''
+    for cloud_download in cloud_downloads or list():
+        if is_remote_uri(cloud_download):
+            # TODO There is currently no mechanism to tell wget where to put the file
+            url_filepath = urllib.parse.urlparse(cloud_download).path
+            cloud_download_cmd += 'if [[ ! -f "{}" ]];then wget {};fi\n'.format(os.path.basename(url_filepath), cloud_download)
+        else:
+            cloud_download = path_conversion(cloud_download)
+            cloud_download_cmd += cloud_download_cmd_template.format(
+                blobpath=cloud_download,
+                blobpath_dirname=os.path.dirname(cloud_download),
+                az_sif_path='docker://mcr.microsoft.com/azure-cli',
+                container_name=container,
+                account_name=account_name,
+                account_key=account_key
+            )
+    cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_download.sh')
+    with open(cloud_download_sh_path, 'w') as down_out:
+        down_out.write(cloud_download_cmd)
+    
+    # Create script to upload data outputs from the remote node into cloud storage
+    cloud_upload_cmd_template = (
+        'singularity exec {az_sif_path} az storage blob upload --name {blobpath} --file {blobpath} '
+        '--container-name {container_name} --account-name {account_name} --account-key {account_key};\n'
+    )
+    cloud_upload_cmd = ''
+    for cloud_upload in cloud_uploads or list():
+        cloud_upload = path_conversion(cloud_upload)
+        cloud_upload_cmd += cloud_upload_cmd_template.format(
+            blobpath=cloud_upload,
+            blobpath_dirname=os.path.dirname(cloud_upload),
+            az_sif_path='docker://mcr.microsoft.com/azure-cli',
+            container_name=container,
+            account_name=account_name,
+            account_key=account_key
+        )
+    cloud_upload_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_upload.sh')
+    with open(cloud_upload_sh_path, 'w') as up_out:
+        up_out.write(cloud_upload_cmd)
+    
+    # Create script to run the main task body
+    log.debug('Writing cloud script for {}'.format(task_name))
+    cmd_sh_path = os.path.join(cloud_scripts_dir, './{}.sh'.format(task_name))
+    with open(cmd_sh_path, 'w') as cmd_sh_out:
+        cmd_sh_out.write(task_body)
+    
+    # Append the three above scripts to stagein list
+    stagein = stagein or list()
+    stagein.append(cloud_download_sh_path)
+    stagein.append(cloud_upload_sh_path)
+    stagein.append(cmd_sh_path)
+    
+    
+    # Set paths for hostname, remote stdout/stderr
+    stageout = stageout or list()
+    hostname_out_path = f'./.{task_name}.hostname'
+    stageout.append(hostname_out_path)
+    remote_stdout_path = f'./{task_name}.remote.out'
+    remote_stderr_path = f'./{task_name}.remote.err'
+    stageout.append(remote_stdout_path)
+    stageout.append(remote_stderr_path)
+    
+    # Fill in template to execute bash scripts on the worker node
+    task_body_cmd = (
+        'bash {}.sh >>{} 2>>{}'.format(task_name, remote_stdout_path, remote_stderr_path) if singularity_container_uri is None
+        else 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh >>{remote_stdout_path} 2>>{remote_stderr_path}'.format(
+            container_uri=singularity_container_uri if urllib.parse.urlparse(singularity_container_uri).scheme else path_conversion(singularity_container_uri),
+            task_name=task_name,
+            remote_stdout_path=remote_stdout_path,
+            remote_stderr_path=remote_stderr_path
+        )
+    )
+    cloud_download_cmd = 'bash {} >>{} 2>>{}'.format(os.path.basename(cloud_download_sh_path), remote_stdout_path, remote_stderr_path)
+    cloud_upload_cmd = 'bash {} >>{} 2>>{}'.format(os.path.basename(cloud_upload_sh_path), remote_stdout_path, remote_stderr_path)
+    
+    # Fill in template for complete cog-job-submit command
+    cjs_final_cmd = (
+        'mkdir -p {rwd};cd {rwd};hostname > {hostname_out_path};'
+        '{cloud_download_cmd};{cmd};{cloud_upload_cmd}'
+    ).format(
+        # std=std,
+        # service_url=service_url,
+        # input_maps=input_maps,
+        # output_maps=output_maps,
+        rwd=rwd,
+        cmd=task_body_cmd,
+        cloud_download_cmd=cloud_download_cmd,
+        cloud_upload_cmd=cloud_upload_cmd,
+        hostname_out_path=hostname_out_path
+    )
+    
+    stagein_arg = ' '.join(stagein)
+    stageout_arg = ' '.join(stageout)
+    worker_cmd = (f'python {runtask_py_path} --port 6000 --host localhost '
+                  f'--cmd \'{cjs_final_cmd}\' --rundir {rwd} '
+                  f'--stagein {stagein_arg} '
+                  f'--stageout {stageout_arg}')
+                  # f'--stageout {hostname_out_path} > /dev/null')
+    
+    with open(os.path.join(cloud_scripts_dir, f'{task_name}.worker.cmd'), 'w') as worker_final_out:
+        worker_final_out.write(worker_cmd + '\n')
+    
+    return worker_cmd
     
 
 def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=None, cloud_downloads=None, cloud_uploads=None,
@@ -517,15 +671,20 @@ def construct_cjs_cmd(task_body, service_url, cjs_stagein=None, cjs_stageout=Non
     )
     cloud_download_cmd = ''
     for cloud_download in cloud_downloads or list():
-        cloud_download = path_conversion(cloud_download)
-        cloud_download_cmd += cloud_download_cmd_template.format(
-            blobpath=cloud_download,
-            blobpath_dirname=os.path.dirname(cloud_download),
-            az_sif_path='docker://mcr.microsoft.com/azure-cli',
-            container_name=container,
-            account_name=account_name,
-            account_key=account_key
-        )
+        if is_remote_uri(cloud_download):
+            # TODO There is currently no mechanism to tell wget where to put the file
+            url_filepath = urllib.parse.urlparse(cloud_download).path
+            cloud_download_cmd += 'if [[ ! -f "{}" ]];then wget {};fi\n'.format(os.path.basename(url_filepath), cloud_download)
+        else:
+            cloud_download = path_conversion(cloud_download)
+            cloud_download_cmd += cloud_download_cmd_template.format(
+                blobpath=cloud_download,
+                blobpath_dirname=os.path.dirname(cloud_download),
+                az_sif_path='docker://mcr.microsoft.com/azure-cli',
+                container_name=container,
+                account_name=account_name,
+                account_key=account_key
+            )
     cloud_download_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_download.sh')
     with open(cloud_download_sh_path, 'w') as down_out:
         down_out.write(cloud_download_cmd)
@@ -648,3 +807,313 @@ class CloudMetricsLogger:
                 db['tasks'].append(record)
             with open(cls._metrics_file, 'w') as metrics_file:
                 metrics_file.write(yaml.dump(db))
+
+
+class CloudCustomCoasterBackend(BaseBackend):
+    def __init__(self, hostname='localhost', port=6000, runtask_py_path='runtask.py', **kwargs):
+        super().__init__()
+        self._task_id_counter = 0
+        
+        self.port = port
+        self.hostname = hostname
+        self.runtask_py_path = runtask_py_path
+        
+        self.total_cpus_in_pool = 800  # TODO make this dynamic
+        self.bip = 10  # TODO make this synamic
+        self._cpu_sem = BoundedSemaphore(int(self.total_cpus_in_pool))
+        
+        self.cloud_storage = AzureStorageSession(
+            **kwargs['azure_params'],
+            create_temp_container=True
+            # create_temp_container=False
+        )
+        
+        self.project_dir = os.getcwd()
+        
+        # Make directory for cjs launch scripts
+        self.cloud_scripts_dir = os.path.join(self.project_dir, 'cloud_scripts')
+        os.makedirs(self.cloud_scripts_dir, exist_ok=True)
+        
+        # Make directory for cjs launch scripts
+        self.cloud_logs_dir = os.path.join(self.project_dir, 'cloud_logs')
+        os.makedirs(self.cloud_logs_dir, exist_ok=True)
+        
+        # Initialize cloud metrics log
+        CloudMetricsLogger.init(at=os.path.join(self.project_dir, 'cloud_metrics_{}.yaml'.format(datetime.now().strftime('%Y%m%d%H%M%S'))))
+        
+        
+    
+    def new_task_id(self, prefix='t'):
+        self._task_id_counter += 1
+        return prefix + str(self._task_id_counter).zfill(4)
+    
+    async def spawn(self, task):
+        # Ensure the command body exists, otherwise there is nothing to do
+        if 'cmd' not in task.directives:
+            return task.complete()
+
+        # Ensure there will ever be enough CPUs to run this task, otherwise fail
+        task_requested_cpus = task.directives.get('cpus', 0)
+        if task_requested_cpus > self.total_cpus_in_pool:
+            log.critical('Task requested cpus ({}) greater than total available cpus ({})'.format(
+                task_requested_cpus, self.total_cpus_in_pool
+            ))
+            return task.fail(1)
+        
+        # Determine whether this task should be run locally or on a remote cloud worker
+        is_local_task = task.directives.get('cloud_args', dict()).get('local_task', False)
+        log.info('Spawn ({}): {}'.format('Local' if is_local_task else 'Cloud', task))
+        
+        if is_local_task:
+            return await self.spawn_local(task)
+        
+        # This is a cloud task
+        return await self.spawn_cloud(task)
+    
+    async def spawn_cloud(self, task):
+        task_id = self.new_task_id()
+        start_time = datetime.now()
+        bytes_sent_bundle, bytes_received_bundle = list(), list()
+        
+        try:
+            fd_paths = {
+                fd_name: fd
+                for fd_name, fd in zip(('stdin', 'stdout', 'stderr'), self.get_fd_paths(task))
+            }
+            fd_filepointers = {
+                fd_name: open(fd, fd_mode) if fd else None
+                for fd_mode, (fd_name, fd) in zip(('r', 'w', 'w'), fd_paths.items())
+            }
+        except Exception as e:
+            log.error(f'Exception in connecting input/output streams for task {task.name}: {e}')
+            log.error(traceback.format_exc())
+            fd_paths = {'stdin': None, 'stdout': None, 'stderr': None}
+            fd_filepointers = {'stdin': None, 'stdout': None, 'stderr': None}
+        
+        try:
+            data_metrics, ref_metrics, container_metrics = dict(), dict(), dict()
+            data_metrics = blob_inputs_to_remote(task.directives['input'], self.cloud_storage)
+            ref_inputs = parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
+            ref_metrics = blob_inputs_to_remote(ref_inputs, self.cloud_storage, blob_basename=True)  
+            singularity_container_uri = task.directives.get('cloud_args', dict()).get('singularity_container')
+            container_input = (
+                [singularity_container_uri]
+                if (
+                    singularity_container_uri is not None
+                    and not is_remote_uri(singularity_container_uri)
+                    and get_cloud_directive('transfer_container_to_remote', task.directives)
+                )
+                else list()
+            )
+            container_metrics = blob_inputs_to_remote(container_input, self.cloud_storage)
+            
+            # Log metrics for input data
+            total_input_metrics = data_metrics + ref_metrics + container_metrics
+            for m in total_input_metrics:
+                bytes_sent_bundle.append(m)
+            bytes_sent_bundle.append({
+                'name': 'total',
+                'size': sum([max(0, t['size']) for t in total_input_metrics]),
+                'time': sum([max(0, t['time']) for t in total_input_metrics])
+            })
+        except Exception as e:
+            log.error(f'Exception in uploading data to the cloud bucket for task {task.name}: {e}')
+            log.error(traceback.format_exc())
+            
+        
+        try:
+            remote_cmd = construct_customcoaster_cmd(
+                task_body=task.directives['cmd'],
+                cloud_downloads=task.directives['input'] + ref_inputs + container_input,
+                cloud_uploads=task.directives['output'],
+                account_name=self.cloud_storage.storage_account_name,
+                account_key=self.cloud_storage.storage_account_key,
+                cloud_scripts_dir=self.cloud_scripts_dir,
+                container=self.cloud_storage._temp_container_name,
+                singularity_container_uri=singularity_container_uri,
+                task_name=task.name,
+                runtask_py_path=self.runtask_py_path
+            )
+        except Exception as e:
+            log.error(f'Cound not form remote worker command for task {task.name}: {e}')
+            log.error(traceback.format_exc())
+            remote_cmd = None
+            
+        try:
+            p = await self.subprocess_sh(remote_cmd, **fd_filepointers)
+            
+            # Once command is executed, update task with some process metadata
+            task.state.update(
+                stdout_path=fd_paths['stdout'],
+                stderr_path=fd_paths['stderr'],
+                label=f'CloudSwift({p.pid})',
+            )
+            
+            log.info(f'CloudSwiftBackend spawned({p.pid}): {task.name}')
+            rc = await p.wait()
+            
+            if rc != 0:
+                log.info(f'Failed: {task.name}')
+                return task.fail(p.returncode)
+            else:
+                # Download completed data files from cloud storage
+                output_metrics = blob_outputs_to_local(task.directives['output'], self.cloud_storage)
+                log.info(f'Complete: {task.name}')
+                
+                # Log metrics for output data
+                for m in output_metrics:
+                    bytes_received_bundle.append(m)
+                bytes_received_bundle.append({
+                    'name': 'total',
+                    'size': sum([max(0, t['size']) for t in output_metrics]),
+                    'time': sum([max(0, t['time']) for t in output_metrics])
+                })
+                
+                return task.complete(p.returncode)
+        except CancelledError:
+            task.state['err'] = 'Runner cancelled Backend.spawn()'
+            return task.fail(-15)
+        finally:
+            for fp in fd_filepointers.values():
+                if fp is not None:
+                    fp.close()
+            
+            # Get task runtime and which node it ran on
+            elapsed_time = datetime.now() - start_time
+            try:
+                hostname = None
+                with open(f'.{task.name}.hostname', 'r') as hostname_log:
+                    hostname = hostname_log.read().strip()
+                subprocess.call(['mv'] +  glob.glob('*.remote.out') + [self.cloud_logs_dir])
+                subprocess.call(['mv'] +  glob.glob('*.remote.err') + [self.cloud_logs_dir])
+                os.remove(f'.{task.name}.hostname')
+            except:
+                pass  # Fail silently
+            
+            CloudMetricsLogger.write_record({
+                'task': task.name,
+                'start_datetime': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'elapsed_time': str(elapsed_time),
+                'end_datetime': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'in_files': bytes_sent_bundle,
+                'out_files': bytes_received_bundle,
+                'node': hostname or 'UNKNOWN'
+            })
+
+        return task
+        
+        # # Write out task body
+        # with open(f'task{task_id}.sh', 'w') as task_body_sh:
+        #     task_body_sh.write(task.directives['cmd'])
+        # 
+        # # Write out file list
+        # # TODO Should this include the container?
+        # with open(f'task{task_id}.files', 'w') as task_files:
+        #     task_inputs = task.directives['input']
+        #     ref_inputs = parse_reference_input(task.directives.get('cloud_args', dict()).get('reference_input', list()))
+        #     for task_input in task_inputs + ref_inputs:
+        #         task_files.write('\t'.join([
+        #             task_input,
+        #             'in',
+        #             '',
+        #             '',
+        #             '',
+        #             os.stat(task_input).st_size
+        #         ]) + '\n')
+        # 
+        #     task_outputs = task.directives['output']
+        #     for task_output in task_outputs:
+        #         task_files.write('\t'.join([
+        #             task_output,
+        #             'out',
+        #             '',
+        #             '',
+        #             '',
+        #             os.stat(task_input).st_size
+        #         ]) + '\n')
+            
+            
+            
+            
+        
+        
+    async def spawn_local(self, task):
+        cpus_reserved = 0
+        fd_filepointers = dict()
+
+        try:
+            for i in range(task.directives.get('cpus', 0)):
+                await self._cpu_sem.acquire()
+                cpus_reserved += 1
+
+            fd_paths = {
+                fd_name: fd
+                for fd_name, fd in zip(('stdin', 'stdout', 'stderr'), self.get_fd_paths(task))
+            }
+            fd_filepointers = {
+                fd_name: open(fd, fd_mode) if fd else None
+                for fd_mode, (fd_name, fd) in zip(('r', 'w', 'w'), fd_paths.items())
+            }
+
+            p = await self.subprocess_sh(
+                task.directives['cmd'],
+                **fd_filepointers
+            )
+
+            task.state.update(
+                stdout_path=fd_paths['stdout'],
+                stderr_path=fd_paths['stderr'],
+                label=f'Slurm({p.pid})',
+            )
+
+            log.info(f'LocalBackend spawned({p.pid}): {task.name}')
+            rc = await p.wait()
+
+            if rc != 0:
+                log.info(f'Failed: {task.name}')
+                return task.fail(p.returncode)
+            else:
+                log.info(f'Complete: {task.name}')
+                return task.complete(p.returncode)
+        except CancelledError:
+            task.state['err'] = 'Runner cancelled Backend.spawn()'
+            return task.fail(-15)
+        finally:
+            for fp in fd_filepointers.values():
+                if fp is not None:
+                    fp.close()
+
+            for i in range(cpus_reserved):
+                self._cpu_sem.release()
+
+            return task
+    
+    async def subprocess_sh(
+            self, args, *, stdin=None, stdout=None, stderr=None,
+            cwd=None, encoding=None, errors=None, env=None,
+            loop=None, executable="/bin/bash"):
+        """Asynchronous version of subprocess.run
+
+        This will always use a shell to launch the subprocess, and it prefers
+        /bin/bash (can be changed via arguments)"""
+        log.debug(f'subprocess_sh:\n{args}')
+        while 1:
+            try:
+                p = await create_subprocess_shell(
+                    args,
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                    cwd=cwd,
+                    encoding=encoding,
+                    errors=errors,
+                    env=env,
+                    loop=loop,
+                    executable=executable
+                )
+                break
+            except BlockingIOError as e:
+                log.warning(f'System refusing new processes: {e}')
+                await asyncio.sleep(self.bip)
+
+        return p

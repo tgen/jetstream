@@ -2,8 +2,14 @@ import os
 import json
 import subprocess
 from datetime import datetime
+import urllib
 
 from .base import CloudStorageSession
+# from ..backends.cloud import is_remote_uri
+
+
+def is_remote_uri(uri):
+    return urllib.parse.urlparse(uri).scheme != ''
 
 
 class AzureStorageSession(CloudStorageSession):
@@ -110,11 +116,16 @@ class AzureStorageSession(CloudStorageSession):
         if not self.storage_account_key:
             self._no_storage_account_key()
         
+
+        if is_remote_uri(filepath):
+            print(f'Blob {blobpath} is a remote URI, nothing to upload')
+            return
+        
         blobpath = blobpath or os.path.basename(filepath)
         if not force:
             cmd = (f"""
                 singularity exec {self.az_sif_path} az storage blob exists 
-                    --container-name {self._temp_container_name}
+                    --container-name {self._temp_container_name} 
                     --name {blobpath} 
                     --account-name {self.storage_account_name} 
                     --account-key {self.storage_account_key}
