@@ -37,8 +37,8 @@ def get_pool_info(pool_name, api_key, pworks_url="http://beta.parallel.works"):
                 'serviceport': pool_data['info']['ports']['serviceport'],
                 'controlport': pool_data['info']['ports']['controlport'],
                 'maxworkers': int(pool_data['settings']['max']),
-                'cpus': int(pool_data['info']['cpuPerWorker']) // pool_data['settings']['jobsPerNode']  # This is temporary
-                # 'cpus': 8
+                # 'cpus': int(pool_data['info']['cpuPerWorker']) // pool_data['settings']['jobsPerNode']  # This is temporary
+                'cpus': 8
             }
 
 
@@ -644,7 +644,9 @@ def construct_customcoaster_cmd(cloud_downloads=None, cloud_uploads=None, contai
     worker_cmd = (f'python {runtask_py_path} --port 6000 --host localhost '
                   f'--cmd \'{cjs_final_cmd}\' --rundir {rwd} '
                   f'--stagein {stagein_arg} '
-                  f'--stageout {stageout_arg}')
+                  f'--stageout {stageout_arg} '
+                  + '--inputfiles {} '.format(' '.join(cloud_downloads))
+                  + '--outputfiles {}'.format(' '.join(cloud_uploads)))
                   # f'--stageout {hostname_out_path} > /dev/null')
     
     with open(os.path.join(cloud_scripts_dir, f'{task_name}.worker.cmd'), 'w') as worker_final_out:
