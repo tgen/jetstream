@@ -18,6 +18,8 @@ class AzureStorageSession(CloudStorageSession):
         super().__init__()
         self.az_sif_path = az_sif_path
         self.keep_temp_container = keep_temp_container
+        singularity_available = subprocess.call(['which', 'singularity']) == 0
+        self.az_execution_call = f'singularity exec --bind /mnt:/mnt {self.az_sif_path} az' if singularity_available else 'az'
         
         # Log into azure account
         # print('Logging into Azure CLI')
@@ -46,12 +48,12 @@ class AzureStorageSession(CloudStorageSession):
     
     def get_account_key(self, az_username, az_password, resource_group, storage_account_name):
         login_cmd = (f"""
-            singularity exec {self.az_sif_path} az login -u {az_username} -p "{az_password}"
+            {self.az_execution_call} login -u {az_username} -p "{az_password}"
         """).split()
         subprocess.call(login_cmd)
         
         get_key_cmd = (f"""
-            singularity exec {self.az_sif_path} az storage account keys list 
+            {self.az_execution_call} storage account keys list 
                 -g {self.resource_group} 
                 -n {self.storage_account_name}
         """).split()
@@ -81,7 +83,7 @@ class AzureStorageSession(CloudStorageSession):
         if not self._container_created:
             # Container needs to be created
             cmd = (f"""
-                singularity exec {self.az_sif_path} az storage container create 
+                {self.az_execution_call} storage container create 
                     -n {self._temp_container_name} 
                     --account-name {self.storage_account_name} 
                     --account-key {self.storage_account_key}
@@ -99,7 +101,7 @@ class AzureStorageSession(CloudStorageSession):
         
         # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
         cmd = (f"""
-            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob {interaction} 
+            {self.az_execution_call} storage blob {interaction} 
                 --container-name {container} 
                 --file {filepath} 
                 --name {blobpath} 
@@ -124,7 +126,7 @@ class AzureStorageSession(CloudStorageSession):
         blobpath = blobpath or os.path.basename(filepath)
         if not force:
             cmd = (f"""
-                singularity exec {self.az_sif_path} az storage blob exists 
+                {self.az_execution_call} storage blob exists 
                     --container-name {self._temp_container_name} 
                     --name {blobpath} 
                     --account-name {self.storage_account_name} 
@@ -145,7 +147,7 @@ class AzureStorageSession(CloudStorageSession):
         
         # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
         cmd = (f"""
-            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob upload
+            {self.az_execution_call} storage blob upload
                 --container-name {container} 
                 --file {filepath} 
                 --name {blobpath} 
@@ -179,7 +181,7 @@ class AzureStorageSession(CloudStorageSession):
         
         # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
         cmd = (f"""
-            singularity exec --bind /mnt:/mnt {self.az_sif_path} az storage blob download
+            {self.az_execution_call} storage blob download
                 --container-name {container} 
                 --file {filepath} 
                 --name {blobpath} 
@@ -217,7 +219,7 @@ class AzureStorageSession(CloudStorageSession):
         
         if not self.keep_temp_container and self._container_created:
             cmd = (f"""
-                singularity exec {self.az_sif_path} az storage container delete 
+                {self.az_execution_call} storage container delete 
                     --name {self._temp_container_name} 
                     --account-name {self.storage_account_name} 
                     --account-key {self.storage_account_key}
