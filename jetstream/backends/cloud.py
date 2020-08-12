@@ -140,7 +140,8 @@ class CloudSwiftBackend(BaseBackend):
             create_temp_container=True
             # create_temp_container=False
         )
-        # self.cloud_storage._temp_container_name = 'test'
+        if kwargs.get('azure_blob_container') is not None:
+            self.cloud_storage._temp_container_name = kwargs['azure_blob_container']
         
         # Initialize cloud metrics log
         CloudMetricsLogger.init(at=os.path.join(self.project_dir, 'cloud_metrics_{}.yaml'.format(datetime.now().strftime('%Y%m%d%H%M%S'))))
