@@ -4,47 +4,73 @@ import subprocess
 from datetime import datetime
 import urllib
 
-from .base import CloudStorageSession
-# from ..backends.cloud import is_remote_uri
-
-
-def is_remote_uri(uri):
-    return urllib.parse.urlparse(uri).scheme != ''
+from .base import CloudStorageSession, is_remote_uri, path_conversion
 
 
 class AzureStorageSession(CloudStorageSession):
-    def __init__(self, az_sif_path, az_storage_account_name, az_storage_account_key='',
-                 create_temp_container=True, keep_temp_container=False):
-        super().__init__()
-        self.az_sif_path = az_sif_path
+    config_key = 'azure_params'
+    
+    def __init__(self, az_storage_account_name, az_sif_path=None, az_storage_account_key='',
+                 create_temp_container=True, keep_temp_container=False, blob_container=None):
+        super().__init__(container=blob_container)
+        self.az_sif_path = az_sif_path or 'docker://mcr.microsoft.com/azure-cli'
         self.keep_temp_container = keep_temp_container
         singularity_available = subprocess.call(['which', 'singularity']) == 0
         self.az_execution_call = f'singularity exec --bind /mnt:/mnt {self.az_sif_path} az' if singularity_available else 'az'
         
-        # Log into azure account
-        # print('Logging into Azure CLI')
-        # self.provider_login(az_username, az_password)
-        
         # Get an account key to be used in subsequent transactions
         self.storage_account_name = az_storage_account_name
-        # print('Getting Account Key')
         self.storage_account_key = az_storage_account_key
-        # print(f'Account key: {self.account_key}')
         
         if create_temp_container:
             print('Creating Temp Container')
             self.create_temp_container()
+    
+    def remote_download_cmd(self, remote_downloads_blobs=None):
+        remote_download_cmd_template = (
+            'if [[ ! -f "{blobpath}" ]];then mkdir -p {blobpath_dirname}; '
+            'singularity exec {az_sif_path} az storage blob download --name {blobpath} --file {blobpath} '
+            '--container-name {container_name} --account-name {account_name} --account-key {account_key};fi\n'
+        )
+        remote_download_cmd = ''
+        for remote_download_blobpath in remote_downloads_blobs or list():
+            if is_remote_uri(remote_download_blobpath):
+                # TODO There is currently no mechanism to tell wget where to put the file
+                url_filepath = urllib.parse.urlparse(remote_download_blobpath).path
+                remote_download_cmd += 'if [[ ! -f "{}" ]];then wget {};fi\n'.format(
+                    os.path.basename(url_filepath),
+                    remote_download_blobpath
+                )
+            else:
+                remote_download_blobpath = path_conversion(remote_download_blobpath)
+                remote_download_cmd += remote_download_cmd_template.format(
+                    blobpath=remote_download_blobpath,
+                    blobpath_dirname=os.path.dirname(remote_download_blobpath),
+                    az_sif_path=self.az_sif_path,
+                    container_name=self.container,
+                    account_name=self.storage_account_name,
+                    account_key=self.storage_account_key
+                )
         
-    # def _account_key(self):
-    #     cmd = (f"""
-    #         singularity exec {self.az_sif_path} az storage account keys list 
-    #             -g {self.resource_group} 
-    #             -n {self.storage_account_name}
-    #     """).split()
-    #     return json.loads(subprocess.check_output(cmd).decode())[0]['value']
+        return remote_download_cmd
     
-    
-    
+    def remote_upload_cmd(self, remote_uploads_filepaths=None):
+        remote_upload_cmd_template = (
+            'singularity exec {az_sif_path} az storage blob upload --name {blobpath} --file {blobpath} '
+            '--container-name {container_name} --account-name {account_name} --account-key {account_key};\n'
+        )
+        remote_upload_cmd = ''
+        for remote_upload_filepath in remote_uploads_filepaths or list():
+            remote_upload_filepath = path_conversion(remote_upload_filepath)
+            remote_upload_cmd += remote_upload_cmd_template.format(
+                blobpath=remote_upload_filepath,
+                blobpath_dirname=os.path.dirname(remote_upload_filepath),
+                az_sif_path=self.az_sif_path,
+                container_name=self.container,
+                account_name=self.storage_account_name,
+                account_key=self.storage_account_key
+            )
+        return remote_upload_cmd
     
     def get_account_key(self, az_username, az_password, resource_group, storage_account_name):
         login_cmd = (f"""
@@ -59,13 +85,6 @@ class AzureStorageSession(CloudStorageSession):
         """).split()
         self.account_key = json.loads(subprocess.check_output(get_key_cmd).decode())[0]['value']
         return self.account_key
-        
-    
-    # def provider_login(self, az_username, az_password):
-    #     login_cmd = (f"""
-    #         singularity exec {self.az_sif_path} az login -u {az_username} -p "{az_password}"
-    #     """).split()
-    #     subprocess.call(login_cmd)
     
     def _no_storage_account_key(self):
         raise ValueError(
@@ -90,29 +109,6 @@ class AzureStorageSession(CloudStorageSession):
             """).split()
             response = json.loads(subprocess.check_output(cmd).decode())
             self._container_created = response['created']
-    
-    async def _blob_container_interact(self, interaction, filepath, blobpath=None, container=None):
-        container = container or self._temp_container_name
-        
-        # If blob path on the container isn't given, make it the same as the filepath
-        blobpath = blobpath or os.path.basename(filepath)
-        
-        print(f'{interaction.capitalize()}ing file {filepath}')
-        
-        # TODO that --bind /mnt:/mnt is a hack for now and needs to be revisited later
-        cmd = (f"""
-            {self.az_execution_call} storage blob {interaction} 
-                --container-name {container} 
-                --file {filepath} 
-                --name {blobpath} 
-                --account-name {self.storage_account_name} 
-                --account-key {self.storage_account_key} 
-        """).split()
-        # print(f'called: {cmd}')
-        # await self.subprocess_sh(cmd)
-        await self.subprocess_sh(' '.join(cmd))
-        print('finished')
-        # subprocess.check_output(cmd)
     
     def upload_blob(self, filepath, blobpath=None, container=None, force=False):
         if not self.storage_account_key:
@@ -154,18 +150,8 @@ class AzureStorageSession(CloudStorageSession):
                 --account-name {self.storage_account_name} 
                 --account-key {self.storage_account_key} 
         """).split()
-        # print(f'called: {cmd}')
-        # await self.subprocess_sh(cmd)
-        # await self.subprocess_sh(' '.join(cmd))
         subprocess.check_output(cmd)
-        
-        
-        # await self._blob_container_interact(
-        #     interaction='upload',
-        #     filepath=filepath,
-        #     blobpath=blobpath,
-        #     container=container
-        # )
+    
         
     def download_blob(self, filepath, blobpath=None, container=None):
         if not self.storage_account_key:
@@ -188,30 +174,7 @@ class AzureStorageSession(CloudStorageSession):
                 --account-name {self.storage_account_name} 
                 --account-key {self.storage_account_key} 
         """).split()
-        # print(f'called: {cmd}')
-        # await self.subprocess_sh(cmd)
-        # await self.subprocess_sh(' '.join(cmd))
-        print('finished')
         subprocess.check_output(cmd)
-        
-        # self._blob_container_interact(
-        #     interaction='download',
-        #     filepath=filepath,
-        #     blobpath=blobpath,
-        #     container=container
-        # )
-    
-    def download_blobs_as_bash(self, blobs, output_paths, container=None):
-        print('download blobs as bash')
-        cmd = ''
-        for blob, output_path in zip(blobs, output_paths):
-            cmd += (f'az storage blob download --container-name {container} --file {output_path} --name {blob}'
-                     '--account-name {self.storage_account_name} --account-key {self.storage_account_key};')
-        return cmd
-    
-    def upload_blobs_as_bash(self):
-        pass
-            
         
     def close(self):
         if not self.storage_account_key:

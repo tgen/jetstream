@@ -93,15 +93,16 @@ backends:
     (): jetstream.backends.cloud.CloudSwiftBackend
     pw_pool_name: null
     pw_api_key: null
-    wrapper_frontmatter: 'export PATH=$PATH:/home/dominic/.conda/bin'
+    cloud_storage_provider: 'azure'
     azure_params:
-      az_sif_path: '/home/dominic/azure-cli_latest.sif'
-      az_storage_account_name: 'tgencustblob'
-      az_storage_account_key: 'uTXaM7dvtHuewxwvVskX7gf8VQXY5u7stsxaOmLBfBmJD3xKkh4tFq8GcXmVPf/fA6JKzUaeNpppPRwU13bZmg=='
+      az_sif_path: 'docker://mcr.microsoft.com/azure-cli'
+      az_storage_account_name: ''
+      az_storage_account_key: ''
+      blob_container: null
     pool_info:
       cpus_per_worker: 8
       workers: 2
-      serviceurl: http://10.1.1.6:4050
+      serviceurl: ''
   cloud_parsl:
     (): jetstream.backends.cloud.CloudParslBackend
   cloud_customcoasters:

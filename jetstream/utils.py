@@ -20,6 +20,7 @@ from socket import gethostname
 from uuid import getnode, uuid4
 
 import jetstream
+from .cloud.base import path_conversion
 
 sentinel = object()
 log = logging.getLogger(__name__)
@@ -482,3 +483,136 @@ def remove_prefix(string, prefix):
 
 loaders = {k: dynamic_import(v) for k, v in jetstream.settings['loaders'].get(dict).items()}
 parsers = {k: dynamic_import(v) for k, v in jetstream.settings['parsers'].get(dict).items()}
+
+# Cloud utils
+def replace_root_dir(path, root_dir):
+    if not root_dir.endswith(os.path.sep):
+        root_dir = root_dir + os.path.sep
+    if f'.{os.path.sep}' in path:
+        return root_dir + path.split(f'.{os.path.sep}')[1]
+    else:
+        if path.startswith(os.path.sep):
+            return path
+        else:
+            return root_dir + os.path.basename(path) # path
+
+# Inputs: Local path and remote working directotry
+# Outputs: Local to remote mapping
+def map_stage_in(lpath, rwd):
+    if '->' in lpath:
+        return lpath
+
+    rpath = replace_root_dir(lpath, rwd)
+    return '{} -> {}'.format(lpath, rpath)
+
+# Inputs: Remote path and local directory
+# Outputs: Local to remote mapping
+def map_stage_out(rpath, lwd = None):
+    if '<-' in rpath:
+        return rpath
+
+    lpath = replace_root_dir(rpath, lwd or os.getcwd())
+    os.makedirs(os.path.dirname(lpath), exist_ok=True)
+    return '{} <- {}'.format(lpath, rpath)
+
+def construct_cjs_cmd(task_body, service_url, cloud_storage=None, cjs_stagein=None, cjs_stageout=None, cloud_downloads=None,
+                      cloud_uploads=None, stdout=None, stderr=None, redirected=False, rwd=None, cloud_scripts_dir='.',
+                      task_name='', singularity_container_uri=None):
+    """
+    cloud_downloads will be a blob path
+    cloud_uploads will be remote paths, but put on cloud storage with the full relative path as the name
+    """
+    rwd = rwd or '/tmp/pworks'
+    cjs_stagein = cjs_stagein or list()
+    cjs_stageout = cjs_stageout or list()
+    
+    # Create scripts to download/upload data to/from the remote worker
+    if cloud_storage is not None:
+        # Create script to download data inputs onto the remote node
+        remote_download_cmd = cloud_storage.remote_download_cmd(cloud_downloads)
+        remote_download_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_download.sh')
+        with open(remote_download_sh_path, 'w') as down_out:
+            down_out.write(remote_download_cmd)
+        cjs_stagein.append(remote_download_sh_path)
+        
+        # Create script to upload data outputs from the remote node into cloud storage
+        remote_upload_cmd = cloud_storage.remote_upload_cmd(cloud_uploads)
+        remote_upload_sh_path = os.path.join(cloud_scripts_dir, '.', f'{task_name}.cloud_upload.sh')
+        with open(remote_upload_sh_path, 'w') as up_out:
+            up_out.write(remote_upload_cmd)
+        cjs_stagein.append(remote_upload_sh_path)
+    
+    # Create script to run the main task body
+    log.debug('Writing cloud script for {}'.format(task_name))
+    cmd_sh_path = os.path.join(cloud_scripts_dir, './{}.sh'.format(task_name))
+    with open(cmd_sh_path, 'w') as cmd_sh_out:
+        cmd_sh_out.write(task_body)
+    cjs_stagein.append(cmd_sh_path)
+    
+    # Append hostname out
+    hostname_out_path = f'./.{task_name}.hostname'
+    cjs_stageout.append(hostname_out_path)
+    
+    # Set paths for remote stdout/stderr
+    remote_stdout_path = f'./{task_name}.remote.out'
+    remote_stderr_path = f'./{task_name}.remote.err'
+    cjs_stageout.append(remote_stdout_path)
+    cjs_stageout.append(remote_stderr_path)
+    
+    # Fill template for stagein and stageout arguments
+    input_maps = ' : '.join([map_stage_in(inp, rwd) for inp in cjs_stagein])
+    if input_maps:
+        input_maps = ' -stagein "{}"'.format(input_maps)
+    output_maps = ' : '.join([map_stage_out(outp) for outp in cjs_stageout])
+    if output_maps:
+        output_maps = ' -stageout "{}"'.format(output_maps)
+    
+    # Fill in template for redirected, stdout, stderr arguments
+    std = '{redirected} {stdout} {stderr}'.format(
+        redirected='-redirected' if redirected else '',
+        stdout=' -stdout "{}"'.format(stdout) if stdout is not None else '',
+        stderr=' -stderr "{}"'.format(stderr) if stderr is not None else ''
+    )
+    
+    # Fill in template to execute bash scripts on the worker node
+    if singularity_container_uri is None:
+        task_body_cmd = 'bash {}.sh >>{} 2>>{}'.format(task_name, remote_stdout_path, remote_stderr_path) 
+    else:
+        task_body_cmd = 'singularity exec --cleanenv --nv {container_uri} bash {task_name}.sh >>{remote_stdout_path} 2>>{remote_stderr_path}'.format(
+            container_uri=path_conversion(singularity_container_uri),
+            task_name=task_name,
+            remote_stdout_path=remote_stdout_path,
+            remote_stderr_path=remote_stderr_path
+        )
+
+    if cloud_storage is not None:
+        remote_download_cmd = 'bash {} >>{} 2>>{};'.format(os.path.basename(remote_download_sh_path), remote_stdout_path, remote_stderr_path)
+        remote_upload_cmd = 'bash {} >>{} 2>>{};'.format(os.path.basename(remote_upload_sh_path), remote_stdout_path, remote_stderr_path)
+    else:
+        remote_download_cmd, remote_upload_cmd = '', ''
+    
+    # Fill in template for complete cog-job-submit command
+    cjs_final_cmd = (
+        'cog-job-submit -provider "coaster-persistent" -attributes "maxWallTime=240:00:00" '
+        '{std} -service-contact "{service_url}"{input_maps}{output_maps} -directory "{rwd}" '
+        '/bin/bash -c "mkdir -p {rwd};cd {rwd};hostname > {hostname_log};'
+        '{cloud_download_cmd}{cmd};{cloud_upload_cmd}"'
+    ).format(
+        std=std,
+        service_url=service_url,
+        input_maps=input_maps,
+        output_maps=output_maps,
+        rwd=rwd,
+        cmd=task_body_cmd,
+        cloud_download_cmd=remote_download_cmd,
+        cloud_upload_cmd=remote_upload_cmd,
+        hostname_log=hostname_out_path
+    )
+    
+    try:
+        with open(os.path.join(cloud_scripts_dir, f'{task_name}.cjs'), 'w') as cjs_final_out:
+            cjs_final_out.write(cjs_final_cmd + '\n')
+    except:
+        pass  # Fail silently
+    
+    return cjs_final_cmd
