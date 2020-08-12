@@ -103,16 +103,6 @@ backends:
       cpus_per_worker: 8
       workers: 2
       serviceurl: ''
-  cloud_parsl:
-    (): jetstream.backends.cloud.CloudParslBackend
-  cloud_customcoasters:
-    (): jetstream.backends.cloud.CloudCustomCoasterBackend
-    runtask_py_path: '/home/dominic/cachelab/mq/runtask.py'
-    azure_params:
-      az_sif_path: '/home/dominic/azure-cli_latest.sif'
-      az_storage_account_name: 'tgencustblob'
-      az_storage_account_key: 'uTXaM7dvtHuewxwvVskX7gf8VQXY5u7stsxaOmLBfBmJD3xKkh4tFq8GcXmVPf/fA6JKzUaeNpppPRwU13bZmg=='
-
 
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
