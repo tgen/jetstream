@@ -521,6 +521,16 @@ def construct_cjs_cmd(task_body, service_url, cloud_storage=None, cjs_stagein=No
     """
     cloud_downloads will be a blob path
     cloud_uploads will be remote paths, but put on cloud storage with the full relative path as the name
+    
+    For the CloudSwift backend, will construct the call to send a task to a remote worker.
+    
+    :param task_body: str The full task body, the main command
+    :param service_url: str Endpoint service URL for the coaster service, whether started through the ParallelWorks 
+      platform or started manually with ``start_pool.py``
+    :param cloud_storage: CloudStorageSession An object which inherits from CloudStroageSession which is used to 
+      prepare the upload and download scripts for the remote worker
+    :param cjs_stagein: list Filepaths to be sent to the remote worker through the ``cog-job-submit`` stagein mechanism
+    :param cjs_stageout: list Filepaths to be brought back from the remote worker at the conclusion of the task
     """
     rwd = rwd or '/tmp/pworks'
     cjs_stagein = cjs_stagein or list()

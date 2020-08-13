@@ -28,6 +28,14 @@ from ..cloud.base import blob_inputs_to_remote, blob_outputs_to_local, is_remote
 log = logging.getLogger('jetstream.cloud')
 
 def get_pool_info(pool_name, api_key, pworks_url="http://beta.parallel.works"):
+    """
+    With a valid ParallelWorks API Key, get relevant information on the worker pool
+    
+    :param pool_name: str Name of an active pool in PW
+    :param api_key: str Valid API for a PW account
+    :param pworks_url: str URL of the PW platform
+    :return: dict The requested pool information
+    """
     rq = requests.get('{pworks_url}/api/resources?key={api_key}'.format(pworks_url=pworks_url, api_key=api_key))
     for pool_data in rq.json():
         if pool_data['name'] == pool_name:
@@ -36,12 +44,20 @@ def get_pool_info(pool_name, api_key, pworks_url="http://beta.parallel.works"):
                 'serviceport': pool_data['info']['ports']['serviceport'],
                 'controlport': pool_data['info']['ports']['controlport'],
                 'maxworkers': int(pool_data['settings']['max']),
+                # TODO Sometimes the pool information doesn't contain the info needed for this calculation, but 
+                # it isn't really necessary to have anyway
                 # 'cpus': int(pool_data['info']['cpuPerWorker']) // pool_data['settings']['jobsPerNode']
                 'cpus': 8
             }
 
 
 def parse_reference_input(ref_input_directive):
+    """
+    Allows for wildcards to be interpreted as blobs on the local filesystem
+    
+    :param ref_input_directive: list<str>|str Paths given in the cloud_args.ref_input directive
+    :return: list<str> A list of paths with all wildcards expanded
+    """
     ref_input = list()
     if isinstance(ref_input_directive, str):
         ref_input_directive = [ref_input_directive]
@@ -54,23 +70,36 @@ def parse_reference_input(ref_input_directive):
 
 
 def get_cloud_directive(key, task_directives, cloud_args_key='cloud_args'):
+    """
+    Helper function to get a directive one layer undernearth ``cloud_args``
+    
+    :param key: str Directive key
+    :param task_directives: dict The dictionary of task directives
+    :param cloud_args_key: str Key for the first level
+    :return: object The requested ``cloud_args`` directive
+    """
     return task_directives.get(cloud_args_key, dict()).get(key)
 
 
 class CloudSwiftBackend(BaseBackend):
+    """
+    Executes tasks on cloud-based worker nodes, handling all data transfer to/from worker nodes and 
+    the client node.
+    """
     def __init__(self, pw_pool_name=None, pw_api_key=None, cpus=None, blocking_io_penalty=None,
                  cloud_storage_provider='azure', **kwargs):
-        """The LocalBackend executes tasks as processes on the local machine.
-
-        This contains a semaphore that limits tasks by the number of cpus
-        that they require. It requires that self.runner be set to get the
-        event loop, so it's not instantiated until preflight.
-
-        :param cpus: If this is None, the number of available CPUs will be
-            guessed. This cannot be changed after starting the backend.
-        :param blocking_io_penalty: Delay (in seconds) when a BlockingIOError
-            prevents a new process from spawning.
-        :param max_concurrency: Max concurrency limit
+        """
+        If ``pw_pool_name`` and ``pw_api_key`` are both given valid values, this backend will use ParallelWorks to 
+        manage resouces elastically. If they remain ``None``, then it is assumed that the use has manually started 
+        a pool using the included ``start_pool.py`` script. Note that both approaches requires the use of binaries 
+        available as part of the Swift workflow language.
+        
+        :param pw_pool_name: str Name of an active pool in PW
+        :param pw_api_key: str Valid API for a PW account
+        :param cpus: int The total number of CPUs available to the worker pool
+        :param blocking_io_penalty: int Delay (in seconds) when a BlockingIOError prevents a new process from spawning.
+        :param cloud_storage_provder: str Name of the cloud storage provider, which must match up with one of the keys 
+            in ``jetstream.cloud.base.CLOUD_STORAGE_PROVIDERS``
         """
         super().__init__()
         self.is_pw_pool = pw_pool_name is not None
@@ -352,6 +381,9 @@ class CloudSwiftBackend(BaseBackend):
 
 
 class CloudMetricsLogger:
+    """
+    Helper class to keep records on data transferred and tasks running on worker nodes.
+    """
     _metrics_file = None
     
     @classmethod

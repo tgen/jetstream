@@ -41,34 +41,21 @@ def path_conversion(path):
 
 
 def blob_inputs_to_remote(inputs, cloud_storage, blob_basename=False):
-    # print(f'!!!!!!! {inputs}')
-    # print('STARTING')
     elapsed_times = list()
     for input_file in inputs:
-        # print('in the loop')
         try:
             start = time.time()
-            # print('Uploading {}'.format(input_file))
-            try:
-                cloud_storage.upload_blob(
-                    input_file,
-                    blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
-                )
-            except Exception as e:
-                import traceback
-                print(e)
-                print(traceback.format_exc())
+            cloud_storage.upload_blob(
+                input_file,
+                blobpath=os.path.basename(input_file) if blob_basename else path_conversion(input_file)
+            )
                 
-            # print('Done uploading')
             elapsed_times.append({
                 'name': input_file,
                 'size': os.stat(input_file).st_size,
                 'time': time.time() - start
             })
         except:
-            import traceback
-            print(e)
-            print(traceback.format_exc())
             elapsed_times.append({'name': input_file, 'size': -1, 'time': -1})
     return elapsed_times
     
@@ -89,22 +76,20 @@ def blob_outputs_to_local(outputs, cloud_storage, blob_basename=False):
                 'time': time.time() - start
             })
         except Exception as e:
-            log.info(f'Error in download: {e}')
             elapsed_times.append({'name': output_file, 'size': -1, 'time': -1})
     return elapsed_times
 
 
 class CloudStorageSession(ABC):
+    """
+    Base for all cloud storage provider specifications.
+    """
     def __init__(self, container=None):
         self.container = container or 'jetstream-temp-{unique_datestamp}'.format(
             unique_datestamp=datetime.now().strftime('%Y%m%d%H%M%S%f')
         )
         self._temp_container_name = self.container  # Backward compatibility
         self._container_created = False
-    
-    # @abstractmethod
-    # def provider_login(self, *args):
-    #     raise NotImplementedError
     
     @abstractmethod
     def upload_blob(self, filepath, blobpath=None, container=None):
@@ -113,37 +98,3 @@ class CloudStorageSession(ABC):
     @abstractmethod
     def download_blob(self, filepath, blobpath=None, container=None):
         raise NotImplementedError
-    
-    async def subprocess_sh(
-            self, args, *, stdin=None, stdout=None, stderr=None,
-            cwd=None, encoding=None, errors=None, env=None,
-            loop=None, executable="/bin/bash", blocking_io_penalty=10):
-        """Asynchronous version of subprocess.run
-
-        This will always use a shell to launch the subprocess, and it prefers
-        /bin/bash (can be changed via arguments)"""
-        # print('world')
-        # log.debug(f'subprocess_sh:\n{args}')
-        # log.info(f'subprocess_sh:\n{args}')
-        # print('here')
-        while True:
-            try:
-                p = await create_subprocess_shell(
-                    args,
-                    stdin=stdin,
-                    stdout=stdout,
-                    stderr=stderr,
-                    cwd=cwd,
-                    encoding=encoding,
-                    errors=errors,
-                    env=env,
-                    loop=loop,
-                    executable=executable
-                )
-                break
-            except BlockingIOError as e:
-                # log.warning(f'System refusing new processes: {e}')
-                print(f'System refusing new processes: {e}')
-                await asyncio.sleep(blocking_io_penalty)
-            except Exception as e:
-                print(f'Exception: {e}')

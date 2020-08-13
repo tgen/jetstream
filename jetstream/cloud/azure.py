@@ -8,10 +8,28 @@ from .base import CloudStorageSession, is_remote_uri, path_conversion
 
 
 class AzureStorageSession(CloudStorageSession):
+    """
+    Provider for Azure blob storage.
+    """
     config_key = 'azure_params'
     
-    def __init__(self, az_storage_account_name, az_sif_path=None, az_storage_account_key='',
+    def __init__(self, az_storage_account_name, az_storage_account_key='', az_sif_path=None, 
                  create_temp_container=True, keep_temp_container=False, blob_container=None):
+        """
+        The primary method for accessing the ``az`` binary is through a singularity container, but if no path to a 
+        container is given, it is assumed that ``az`` is in PATH. The user must also provide a storage account name and 
+        the associated account key.
+        
+        :param az_storage_account_name: str A valid Azure storage account name
+        :param az_storage_account_key: str The corresponding Azure storage account key
+        :param az_sif_path: str If not provided, will download the official latest container from Microsoft
+        :param create_temp_container: bool Whether to create a new container for this run
+        :param keep_temp_container: bool Whether to keep the temporary container after the run completes
+        # TODO The above parameter currenly has no effect, because I don't know where in the jetstream lifecycle 
+          I can call the AzureStorageSession.close() function, which would clean up the temp container
+        :param blob_container: str If given, this Azure storage container will be used instead of creating a new 
+        temp container
+        """
         super().__init__(container=blob_container)
         self.az_sif_path = az_sif_path or 'docker://mcr.microsoft.com/azure-cli'
         self.keep_temp_container = keep_temp_container
