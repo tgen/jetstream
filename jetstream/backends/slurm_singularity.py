@@ -194,6 +194,8 @@ class SlurmSingularityBackend(BaseBackend):
         else:
             singularity_image = f"docker://{docker_image}"
         
+        singularity_hostname = task.directives.get( 'singularity_hostname', None )
+
         log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
         try:
             if singularity_image in self._singularity_pull_cache:
@@ -226,6 +228,7 @@ class SlurmSingularityBackend(BaseBackend):
                 singularity_image=singularity_image,
                 singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
+                singularity_hostname=singularity_hostname,
                 name=task.name,
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
@@ -517,6 +520,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 async def sbatch(cmd, singularity_image,
                  singularity_executable="singularity", singularity_run_sem=None,
+                 singularity_hostname=None,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
@@ -540,6 +544,8 @@ async def sbatch(cmd, singularity_image,
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )
+    #mount_strings.append( "-B %s" % ( os.getcwd() ) )
+    #mount_strings.append( f'-B {(pwd.getpwuid(os.getuid())).pw_dir}' )
     singularity_mounts_string = " ".join( mount_strings )
     
     # create cmd script
@@ -551,12 +557,7 @@ async def sbatch(cmd, singularity_image,
     cmd_script_filename = os.path.abspath( cmd_script_filename )
     with open( cmd_script_filename, "w" ) as cmd_script:
         cmd_script.write( cmd )
-    
-    # create sbatch script
-    # if sbatch_executable is None:
-    #     sbatch_executable = 'sbatch'
-    # 
-    # sbatch_args = [sbatch_executable, '--parsable']
+
     sbatch_args = []
 
     if name:
@@ -600,9 +601,14 @@ async def sbatch(cmd, singularity_image,
     sbatch_script = "#!/bin/bash\n"
     for i in range( 0, len(sbatch_args), 2 ):
         sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
-        
-    sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
-
+    
+    singularity_hostname_arg = ""
+    if singularity_hostname is not None:
+        singularity_hostname_arg = f"--hostname {singularity_hostname} "
+    
+    #sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --contain --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    
     if name == None:
         name = "script"
     sbatch_script_filename = f"jetstream/cmd/{millis}_{name}.sbatch"
