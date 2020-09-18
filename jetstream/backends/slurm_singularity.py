@@ -34,7 +34,8 @@ class SlurmSingularityBackend(BaseBackend):
                 'slurm_args')
 
     def __init__(self, sacct_frequency=5, sbatch_delay=0.5,
-                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
+                 sbatch_executable=None, sbatch_account=None,
+                 sacct_fields=('JobID', 'Elapsed'),
                  job_monitor_max_fails=5, singularity_executable=None ):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
 
@@ -44,6 +45,7 @@ class SlurmSingularityBackend(BaseBackend):
         """
         super(SlurmSingularityBackend, self).__init__()
         self.sbatch_executable = sbatch_executable
+        self.sbatch_account = sbatch_account
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
@@ -83,7 +85,7 @@ class SlurmSingularityBackend(BaseBackend):
         signal.signal(signal.SIGINT, self.cancel)
         
         log.info('SlurmSingularityBackend initialized')
-
+            
     def _bump_next_update(self):
         self._next_update = datetime.now() + timedelta(seconds=self.sacct_frequency)
         log.debug(f'Next sacct update bumped to {self._next_update.isoformat()}')
@@ -221,6 +223,9 @@ class SlurmSingularityBackend(BaseBackend):
 
         log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
+        sbatch_account=self.sbatch_account
+        log.info( f"YAYAYAY {sbatch_account}" )
+        
         async with self.sbatch_lock:
             time.sleep(self.sbatch_delay)
             job = await sbatch(
@@ -240,7 +245,8 @@ class SlurmSingularityBackend(BaseBackend):
                 mem=task.directives.get('mem'),
                 walltime=task.directives.get('walltime'),
                 additional_args=task.directives.get('sbatch_args'),
-                sbatch_executable=self.sbatch_executable
+                sbatch_executable=self.sbatch_executable,
+                sbatch_account=self.sbatch_account
             )
 
         task.state.update(
@@ -524,8 +530,9 @@ async def sbatch(cmd, singularity_image,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
-                 additional_args=None, sbatch_executable=None, retry=10):
-    
+                 additional_args=None, sbatch_executable=None,
+                 sbatch_account=None, retry=10):
+
     # determine input/output mounts needed
     singularity_mounts = set()
     for input_filename_glob_pattern in input_filenames:
@@ -587,7 +594,10 @@ async def sbatch(cmd, singularity_image,
 
     if walltime:
         sbatch_args.extend(['-t', walltime])
-
+        
+    if sbatch_account:
+        sbatch_args.extend(['--account', sbatch_account])
+        
     if comment:
         fixed_comment = '"' + comment.replace('"',"'") + '"'
         sbatch_args.extend(['--comment', fixed_comment])
@@ -616,8 +626,8 @@ async def sbatch(cmd, singularity_image,
     with open( sbatch_script_filename, "w" ) as sbatch_script_file:
         sbatch_script_file.write( sbatch_script )
     
-    submit_sbatch_args = [ "sbatch", f"{sbatch_script_filename}" ]
-    
+    submit_sbatch_args = [ "sbatch", sbatch_script_filename ]
+
     remaining_tries = int(retry)
     while 1:
         if singularity_run_sem is not None:

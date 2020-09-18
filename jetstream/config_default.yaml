@@ -98,8 +98,7 @@ backends:
     pullfolder: null
   slurm_singularity:
     (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
-
-
+    sbatch_account: TBI
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
 # pipelines:home directory. They can be run by name using the jetstream
