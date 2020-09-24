@@ -224,7 +224,6 @@ class SlurmSingularityBackend(BaseBackend):
         log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
         sbatch_account=self.sbatch_account
-        log.info( f"YAYAYAY {sbatch_account}" )
         
         async with self.sbatch_lock:
             time.sleep(self.sbatch_delay)
@@ -538,7 +537,7 @@ async def sbatch(cmd, singularity_image,
     for input_filename_glob_pattern in input_filenames:
         input_filenames_glob = glob.glob( input_filename_glob_pattern )
         if len( input_filenames_glob ) == 0:
-            raise RuntimeError(f'input file(s) do not exist: {input_filename_glob_pattern}')
+            raise RuntimeError(f'Task {name}: input file(s) do not exist: {input_filename_glob_pattern}')
         for input_filename in input_filenames_glob:
             input_filename = os.path.abspath( input_filename )
             input_filename_head, input_filename_tail = os.path.split( input_filename )
