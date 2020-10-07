@@ -59,13 +59,13 @@ class SlurmSingularityBackend(BaseBackend):
         if self.sbatch_executable is None:
             self.sbatch_executable = shutil.which('sbatch') or 'sbatch'
 
-        with open(os.devnull, 'w') as devnull:
-            subprocess.run(
-                [self.sbatch_executable, '--version'],
-                check=True,
-                stdout=devnull,
-                stderr=devnull
-            )
+        # with open(os.devnull, 'w') as devnull:
+        #     subprocess.run(
+        #         [self.sbatch_executable, '--version'],
+        #         check=True,
+        #         stdout=devnull,
+        #         stderr=devnull
+        #     )
             
         self.max_jobs = 1024
         
@@ -191,13 +191,16 @@ class SlurmSingularityBackend(BaseBackend):
         if docker_image == None:
             raise RuntimeError(f'docker_image argument missing for task: {task.name}')
         docker_image_split = docker_image.split()
+        
         if len( docker_image_split ) > 1:
             singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
         else:
             singularity_image = f"docker://{docker_image}"
         
         singularity_hostname = task.directives.get( 'singularity_hostname', None )
-
+        
+        docker_image_authentication_token = task.directives.get( 'docker_image_authentication_token' )
+        
         log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
         try:
             if singularity_image in self._singularity_pull_cache:
@@ -207,12 +210,8 @@ class SlurmSingularityBackend(BaseBackend):
                     for i in range( self.max_jobs ):
                         await self._singularity_run_sem.acquire()
                     pull_command_run_string = ""
-                    try:
-                        docker_server_authentication_token = self.runner._pipeline.manifest['constants']['docker_server_authentication_token']
-                    except:
-                        pass
-                    if docker_server_authentication_token is not None:
-                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_server_authentication_token} """
+                    if docker_image_authentication_token is not None:
+                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_image_authentication_token} """
                     pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
                     log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
@@ -240,6 +239,7 @@ class SlurmSingularityBackend(BaseBackend):
                 singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 singularity_hostname=singularity_hostname,
+                docker_image_authentication_token=docker_image_authentication_token,
                 name=task.name,
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
@@ -532,7 +532,7 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
 
 async def sbatch(cmd, singularity_image,
                  singularity_executable="singularity", singularity_run_sem=None,
-                 singularity_hostname=None,
+                 singularity_hostname=None, docker_image_authentication_token=None,
                  name=None, input_filenames=[], output_filenames=[],
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
@@ -623,12 +623,8 @@ async def sbatch(cmd, singularity_image,
         singularity_hostname_arg = f"--hostname {singularity_hostname} "
     
     singularity_run_env_vars = ""
-    try:
-        docker_server_authentication_token = self.runner._pipeline.manifest['constants']['docker_server_authentication_token']
-    except:
-        pass
-    if docker_server_authentication_token is not None:
-        singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_server_authentication_token} """
+    if docker_image_authentication_token is not None:
+        singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_image_authentication_token} """
         
     sbatch_script += f"#!/bin/bash\n{singularity_run_env_vars}{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
     
