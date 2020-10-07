@@ -100,7 +100,10 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             async with self._singularity_pull_lock:
                 for i in range( self.cpus ):
                     await self._singularity_run_sem.acquire()
-                pull_command_run_string = f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD=SHwd9YZpxMY6dnynhVqw singularity exec --cleanenv {singularity_image} true"""
+                pull_command_run_string = ""
+                if docker_authentication_token is not None:
+                    pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                pull_command_run_string += f"""singularity exec --cleanenv {singularity_image} true"""
                 log.debug( f'pulling: {pull_command_run_string}' )
                 _p = await create_subprocess_shell( pull_command_run_string,
                                                     stdout=asyncio.subprocess.PIPE,
@@ -223,7 +226,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             command_run_string = ""
             if docker_authentication_token is not None:
                 command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-            command_run_string = f"""singularity exec --cleanenv --nv {singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
+            command_run_string += f"""singularity exec --cleanenv --nv {singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
 
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
