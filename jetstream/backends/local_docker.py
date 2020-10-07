@@ -39,7 +39,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         
     async def spawn(self, task, allow_cpus_overbooking = True, allow_memory_overbooking = True):
         log.debug('Spawn: {}'.format(task))
-
+        
         if 'cmd' not in task.directives:
             return task.complete()
     
@@ -155,9 +155,12 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
             return task
 
     async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
-                             docker_image=None, stdin=None, stdout=None, stderr=None,
+                             docker_login_username=None, docker_login_authentication_token=None,
+                             docker_image=None,
+                             stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
                              loop=None, executable='/bin/bash'):
+    
         try:
             docker_mounts = set()
             
@@ -178,19 +181,16 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
             run_script_filename = f"jetstream/cmd/{task_name}.bash"
             with open( run_script_filename, "w" ) as run_script:
                 run_script.write( args )
-            # opt_https = "--nohttps " if singularity_image.startswith("docker://localhost") else ""
-            command_run_string = f"""docker pull {docker_image} && docker run --user $(id -u):$(id -g) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
-            
-            # command_run_string = """\
-            # docker run \
-            # --user $(id -u) \
-            # -v /var/run/docker.sock:/var/run/docker.sock \
-            # -v $(pwd):$(pwd) \
-            # %s \
-            # -w $(pwd) \
-            # -e "DOCKER_MOUNTS_STRING=%s" \
-            # %s \
-            # bash -c '%s'""" % ( docker_mounts_string, docker_mounts_string, docker_image, args )
+                
+            command_run_string = ""
+            try:
+                docker_server_authentication_token = self.runner._pipeline.manifest['constants']['docker_server_authentication_token']
+            except:
+                pass
+            if docker_server_authentication_token is not None:
+                docker_server_login_url = docker_image.split("/")[0]
+                command_run_string += f"docker login {docker_server_login_url} -u '$oauthtoken' -p {docker_server_authentication_token} && "
+            command_run_string += f"""docker pull {docker_image} && docker run --user $(id -u):$(id -g) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
             
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             

@@ -206,7 +206,14 @@ class SlurmSingularityBackend(BaseBackend):
                 async with self._singularity_pull_lock:
                     for i in range( self.max_jobs ):
                         await self._singularity_run_sem.acquire()
-                    pull_command_run_string = f'singularity exec --cleanenv {singularity_image} true'
+                    pull_command_run_string = ""
+                    try:
+                        docker_server_authentication_token = self.runner._pipeline.manifest['constants']['docker_server_authentication_token']
+                    except:
+                        pass
+                    if docker_server_authentication_token is not None:
+                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_server_authentication_token} """
+                    pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
                     log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
                     _p = await create_subprocess_shell( pull_command_run_string,
                                                         stdout=asyncio.subprocess.PIPE,
@@ -615,8 +622,15 @@ async def sbatch(cmd, singularity_image,
     if singularity_hostname is not None:
         singularity_hostname_arg = f"--hostname {singularity_hostname} "
     
-    #sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --contain --cleanenv --nv {singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
-    sbatch_script += f"#!/bin/bash\n{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    singularity_run_env_vars = ""
+    try:
+        docker_server_authentication_token = self.runner._pipeline.manifest['constants']['docker_server_authentication_token']
+    except:
+        pass
+    if docker_server_authentication_token is not None:
+        singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_server_authentication_token} """
+        
+    sbatch_script += f"#!/bin/bash\n{singularity_run_env_vars}{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
     
     if name == None:
         name = "script"
