@@ -73,7 +73,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         else:
             singularity_image = f"docker://{docker_image}"
         
-        docker_image_authentication_token = task.directives.get( 'docker_image_authentication_token' )
+        docker_authentication_token = task.directives.get( 'docker_authentication_token' )
         
         cpus_reserved = 0
         memory_gb_reserved = 0
@@ -153,7 +153,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
                 singularity_image=singularity_image,
-                docker_image_authentication_token=docker_image_authentication_token,
+                docker_authentication_token=docker_authentication_token,
                 stdin=stdin_fp,
                 stdout=stdout_fp,
                 stderr=stderr_fp
@@ -190,7 +190,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             return task
 
     async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
-                             singularity_image=None, docker_image_authentication_token=None,
+                             singularity_image=None, docker_authentication_token=None,
                              stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
                              loop=None, executable='/bin/bash' ): 
@@ -221,8 +221,8 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 run_script.write( args )
             
             command_run_string = ""
-            if docker_server_authentication_token is not None:
-                command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_server_authentication_token} """
+            if docker_authentication_token is not None:
+                command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
             command_run_string = f"""singularity exec --cleanenv --nv {singularity_mounts_string} {self._singularity_pull_cache[ singularity_image ]} bash {run_script_filename}"""
 
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
