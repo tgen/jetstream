@@ -16,6 +16,12 @@ def add_arguments(parser):
     )
 
     group.add_argument(
+        '-m', '--mash-only',
+        action='store_true',
+        help='just render the template, build the workflow, mash with an existing workflow, and stop'
+    )
+
+    group.add_argument(
         '-b', '--build-only',
         action='store_true',
         help='just render the template, build the workflow, and stop'
