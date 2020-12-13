@@ -116,6 +116,12 @@ def run(wf, args):
 
     wf.reset(args.reset_method)
 
+    if args.mash_only:
+        if args.out:
+            wf.save(args.out)
+        log.info('Mashed workflow built successfully!')
+        return
+
     try:
         args.runner.start(
             workflow=wf,
