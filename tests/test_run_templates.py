@@ -1,79 +1,74 @@
 import os
+import pytest
 import tempfile
 import jetstream
-from unittest import TestCase
+import subprocess
 from jetstream.cli import main as cli_main
 
 jetstream.settings.clear()
 jetstream.settings.read(user=False)
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
-TEST_TEMPLATES = os.path.join(TESTS_DIR, 'templates')
+TEST_TEMPLATES = os.path.join(TESTS_DIR, "templates")
+
+try:
+    subprocess.run(
+        ["sbatch", "--version"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    is_sbatch_available = True
+except subprocess.CalledProcessError:
+    is_sbatch_available = False
+
+local_tests = {
+    "helloworld_1.jst": "single helloworld task",
+    "dependencies_1.jst": "dependencies can be declared with before/after",
+    "dependencies_2.jst": "dependencies can be declared with input/output",
+    "dependencies_3.jst": "tasks with dependencies can be added during run with exec",
+    "inheritance_1.jst": "templates can include code from other templates",
+    "logging_1.jst": "templates can log to stderr with log global fn",
+    "mapping_1.jst": "templates can include properties mapping at the top",
+    "retry_1.jst": "tasks can include retry directive that allows tasks to fail and then be run again",
+    "stress_1.jst": "runs should not crash due to forking limits",
+    "stress_2.jst": "runs should be able to process lots of concurrent tasks",
+    "stress_3.jst": "tasks with no command should complete very fast",
+    "slurm.jst": "task sbatch_args should override slurm args",
+}
+
+slurm_tests = {
+    "slurm.jst": "task sbatch_args should override slurm args",
+    "helloworld_1.jst": "single helloworld task",
+    "dependencies_1.jst": "dependencies can be declared with before/after",
+    "dependencies_2.jst": "dependencies can be declared with input/output",
+    "dependencies_3.jst": "tasks with dependencies can be added during run with exec",
+}
 
 
-class TestCliRunTemplates(TestCase):
-    """Tests that run workflow templates stored externally in
-    test/test_templates """
-    longMessage = True
+@pytest.fixture()
+def cleandir():
+    """test fixture that changes to a clean directory before running"""
+    old_dir = os.getcwd()
+    tempdir = tempfile.TemporaryDirectory()
+    os.chdir(tempdir.name)
+    yield tempdir
+    tempdir.cleanup()
+    os.chdir(old_dir)
 
-    def setUp(self):
-        """ All of these tests take place in the context of a project
-        directory. So setUp creates a temp dir and chdir to it. """
-        super(TestCliRunTemplates, self).setUp()
-        self.original_dir = os.getcwd()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        os.chdir(self.temp_dir.name)
 
-    def tearDown(self):
-        os.chdir(self.original_dir)
-        self.temp_dir.cleanup()
+@pytest.mark.parametrize('template', local_tests.keys(), ids=local_tests.values())
+def test_run_template_local(template, cleandir):
+    path = os.path.join(TEST_TEMPLATES, template)
+    args = ("run", path)
+    cli_main(args)
 
-    def template(self, template_filename):
-        """Runs a template from the test template directory"""
-        path = os.path.join(TEST_TEMPLATES, template_filename)
-        args = ('run', path)
-        cli_main(args)
-       
-    def test_helloworld_1(self):
-        """single helloworld task"""
-        self.template('helloworld_1.jst')
 
-    def test_dependencies_1(self):
-        """dependencies can be declared with before/after"""
-        self.template('dependencies_1.jst')
-    
-    def test_dependencies_2(self):
-        """dependencies can be declared with input/output"""
-        self.template('dependencies_2.jst')
+@pytest.mark.skipif(not is_sbatch_available, reason="sbatch not available")
+@pytest.mark.parametrize('template', slurm_tests.keys(), ids=slurm_tests.values())
+def test_run_template_slurm(template, cleandir):
+    jetstream.settings["backend"] = "slurm"
+    path = os.path.join(TEST_TEMPLATES, template)
+    args = ("run", path)
+    cli_main(args)
 
-    def test_dependencies_3(self):
-        """tasks with dependencies can be added during run with exec"""
-        self.template('dependencies_3.jst')
 
-    def test_inheritance_1(self):
-        """templates can include code from other templates"""
-        self.template('inheritance_1.jst')
-
-    def test_logging_1(self):
-        """templates can log to stderr with log global fn"""
-        self.template('logging_1.jst')
-
-    def test_mapping_1(self):
-        """templates can include properties mapping at the top"""
-        self.template('mapping_1.jst')
-
-    def test_retry_1(self):
-        """tasks can include retry directive that allows tasks to fail and
-        then be run again"""
-        self.template('retry_1.jst')
-
-    def test_stress_1(self):
-        """runs should not crash due to forking limits"""
-        self.template('stress_1.jst')
-
-    def test_stress_2(self):
-        """runs should be able to process lots of concurrent tasks"""
-        self.template('stress_2.jst')
-
-    def test_stress_3(self):
-        """tasks with no command should complete very fast"""
-        self.template('stress_3.jst')
