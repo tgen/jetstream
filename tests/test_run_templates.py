@@ -18,7 +18,7 @@ try:
         stderr=subprocess.STDOUT,
     )
     is_sbatch_available = True
-except subprocess.CalledProcessError:
+except FileNotFoundError:
     is_sbatch_available = False
 
 local_tests = {
