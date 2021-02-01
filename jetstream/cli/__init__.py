@@ -35,12 +35,12 @@ class ConfigAction(argparse.Action):
     """ConfigAction is an argparse action that allows an arbitrary configuration
     object to be built entirely from command arguments. An example for how to
     use these actions is included in add_config_options_to_parser().
-    
+
     If this action was assigned to the argument "-c/--config":
 
-    <cmd> -c int:answer 42 -c str:foo 42 
+    <cmd> -c int:answer 42 -c str:foo 42
 
-    When parsed, these args would add a dictionary to the argparse namespace 
+    When parsed, these args would add a dictionary to the argparse namespace
     destination "config":
 
     args = parser.parse_arguments()
@@ -58,7 +58,7 @@ class ConfigAction(argparse.Action):
     }
 
     loaders = {}
-    _default_loaders = {}  
+    _default_loaders = {}
 
     def __init__(self, delim=':', *args, **kwargs):
         self.delim = delim
@@ -85,7 +85,7 @@ class ConfigAction(argparse.Action):
                 fn = self.loaders[var_type[5:]]
             else:
                 fn = self.parsers[var_type]
-        except KeyError:  
+        except KeyError:
             msg = f'No function found for "{var_type}". Available types' \
                   f'are: {", ".join(self.get_type_choices())}'
             raise argparse.ArgumentError(self, msg)
@@ -165,7 +165,7 @@ def arg_parser():
 
     common.add_argument(
         '-l', '--logging',
-        choices=jetstream.settings['logging_profiles'].get(dict),
+        choices=jetstream.settings['logging_profiles'].flatten(),
         help='set the logging profile [interactive]'
     )
 
@@ -242,11 +242,11 @@ def main(args=None):
         if args.config_file:
             if args.config_file_type:
                 config_file = jetstream.utils.load_file(
-                    args.config_file, 
+                    args.config_file,
                     filetype=args.config_file_type
                 )
             else:
-                config_file = jetstream.utils.load_file(args.config_file)     
+                config_file = jetstream.utils.load_file(args.config_file)
             if not isinstance(config_file, dict):
                 final = {'__config_file__': config_file}
             else:

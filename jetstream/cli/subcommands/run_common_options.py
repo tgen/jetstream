@@ -16,6 +16,12 @@ def add_arguments(parser):
     )
 
     group.add_argument(
+        '-m', '--mash-only',
+        action='store_true',
+        help='just render the template, build the workflow, mash with an existing workflow, and stop'
+    )
+
+    group.add_argument(
         '-b', '--build-only',
         action='store_true',
         help='just render the template, build the workflow, and stop'
@@ -29,7 +35,7 @@ def add_arguments(parser):
 
     group.add_argument(
         '--backend',
-        choices=jetstream.settings['backends'].get(dict),
+        choices=jetstream.settings['backends'].flatten(),
         default=jetstream.settings['backend'].get(str),
         help='runner backend name used for executing tasks [%(default)s]'
     )

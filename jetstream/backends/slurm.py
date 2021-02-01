@@ -29,9 +29,14 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, sacct_frequency=60, sbatch_delay=0.1,
-                 sbatch_executable=None, sacct_fields=('JobID', 'Elapsed'),
-                 job_monitor_max_fails=5):
+    def __init__(
+            self,
+            sacct_frequency=60,
+            sbatch_args=None,
+            sbatch_delay=0.1,
+            sbatch_executable=None,
+            sacct_fields=('JobID', 'Elapsed'),
+            job_monitor_max_fails=5):
         """SlurmBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -39,6 +44,7 @@ class SlurmBackend(BaseBackend):
         :param sbatch: path to the sbatch binary if not on PATH
         """
         super(SlurmBackend, self).__init__()
+        self.sbatch_args = sbatch_args
         self.sbatch_executable = sbatch_executable
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
@@ -65,6 +71,33 @@ class SlurmBackend(BaseBackend):
     def _bump_next_update(self):
         self._next_update = datetime.now() + timedelta(seconds=self.sacct_frequency)
         log.debug(f'Next sacct update bumped to {self._next_update.isoformat()}')
+
+    def _get_sbatch_args(self, task):
+        """Any extra args for sbatch will come from the application
+        settings, followed by task settings. This means task settings
+        will be able to override application config settings."""
+        sbatch_args = []
+
+        conf_sbatch_args = self.sbatch_args
+        if conf_sbatch_args is None:
+            pass
+        elif isinstance(conf_sbatch_args, str):\
+            # It can be a pain to store args s
+            args = shlex.split(conf_sbatch_args)
+            sbatch_args.extend(args)
+        else:
+            sbatch_args.extend(conf_sbatch_args)
+
+        task_sbatch_args = task.directives.get('sbatch_args')
+        if task_sbatch_args is None:
+            pass
+        elif isinstance(task_sbatch_args, str):
+            args = shlex.split(task_sbatch_args)
+            sbatch_args.extend(args)
+        else:
+            sbatch_args.extend(task_sbatch_args)
+
+        return sbatch_args
 
     async def wait_for_next_update(self):
         """This allows the wait time to be bumped up each time a job is
@@ -156,9 +189,12 @@ class SlurmBackend(BaseBackend):
         if not task.directives.get('cmd'):
             return task.complete()
 
-        # sbatch breaks when called too frequently
+        # sbatch breaks when called too frequently, so this places
+        # a hard limit on the frequency of sbatch calls.
         time.sleep(self.sbatch_delay)
+
         stdin, stdout, stderr = self.get_fd_paths(task)
+        additional_args = self._get_sbatch_args(task)
 
         job = sbatch(
             cmd=task.directives['cmd'],
@@ -170,7 +206,7 @@ class SlurmBackend(BaseBackend):
             cpus_per_task=task.directives.get('cpus'),
             mem=task.directives.get('mem'),
             walltime=task.directives.get('walltime'),
-            additional_args=task.directives.get('sbatch_args'),
+            additional_args=additional_args,
             sbatch_executable=self.sbatch_executable
         )
 
