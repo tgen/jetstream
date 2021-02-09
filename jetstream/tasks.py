@@ -268,7 +268,7 @@ def copy(task):
 def random_task(name=None, input=None):
     if name is None:
         name = jetstream.guid(formatter='random_task_{id}')
-    cmd = 'set -ue\n\nhostname\n\n\date\necho {} is running'
+    cmd = 'set -ue\n\nhostname\n\ndate\necho {} is running'
     output = name + '.txt'
     return Task(name=name, cmd=cmd, input=input, output=output)
 

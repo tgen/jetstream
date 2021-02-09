@@ -22,7 +22,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
         """
         super(LocalBackend, self).__init__()
         self.cpus = cpus \
-                    or jetstream.settings['backends']['local']['cpus'] \
+                    or jetstream.settings['backends']['local']['cpus'].get() \
                     or jetstream.utils.guess_local_cpus()
         self.bip = blocking_io_penalty \
                    or jetstream.settings['backends']['local']['blocking_io_penalty'].get(int)

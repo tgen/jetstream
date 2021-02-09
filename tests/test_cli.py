@@ -104,13 +104,48 @@ class TestCli(TestCase):
         cli_main(args)
 
     def test_run_w_vars(self):
-        """run simple wokrflow with a couple variables passed as args"""
+        """run simple workflow with a couple variables passed as args"""
         with open('testwf.jst', 'w') as fp:
             fp.write('- cmd: echo {{ name }}\n  stdout: /dev/null\n')
 
         args = [
             'run',
             'testwf.jst',
+            '-c', 'str:name', 'Philip J. Fry',
+            '-c', 'bool:ok', 'true',
+            '-c', 'int:number', '42',
+            '-c', 'float:number2', '3.14'
+        ]
+
+        cli_main(args)
+
+    def test_run_w_mash(self):
+        """run the first workflow and then mash in the second workflow"""
+        with open('testwf1.jst', 'w') as fp:
+            fp.write('- name: task1\n  cmd: echo {{ name }}\n  stdout: /dev/null\n')
+
+        with open('testwf2.jst', 'w') as fp:
+            fp.write('- name: task1\n  cmd: echo {{ number }}\n  stdout: /dev/null\n')
+            fp.write('- name: task2\n  cmd: echo {{ number2 }}\n  stdout: /dev/null\n')
+
+        args = [
+            'run',
+            'testwf1.jst',
+            '-o', 'workflow.pickle',
+            '-c', 'str:name', 'Philip J. Fry',
+            '-c', 'bool:ok', 'true',
+            '-c', 'int:number', '42',
+            '-c', 'float:number2', '3.14'
+        ]
+
+        cli_main(args)
+
+        args = [
+            'run',
+            'testwf2.jst',
+            '-w', 'workflow.pickle',
+            '-m',
+            '-o', 'new_workflow.pickle',
             '-c', 'str:name', 'Philip J. Fry',
             '-c', 'bool:ok', 'true',
             '-c', 'int:number', '42',

@@ -1,0 +1,33 @@
+# Tests slurm options
+- name: hello
+  description: The slurm job name should be "hello world", even thought The
+    task id is just "hello"
+  sbatch_args: -J "hello world"
+  cmd: |
+    if [ -z "${SLURM_JOB_NAME}" ]; then
+        echo "not running on a slurm cluster"
+    else
+        if [ "${SLURM_JOB_NAME}" != "hello world" ]; then
+            echo "wrong job name: ${SLURM_JOB_NAME}"
+            exit 1
+        else
+            echo "job name is correct: ${SLURM_JOB_NAME}"
+        fi
+    fi
+
+
+- name: hello2
+  description: sbatch_args should also support sequences
+  sbatch_args: [-J, hello world 2]
+  cmd: |
+    if [ -z "${SLURM_JOB_NAME}" ]; then
+        echo "not running on a slurm cluster"
+    else
+        if [ "${SLURM_JOB_NAME}" != "hello world 2" ]; then
+            echo "wrong job name: ${SLURM_JOB_NAME}"
+            e
+            exit 1
+        else
+            echo "job name is correct: ${SLURM_JOB_NAME}"
+        fi
+    fi
