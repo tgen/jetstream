@@ -89,8 +89,16 @@ backends:
       - Start
       - End
       - MaxRSS
-
-
+  dnanexus:
+    (): jetstream.backends.dnanexus.DnanexusBackend
+  local_docker:
+    (): jetstream.backends.local_docker.LocalDockerBackend
+  local_singularity:
+    (): jetstream.backends.local_singularity.LocalSingularityBackend
+    pullfolder: null
+  slurm_singularity:
+    (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
+    sbatch_account: TBI
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
 # pipelines:home directory. They can be run by name using the jetstream

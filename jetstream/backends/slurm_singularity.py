@@ -1,15 +1,19 @@
 import asyncio
+import glob
 import itertools
 import json
 import logging
 import os
+import pathlib
+import random
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
-from asyncio import Lock
+from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
@@ -19,9 +23,8 @@ log = logging.getLogger('jetstream.slurm')
 sacct_delimiter = '\037'
 job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
 
-
-class SlurmBackend(BaseBackend):
-    """SlurmBackend will spawn tasks using a Slurm batch scheduler.
+class SlurmSingularityBackend(BaseBackend):
+    """SlurmSingularityBackend will spawn tasks using a Slurm batch scheduler.
 
     The spawn coroutine will return when the slurm job ID for a task is
     complete. This works by maintaining a dict of SlurmBatchJobs, and
@@ -30,23 +33,19 @@ class SlurmBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(
-            self,
-            sacct_frequency=60,
-            sbatch_args=None,
-            sbatch_delay=0.1,
-            sbatch_executable=None,
-            sacct_fields=('JobID', 'Elapsed'),
-            job_monitor_max_fails=5):
-        """SlurmBackend submits tasks as jobs to a Slurm batch cluster
+    def __init__(self, sacct_frequency=5, sbatch_delay=0.5,
+                 sbatch_executable=None, sbatch_account=None,
+                 sacct_fields=('JobID', 'Elapsed'),
+                 job_monitor_max_fails=5, singularity_executable=None ):
+        """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
         be requested from sacct
         :param sbatch: path to the sbatch binary if not on PATH
         """
-        super(SlurmBackend, self).__init__()
-        self.sbatch_args = sbatch_args
+        super(SlurmSingularityBackend, self).__init__()
         self.sbatch_executable = sbatch_executable
+        self.sbatch_account = sbatch_account
         self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
         self.sbatch_delay = sbatch_delay
@@ -60,46 +59,36 @@ class SlurmBackend(BaseBackend):
         if self.sbatch_executable is None:
             self.sbatch_executable = shutil.which('sbatch') or 'sbatch'
 
-        with open(os.devnull, 'w') as devnull:
-            subprocess.run(
-                [self.sbatch_executable, '--version'],
-                check=True,
-                stdout=devnull,
-                stderr=devnull
-            )
-
-        log.info('SlurmBackend initialized')
-
+        # with open(os.devnull, 'w') as devnull:
+        #     subprocess.run(
+        #         [self.sbatch_executable, '--version'],
+        #         check=True,
+        #         stdout=devnull,
+        #         stderr=devnull
+        #     )
+            
+        self.max_jobs = 1024
+        
+        self.singularity_executable = singularity_executable
+        if self.singularity_executable is None:
+            self.singularity_executable = shutil.which('singularity') or 'singularity'
+            
+        self._singularity_run_sem = BoundedSemaphore( self.max_jobs ) # To ensure pulls have exclusive use of singularity
+        self._singularity_pull_lock = Lock()
+        self._singularity_pull_cache = {}
+        
+        signal.signal(signal.SIGABRT, self.cancel)
+        signal.signal(signal.SIGHUP, self.cancel)
+        signal.signal(signal.SIGIOT, self.cancel)
+        signal.signal(signal.SIGQUIT, self.cancel)
+        signal.signal(signal.SIGTERM, self.cancel)
+        signal.signal(signal.SIGINT, self.cancel)
+        
+        log.info('SlurmSingularityBackend initialized')
+            
     def _bump_next_update(self):
         self._next_update = datetime.now() + timedelta(seconds=self.sacct_frequency)
         log.debug(f'Next sacct update bumped to {self._next_update.isoformat()}')
-
-    def _get_sbatch_args(self, task):
-        """Any extra args for sbatch will come from the application
-        settings, followed by task settings. This means task settings
-        will be able to override application config settings."""
-        sbatch_args = []
-
-        conf_sbatch_args = self.sbatch_args
-        if conf_sbatch_args is None:
-            pass
-        elif isinstance(conf_sbatch_args, str):\
-            # It can be a pain to store args s
-            args = shlex.split(conf_sbatch_args)
-            sbatch_args.extend(args)
-        else:
-            sbatch_args.extend(conf_sbatch_args)
-
-        task_sbatch_args = task.directives.get('sbatch_args')
-        if task_sbatch_args is None:
-            pass
-        elif isinstance(task_sbatch_args, str):
-            args = shlex.split(task_sbatch_args)
-            sbatch_args.extend(args)
-        else:
-            sbatch_args.extend(task_sbatch_args)
-
-        return sbatch_args
 
     async def wait_for_next_update(self):
         """This allows the wait time to be bumped up each time a job is
@@ -192,14 +181,68 @@ class SlurmBackend(BaseBackend):
             return task.complete()
 
         # sbatch breaks when called too frequently
+        time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
-        additional_args = self._get_sbatch_args(task)
 
+        input_filenames = task.directives.get( 'input', [] )
+        output_filenames = task.directives.get( 'output', [] )
+        
+        docker_image = task.directives.get( 'docker_image', None )
+        if docker_image == None:
+            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
+        docker_image_split = docker_image.split()
+        
+        if len( docker_image_split ) > 1:
+            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        else:
+            singularity_image = f"docker://{docker_image}"
+        
+        singularity_hostname = task.directives.get( 'singularity_hostname', None )
+        
+        docker_authentication_token = task.directives.get( 'docker_authentication_token' )
+        
+        log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
+        try:
+            if singularity_image in self._singularity_pull_cache:
+                pass
+            else:
+                async with self._singularity_pull_lock:
+                    for i in range( self.max_jobs ):
+                        await self._singularity_run_sem.acquire()
+                    pull_command_run_string = ""
+                    if docker_authentication_token is not None:
+                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                    pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
+                    log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
+                    _p = await create_subprocess_shell( pull_command_run_string,
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.PIPE )
+                    _stdout, _stderr = await _p.communicate()
+                    log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
+                    log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
+                    self._singularity_pull_cache[ singularity_image ] = singularity_image
+                    for i in range( self.max_jobs ):
+                         self._singularity_run_sem.release()
+        except Exception as e:
+            log.warning(f'Exception during singularity prepull: {e}')
+            p = await create_subprocess_shell( "exit 1;" )
+
+        log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
+        
+        sbatch_account=self.sbatch_account
+        
         async with self.sbatch_lock:
             time.sleep(self.sbatch_delay)
-            job = sbatch(
+            job = await sbatch(
                 cmd=task.directives['cmd'],
+                singularity_image=singularity_image,
+                singularity_executable=self.singularity_executable,
+                singularity_run_sem=self._singularity_run_sem,
+                singularity_hostname=singularity_hostname,
+                docker_authentication_token=docker_authentication_token,
                 name=task.name,
+                input_filenames=input_filenames,
+                output_filenames=output_filenames,
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
@@ -207,8 +250,9 @@ class SlurmBackend(BaseBackend):
                 cpus_per_task=task.directives.get('cpus'),
                 mem=task.directives.get('mem'),
                 walltime=task.directives.get('walltime'),
-                additional_args=additional_args,
-                sbatch_executable=self.sbatch_executable
+                additional_args=task.directives.get('sbatch_args'),
+                sbatch_executable=self.sbatch_executable,
+                sbatch_account=self.sbatch_account
             )
 
         task.state.update(
@@ -220,7 +264,7 @@ class SlurmBackend(BaseBackend):
         )
 
         self._bump_next_update()
-        log.info(f'SlurmBackend submitted({job.jid}): {task.name}')
+        log.info(f'SlurmSingularityBackend submitted({job.jid}): {task.name}')
 
         job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
@@ -231,6 +275,7 @@ class SlurmBackend(BaseBackend):
         if self.sacct_fields:
             job_info = {k: v for k, v in job.job_data.items() if
                         k in self.sacct_fields}
+            log.debug(f'{task.name} job.job_data: {job.job_data}')
             task.state['slurm_sacct'] = job_info
 
         if job.is_ok():
@@ -485,63 +530,119 @@ def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     return jobs
 
 
-def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
-           cpus_per_task=None, mem=None, walltime=None, comment=None,
-           additional_args=None, sbatch_executable=None, retry=10):
-    if sbatch_executable is None:
-        sbatch_executable = 'sbatch'
+async def sbatch(cmd, singularity_image,
+                 singularity_executable="singularity", singularity_run_sem=None,
+                 singularity_hostname=None, docker_authentication_token=None,
+                 name=None, input_filenames=[], output_filenames=[],
+                 stdin=None, stdout=None, stderr=None, tasks=None,
+                 cpus_per_task=1, mem="2G", walltime="1h", comment=None,
+                 additional_args=None, sbatch_executable=None,
+                 sbatch_account=None, retry=10):
 
-    args = [sbatch_executable, '--parsable']
+    # determine input/output mounts needed
+    singularity_mounts = set()
+    for input_filename_glob_pattern in input_filenames:
+        input_filenames_glob = glob.glob( input_filename_glob_pattern )
+        if len( input_filenames_glob ) == 0:
+            raise RuntimeError(f'Task {name}: input file(s) do not exist: {input_filename_glob_pattern}')
+        for input_filename in input_filenames_glob:
+            input_filename = os.path.abspath( input_filename )
+            input_filename_head, input_filename_tail = os.path.split( input_filename )
+            singularity_mounts.add( input_filename_head )
+    for output_filename in output_filenames:
+        output_filename = os.path.abspath( output_filename )
+        output_filename_head, output_filename_tail = os.path.split( output_filename )
+        singularity_mounts.add( output_filename_head )
+        pathlib.Path( output_filename_head ).mkdir( parents=True, exist_ok=True )
+    mount_strings = []
+    for singularity_mount in singularity_mounts:
+        mount_strings.append( "-B %s" % ( singularity_mount ) )
+    #mount_strings.append( "-B %s" % ( os.getcwd() ) )
+    #mount_strings.append( f'-B {(pwd.getpwuid(os.getuid())).pw_dir}' )
+    singularity_mounts_string = " ".join( mount_strings )
+    
+    # create cmd script
+    os.makedirs( "jetstream/cmd", mode = 0o777, exist_ok = True )
+    millis = int(round(time.time() * 1000))
+    if name == None:
+        name = "script"
+    cmd_script_filename = f"jetstream/cmd/{millis}_{name}.cmd"
+    cmd_script_filename = os.path.abspath( cmd_script_filename )
+    with open( cmd_script_filename, "w" ) as cmd_script:
+        cmd_script.write( cmd )
+
+    sbatch_args = []
 
     if name:
-        args.extend(['-J', name])
+        sbatch_args.extend(['-J', name])
 
     if stdin:
-        args.extend(['--input', stdin])
+        sbatch_args.extend(['--input', stdin])
 
     if stdout:
-        args.extend(['-o', stdout])
+        sbatch_args.extend(['-o', stdout])
 
     if stderr:
-        args.extend(['-e', stdout])
+        sbatch_args.extend(['-e', stderr])
 
     if tasks:
-        args.extend(['-n', tasks])
+        sbatch_args.extend(['-n', tasks])
 
     if cpus_per_task:
-        args.extend(['-c', cpus_per_task])
+        sbatch_args.extend(['-c', cpus_per_task])
 
     if mem:
-        args.extend(['--mem', mem])
+        sbatch_args.extend(['--mem', mem])
+    elif cpus_per_task:
+        sbatch_args.extend(['--mem', f"{cpus_per_task*2}G"])
+    else:
+        sbatch_args.extend(['--mem', "2G"])
 
     if walltime:
-        args.extend(['-t', walltime])
-
+        sbatch_args.extend(['-t', walltime])
+        
+    if sbatch_account:
+        sbatch_args.extend(['--account', sbatch_account])
+        
     if comment:
-        args.extend(['--comment', comment])
+        fixed_comment = '"' + comment.replace('"',"'") + '"'
+        sbatch_args.extend(['--comment', fixed_comment])
 
     if additional_args:
         if isinstance(additional_args, str):
-            args.append(additional_args)
+            sbatch_args.append(additional_args)
         else:
-            args.extend(additional_args)
-
-    if cmd.startswith('#!'):
-        script = cmd
-    else:
-        script = '#!/bin/bash\n{}'.format(cmd)
-
-    temp = tempfile.NamedTemporaryFile()
-    with open(temp.name, 'w') as fp:
-        fp.write(script)
-
-    args.append(temp.name)
-    args = [str(r) for r in args]
+            sbatch_args.extend(additional_args)
+        
+    sbatch_script = "#!/bin/bash\n"
+    for i in range( 0, len(sbatch_args), 2 ):
+        sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
+    
+    singularity_hostname_arg = ""
+    if singularity_hostname is not None:
+        singularity_hostname_arg = f"--hostname {singularity_hostname} "
+    
+    singularity_run_env_vars = ""
+    if docker_authentication_token is not None:
+        singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+        
+    sbatch_script += f"#!/bin/bash\n{singularity_run_env_vars}{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    
+    if name == None:
+        name = "script"
+    sbatch_script_filename = f"jetstream/cmd/{millis}_{name}.sbatch"
+    sbatch_script_filename = os.path.abspath( sbatch_script_filename )
+    with open( sbatch_script_filename, "w" ) as sbatch_script_file:
+        sbatch_script_file.write( sbatch_script )
+    
+    submit_sbatch_args = [ "sbatch", sbatch_script_filename ]
 
     remaining_tries = int(retry)
     while 1:
+        if singularity_run_sem is not None:
+            await singularity_run_sem.acquire()
         try:
-            p = subprocess.run(args, stdout=subprocess.PIPE, check=True)
+            p = subprocess.run(submit_sbatch_args, stdout=subprocess.PIPE, check=True)
             break
         except subprocess.CalledProcessError:
             if remaining_tries > 0:
@@ -550,9 +651,12 @@ def sbatch(cmd, name=None, stdin=None, stdout=None, stderr=None, tasks=None,
                 time.sleep(60)
             else:
                 raise
+        finally:
+            if singularity_run_sem is not None:
+                singularity_run_sem.release()
 
-    jid = p.stdout.decode().strip()
+    jid = p.stdout.decode().strip().split()[-1]
     job = SlurmBatchJob(jid)
-    job.args = args
-    job.script = script
+    job.args = submit_sbatch_args
+    job.script = sbatch_script_filename
     return job
