@@ -237,8 +237,7 @@ class Runner:
         exec_directive = task.directives.get('exec')
 
         if exec_directive:
-            env = {'runner': self, 'task': task}
-            exec(exec_directive, None, env)
+            exec(exec_directive)
             self._workflow_graph = self.workflow.reload_graph()
             self._workflow_iterator = iter(self.workflow.graph)
 
