@@ -8,7 +8,7 @@ import yaml
 
 __author__ = 'Ryan Richholt'
 __email__ = 'rrichholt@tgen.org'
-__version__ = '1.6.1'
+__version__ = '1.6.2'
 
 
 # Configure parallel library dependencies (Used by numpy)
