@@ -446,11 +446,11 @@ def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
 def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
     """Parse stdout from sacct to a dictionary of job ids and data."""
     jobs = dict()
-    lines = iter(data.strip().splitlines())
-    header = next(lines).strip().split(delimiter)
+    lines = iter(data.splitlines())
+    header = next(lines).split(delimiter)
 
     for line in lines:
-        row = dict(zip(header, line.strip().split(delimiter)))
+        row = dict(zip(header, line.split(delimiter)))
 
         try:
             match = id_pattern.match(row['JobID'])

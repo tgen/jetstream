@@ -163,7 +163,7 @@ def find_pipelines(*dirs):
                     p = Pipeline(path)
                     log.debug(f'Found {p} at {path}')
                     yield p
-                except :
+                except Exception:
                     log.debug(f'Failed to load: {path}')
 
                 yield from find_pipelines(path)
