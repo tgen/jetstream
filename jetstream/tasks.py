@@ -10,7 +10,9 @@ log = logging.getLogger(__name__)
 # fields added later (ie container ids)
 IDENTITY = (
     'cmd',
-    'exec'
+    'exec',
+    'container'
+    'digest'
 )
 
 VALID_STATES = (
