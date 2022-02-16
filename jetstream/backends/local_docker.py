@@ -37,7 +37,10 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         self._resources_lock = Lock()
         log.info(f'LocalDockerBackend initialized with {self.cpus} cpus and {self.memory_gb}G memory')
         
-    async def spawn(self, task, allow_cpus_overbooking = True, allow_memory_overbooking = True):
+    async def spawn( self,
+                     task, 
+                     allow_cpus_overbooking = True, 
+                     allow_memory_overbooking = True ):
         log.debug('Spawn: {}'.format(task))
         
         if 'cmd' not in task.directives:
@@ -56,13 +59,26 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
+        container = task.directives.get( 'container', None )
+        digest = task.directives.get( 'digest', None )
+        if container == None:
+            raise RuntimeError(f'container argument missing for task: {task.name}')
         try:
-            docker_image = task.directives.get( 'docker_image' ).replace( "--nohttps ", "" )
-        except:
-            log.warning( f'Could not parse the docker image for {task.name}: Proceeding anyways ...' )
-            
-        docker_authentication_token = task.directives.get( 'docker_authentication_token' )
+            image, tag = container.split(':')
+        except ValueError:
+            log.debug( f'Tag not defined for {container}, assuming latest')
+            image = container
+            tag = 'latest'
+
+        if digest == None:
+            docker_image = f"{image}:{tag}"
+        else:
+            # Stripping sha256 in case it was already included in digest
+            digest = re.sub('^sha256:', '', digest)
+            docker_image = f"{image}@sha256:{digest}"
         
+        docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
+
         cpus_reserved = 0
         memory_gb_reserved = 0
         open_fps = list()

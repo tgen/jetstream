@@ -64,16 +64,31 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
-        docker_image = task.directives.get( 'docker_image', None )
-        if docker_image == None:
-            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        docker_image_split = docker_image.split()
-        if len( docker_image_split ) > 1:
-            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        container = task.directives.get( 'container', None )
+        digest = task.directives.get( 'digest', None )
+        if container == None:
+            raise RuntimeError(f'container argument missing for task: {task.name}')
+
+        if os.path.exists(container):
+            singularity_image = container
+            singularity_hostname = None
+            docker_authentication_token = None
         else:
-            singularity_image = f"docker://{docker_image}"
+            try:
+                image, tag = container.split(':')
+            except ValueError:
+                log.debug( f'Tag not defined for {container}, assuming latest')
+                image = container
+                tag = 'latest'
+
+            if digest == None:
+                singularity_image = f"docker://{image}:{tag}"
+            else:
+                # Stripping sha256 in case it was already included in digest
+                digest = re.sub('^sha256:', '', digest)
+                singularity_image = f"docker://{image}@sha256:{digest}"
         
-        docker_authentication_token = task.directives.get( 'docker_authentication_token' )
+        docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
         
         cpus_reserved = 0
         memory_gb_reserved = 0
@@ -93,28 +108,33 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
             else:
                 raise RuntimeError('Task mem greater than system mem')
             
-        log.debug( f'going to pull: {singularity_image}' )
-        if singularity_image in self._singularity_pull_cache:
-            pass
-        else:
-            async with self._singularity_pull_lock:
-                for i in range( self.cpus ):
-                    await self._singularity_run_sem.acquire()
-                pull_command_run_string = ""
-                if docker_authentication_token is not None:
-                    pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-                pull_command_run_string += f"""singularity exec --cleanenv {singularity_image} true"""
-                log.debug( f'pulling: {pull_command_run_string}' )
-                _p = await create_subprocess_shell( pull_command_run_string,
-                                                    stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.PIPE )
-                stdout, stderr = await _p.communicate()
-                log.debug( f'pulled, stdout: {stdout}' )
-                log.debug( f'pulled, stderr: {stderr}' )
-                self._singularity_pull_cache[ singularity_image ] = singularity_image
-                for i in range( self.cpus ):
-                    self._singularity_run_sem.release()
-        log.debug( f'pulled: {singularity_image}' )
+        log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
+        try:
+            if singularity_image in self._singularity_pull_cache:
+                pass
+            else:
+                async with self._singularity_pull_lock:
+                    for i in range( self.cpus ):
+                        await self._singularity_run_sem.acquire()
+                    pull_command_run_string = ""
+                    if docker_authentication_token is not None:
+                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                    pull_command_run_string += f"""singularity exec --cleanenv {singularity_image} true"""
+                    log.debug( f'pulling: {pull_command_run_string}' )
+                    _p = await create_subprocess_shell( pull_command_run_string,
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.PIPE )
+                    stdout, stderr = await _p.communicate()
+                    log.debug( f'pulled, stdout: {stdout}' )
+                    log.debug( f'pulled, stderr: {stderr}' )
+                    self._singularity_pull_cache[ singularity_image ] = singularity_image
+                    for i in range( self.cpus ):
+                        self._singularity_run_sem.release()
+        except Exception as e:
+            log.warning(f'Exception during singularity prepull: {e}')
+            p = await create_subprocess_shell( "exit 1;" )
+        
+        log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
         try:
             async with self._resources_lock:

@@ -33,10 +33,15 @@ class SlurmSingularityBackend(BaseBackend):
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
                 'slurm_args')
 
-    def __init__(self, sacct_frequency=5, sbatch_delay=0.5,
-                 sbatch_executable=None, sbatch_account=None,
+    def __init__(self, 
+                 sacct_frequency=5, 
+                 sbatch_delay=0.5,
+                 sbatch_executable=None, 
+                 sbatch_account=None,
                  sacct_fields=('JobID', 'Elapsed'),
-                 job_monitor_max_fails=5, singularity_executable=None ):
+                 job_monitor_max_fails=5, 
+                 max_jobs=1024,
+                 singularity_executable=None ):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -44,13 +49,14 @@ class SlurmSingularityBackend(BaseBackend):
         :param sbatch: path to the sbatch binary if not on PATH
         """
         super(SlurmSingularityBackend, self).__init__()
+        self.sacct_frequency = sacct_frequency
+        self.sbatch_delay = sbatch_delay
         self.sbatch_executable = sbatch_executable
         self.sbatch_account = sbatch_account
-        self.sacct_frequency = sacct_frequency
         self.sacct_fields = sacct_fields
-        self.sbatch_delay = sbatch_delay
         self.sbatch_lock = Lock()
         self.job_monitor_max_fails = job_monitor_max_fails
+        self.max_jobs = max_jobs
         self.jobs = dict()
 
         self.coroutines = (self.job_monitor,)
@@ -66,8 +72,6 @@ class SlurmSingularityBackend(BaseBackend):
         #         stdout=devnull,
         #         stderr=devnull
         #     )
-            
-        self.max_jobs = 1024
         
         self.singularity_executable = singularity_executable
         if self.singularity_executable is None:
@@ -187,47 +191,61 @@ class SlurmSingularityBackend(BaseBackend):
         input_filenames = task.directives.get( 'input', [] )
         output_filenames = task.directives.get( 'output', [] )
         
-        docker_image = task.directives.get( 'docker_image', None )
-        if docker_image == None:
-            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        docker_image_split = docker_image.split()
-        
-        if len( docker_image_split ) > 1:
-            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
-        else:
-            singularity_image = f"docker://{docker_image}"
-        
-        singularity_hostname = task.directives.get( 'singularity_hostname', None )
-        
-        docker_authentication_token = task.directives.get( 'docker_authentication_token' )
-        
-        log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
-        try:
-            if singularity_image in self._singularity_pull_cache:
-                pass
-            else:
-                async with self._singularity_pull_lock:
-                    for i in range( self.max_jobs ):
-                        await self._singularity_run_sem.acquire()
-                    pull_command_run_string = ""
-                    if docker_authentication_token is not None:
-                        pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-                    pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
-                    log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
-                    _p = await create_subprocess_shell( pull_command_run_string,
-                                                        stdout=asyncio.subprocess.PIPE,
-                                                        stderr=asyncio.subprocess.PIPE )
-                    _stdout, _stderr = await _p.communicate()
-                    log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
-                    log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
-                    self._singularity_pull_cache[ singularity_image ] = singularity_image
-                    for i in range( self.max_jobs ):
-                         self._singularity_run_sem.release()
-        except Exception as e:
-            log.warning(f'Exception during singularity prepull: {e}')
-            p = await create_subprocess_shell( "exit 1;" )
+        container = task.directives.get( 'container', None )
+        digest = task.directives.get( 'digest', None )
+        if container == None:
+            raise RuntimeError(f'container argument missing for task: {task.name}')
 
-        log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
+        if os.path.exists(container):
+            singularity_image = container
+            singularity_hostname = None
+            docker_authentication_token = None
+        else:
+            try:
+                image, tag = container.split(':')
+            except ValueError:
+                log.debug( f'Tag not defined for {container}, assuming latest')
+                image = container
+                tag = 'latest'
+
+            if digest == None:
+                singularity_image = f"docker://{image}:{tag}"
+            else:
+                # Stripping sha256 in case it was already included in digest
+                digest = re.sub('^sha256:', '', digest)
+                singularity_image = f"docker://{image}@sha256:{digest}"
+            
+            singularity_hostname = task.directives.get( 'singularity_hostname', None )
+            
+            docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
+            
+            log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
+            try:
+                if singularity_image in self._singularity_pull_cache:
+                    pass
+                else:
+                    async with self._singularity_pull_lock:
+                        for i in range( self.max_jobs ):
+                            await self._singularity_run_sem.acquire()
+                        pull_command_run_string = ""
+                        if docker_authentication_token is not None:
+                            pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                        pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
+                        log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
+                        _p = await create_subprocess_shell( pull_command_run_string,
+                                                            stdout=asyncio.subprocess.PIPE,
+                                                            stderr=asyncio.subprocess.PIPE )
+                        _stdout, _stderr = await _p.communicate()
+                        log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
+                        log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
+                        self._singularity_pull_cache[ singularity_image ] = singularity_image
+                        for i in range( self.max_jobs ):
+                            self._singularity_run_sem.release()
+            except Exception as e:
+                log.warning(f'Exception during singularity prepull: {e}')
+                p = await create_subprocess_shell( "exit 1;" )
+
+            log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
         sbatch_account=self.sbatch_account
         
