@@ -22,6 +22,7 @@ log = logging.getLogger('jetstream')
 _subcommands = OrderedDict(
     init='jetstream.cli.subcommands.init',
     run='jetstream.cli.subcommands.run',
+    mash='jetstream.cli.subcommands.mash',
     build='jetstream.cli.subcommands.build',
     render='jetstream.cli.subcommands.render',
     tasks='jetstream.cli.subcommands.tasks',
