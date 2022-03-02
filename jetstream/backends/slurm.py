@@ -12,6 +12,7 @@ import time
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
+from jetstream.tasks import get_fd_paths
 from jetstream import settings
 
 log = logging.getLogger('jetstream.slurm')
@@ -193,7 +194,7 @@ class SlurmBackend(BaseBackend):
         # a hard limit on the frequency of sbatch calls.
         time.sleep(self.sbatch_delay)
 
-        stdin, stdout, stderr = self.get_fd_paths(task)
+        stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
         additional_args = self._get_sbatch_args(task)
 
         job = sbatch(

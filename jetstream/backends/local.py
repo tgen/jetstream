@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import jetstream
+from jetstream.tasks import get_fd_paths
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 
 log = logging.getLogger('jetstream.local')
@@ -48,7 +49,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            stdin, stdout, stderr = self.get_fd_paths(task)
+            stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
             if stdin:
                 stdin_fp = open(stdin, 'r')

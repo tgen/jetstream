@@ -20,31 +20,6 @@ class BaseBackend(object):
         spot to clean up any outstanding jobs etc.."""
         pass
 
-    def get_fd_paths(self, task):
-        """When working inside project, task outputs will be directed into
-        log files inside project.logs_dir. But task.stdout/stderr should
-        override this behavior. Backend subclasses should use this method to
-        get the correct output paths for a task."""
-        stdin = task.directives.get('stdin')
-
-        if self.runner.project:
-            if 'stdout' in task.directives:
-                stdout = task.directives['stdout']
-            else:
-                filename = f'{task.name}.log'
-                logs_dir = self.runner.project.paths.logs_dir
-                stdout = os.path.join(logs_dir, filename)
-
-            if 'stderr' in task.directives:
-                stderr = task.directives['stderr']
-            else:
-                stderr = stdout
-        else:
-            stdout = task.directives.get('stdout')
-            stderr = task.directives.get('stderr')
-
-        return stdin, stdout, stderr
-
 
 class PoisonedBackend(BaseBackend):
     async def spawn(self, something):
