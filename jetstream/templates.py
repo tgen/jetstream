@@ -12,7 +12,7 @@ from jinja2 import (
     Environment,
     StrictUndefined,
     Undefined,
-    contextfunction,
+    pass_context,
     FileSystemLoader
 )
 
@@ -63,13 +63,13 @@ class TemplateException(Exception):
     """Can be raised by the template itself using raise() function"""
 
 
-@contextfunction
+@pass_context
 def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
     raise TemplateException(f'{ctx.name}: {msg}')
 
 
-@contextfunction
+@pass_context
 def log_helper(ctx, msg, level='INFO'):
     """Allow "raise('msg')" to be used in templates"""
     level = logging._checkLevel(level)
