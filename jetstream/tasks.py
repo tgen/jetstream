@@ -312,3 +312,4 @@ def get_fd_paths(task, project=None):
         stderr = task.directives.get('stderr')
 
     return stdin, stdout, stderr
+

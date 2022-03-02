@@ -90,6 +90,22 @@ backends:
       - End
       - MaxRSS
 
+# This option controls the number of times the runner will attempt to
+# submit a job to Slurm before giving up. (Use -1 for unlimited)
+slurm_sbatch_retry: 10
+
+# This option controls how the runner will classify a job state.
+# For Slurm clusters with automatic resubmit, some job states should
+# be considered active that would be inactive on other clusters.
+slurm_active_states:
+  - CONFIGURING
+  - COMPLETING
+  - RUNNING
+  - PENDING
+  - NODE_FAIL
+
+slurm_passed_states:
+  - COMPLETED
 
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
