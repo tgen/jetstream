@@ -1,6 +1,7 @@
 """Run a template, module, workflow, or pipeline"""
 import argparse
 import logging
+import subprocess
 import jetstream
 from jetstream.cli.subcommands import run_common_options
 
@@ -24,7 +25,21 @@ def add_arguments(parser):
     run_common_options.add_arguments(parser)
 
 
-def check_for_failures(wf, limit=5):
+def task_log_snippets(task, project):
+    stdin, stdout, stderr = jetstream.tasks.get_fd_paths(task, project)
+
+    if stdout:
+        logs = jetstream.utils.get_snippet(stdout)
+        log.info(f'Stdout snippet:\n{logs}')
+
+    if stderr != stdout:
+        logs = jetstream.utils.get_snippet(stderr)
+        log.info(f'Stderr snippet:\n{logs}')
+
+
+def check_for_failures(wf, project=None):
+    limit = jetstream.settings['runner']['report_failures'].as_number()
+    logs = jetstream.settings['runner']['report_failures_logs'].as_number()
     fails = []
     skips = []
     for task in wf.tasks.values():
@@ -36,15 +51,21 @@ def check_for_failures(wf, limit=5):
 
     if fails or skips:
         log.info(f'{len(fails) + len(skips)} total tasks failed:')
-        for i in range(limit):
+        remaining = limit
+        while remaining:
             try:
                 task = fails.pop(-1)
-                log.info(f'{task} {task.state.get("label")}')
             except IndexError:
                 break
-        else:
-            if fails:
-                log.info(f'...and {len(fails)} more failed!')
+
+            log.info(f'Task failed: "{task.name}": {task.state.get("label")}')
+            if logs:
+                task_log_snippets(task, project)
+
+            remaining -= 1
+
+        if fails:
+            log.info(f'...and {len(fails)} more failed!')
 
         if skips:
             log.info(f'{len(skips)} tasks were skipped due to '
@@ -129,7 +150,7 @@ def run(wf, args):
             pipeline=args.pipeline
         )
     finally:
-        errs = check_for_failures(wf)
+        errs = check_for_failures(wf, args.project)
         if errs:
             log.critical('There were errors during the run.')
             raise SystemExit(1)
