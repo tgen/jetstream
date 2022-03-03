@@ -8,15 +8,20 @@ import urllib.parse
 import textwrap
 from collections.abc import Mapping
 import jetstream
+import jinja2
 from jinja2 import (
     Environment,
     StrictUndefined,
     Undefined,
-    pass_context,
     FileSystemLoader
 )
 
 log = logging.getLogger(__name__)
+
+if hasattr(jinja2, "pass_context"):
+    pass_context = jinja2.pass_context
+else:
+    pass_context = jinja2.contextfunction
 
 
 class TemplateContext:
