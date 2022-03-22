@@ -24,9 +24,13 @@ TASK_DETAILS = """\
   {% for k, v in task.state.items() %}
     {{ k }}: {{ v|tojson|safe }}
   {% endfor %}
-  {% if logs %}
-  logs: |
-    {{ logs|indent(4) }}
+  {% if stdout %}
+  stdout: |
+    {{ stdout|indent(4) }}
+  {% endif %}
+  {% if stderr %}
+  stderr: |
+    {{ stderr|indent(4) }}
   {% endif %}
 """
 
@@ -166,22 +170,38 @@ def _search_workflow(args, wf):
                 yield task
 
 
-def get_details(task, include_logs=True, env=jetstream.templates.environment()):
+def read_log(path):
+    try:
+        with open(path) as fp:
+            return fp.read()
+    except FileNotFoundError:
+        return f'File not found: {path}'
+
+
+def get_details(task, project=None, include_logs=True, env=None):
+    if env is None:
+        env = jetstream.templates.environment()
+
     if not include_logs or task.is_new():
-        logs = None
+        stdout_logs = None
+        stderr_logs = None
     else:
-        stdout_path = task.state.get('stdout_path')
-        if stdout_path is None:
-            logs = f'Could not determine log file path.'
+        stdin, stdout, stderr = jetstream.tasks.get_fd_paths(task, project)
+
+        if stdout is None:
+            stdout_logs = f'Could not determine stdout path.'
         else:
-            try:
-                with open(stdout_path, 'r') as fp:
-                    logs = fp.read()
-            except FileNotFoundError:
-                logs = f'Could not find log file: {stdout_path}'
+            stdout_logs = read_log(stdout)
+
+        if stderr == stdout:
+            stderr_logs = None
+        elif stderr is None:
+            stderr_logs = f'Could not determine stderr path'
+        else:
+            stderr_logs = read_log(stderr)
 
     template = env.from_string(TASK_DETAILS)
-    final = template.render(task=task, logs=logs)
+    final = template.render(task=task, stdout=stdout_logs, stderr=stderr_logs)
     return final
 
 
@@ -212,7 +232,12 @@ def main(args):
 
     if args.action == 'verbose':
         for task in tasks:
-            print(get_details(task, include_logs=args.include_logs))
+            details = get_details(
+                task,
+                project=args.project,
+                include_logs=args.include_logs
+            )
+            print(details)
     elif args.action == 'remove':
         for task in tasks:
             workflow.pop(task.name)

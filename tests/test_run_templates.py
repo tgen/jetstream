@@ -46,13 +46,11 @@ slurm_tests = {
 
 
 @pytest.fixture()
-def cleandir():
+def cleandir(tmp_path):
     """test fixture that changes to a clean directory before running"""
     old_dir = os.getcwd()
-    tempdir = tempfile.TemporaryDirectory()
-    os.chdir(tempdir.name)
-    yield tempdir
-    tempdir.cleanup()
+    os.chdir(tmp_path)
+    yield tmp_path
     os.chdir(old_dir)
 
 
