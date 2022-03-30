@@ -11,6 +11,10 @@ log: null
 # Set the default backend. Choose from the options listed in settings.backends
 backend: local
 
+# This option sets the command that will be used for retrieving log snippets
+# It must include a placeholder {path} that will be replaced with the path to
+# the log file.
+snippet_cmd: tail "{path}"
 
 # If this is set to false, utils.dynamic_import will only search builtins when
 # loading functions
@@ -45,10 +49,19 @@ parsers:
   uri: urllib.parse.urlparse
 
 # =================================== Runner ==================================
-# These settings modify the workflow runner internal behaviors and can result
-# in cpu over-utilization or deadlock of the runner. They are not documented
-# well and should be modified with caution.
 runner:
+  # These options control how failures are reported by the runner when
+  # a workflow run ends:
+  # "report_failures" sets the max number of failed tasks that will be logged
+  # when the run ends (use -1 for unlimited).
+  # "report_failures_logs" controls whether log snippets will be shown for
+  # failed tasks.
+  report_failures: 5
+  report_failures_logs: true
+
+  # These settings modify the workflow runner internal behaviors. They are not
+  # documented well and should be modified with caution. Misconfiguration here
+  # can cause CPU over-utilization or deadlock the runner.
   id_format: js{id}
   max_concurrency: null
   throttle: 0.1
@@ -98,7 +111,26 @@ backends:
     pullfolder: null
   slurm_singularity:
     (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
-    sbatch_account: TBI
+    sbatch_account: null
+    input_file_validation: False
+
+# This option controls the number of times the runner will attempt to
+# submit a job to Slurm before giving up. (Use -1 for unlimited)
+slurm_sbatch_retry: 10
+
+# This option controls how the runner will classify a job state.
+# For Slurm clusters with automatic resubmit, some job states should
+# be considered active that would be inactive on other clusters.
+slurm_active_states:
+  - CONFIGURING
+  - COMPLETING
+  - RUNNING
+  - PENDING
+  - NODE_FAIL
+
+slurm_passed_states:
+  - COMPLETED
+
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
 # pipelines:home directory. They can be run by name using the jetstream

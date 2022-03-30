@@ -8,15 +8,20 @@ import urllib.parse
 import textwrap
 from collections.abc import Mapping
 import jetstream
+import jinja2
 from jinja2 import (
     Environment,
     StrictUndefined,
     Undefined,
-    contextfunction,
     FileSystemLoader
 )
 
 log = logging.getLogger(__name__)
+
+if hasattr(jinja2, "pass_context"):
+    pass_context = jinja2.pass_context
+else:
+    pass_context = jinja2.contextfunction
 
 
 class TemplateContext:
@@ -63,13 +68,13 @@ class TemplateException(Exception):
     """Can be raised by the template itself using raise() function"""
 
 
-@contextfunction
+@pass_context
 def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
     raise TemplateException(f'{ctx.name}: {msg}')
 
 
-@contextfunction
+@pass_context
 def log_helper(ctx, msg, level='INFO'):
     """Allow "raise('msg')" to be used in templates"""
     level = logging._checkLevel(level)
