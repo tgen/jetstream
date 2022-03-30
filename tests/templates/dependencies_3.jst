@@ -1,16 +1,16 @@
-# This template tests dynamic features with the exec directive. 
+# This template tests dynamic features with the exec directive.
 # During a run, add_tasks will add a new to the workflow. The
-# last task will wait for the new task to complete via the 
+# last task will wait for the new task to complete via the
 # after-re directive.
 # Expected stdout: "Hello, world! All done!"
 - name: start
-  cmd: printf 'Hello, ' 
+  cmd: printf 'Hello, '
 
 
 - name: add_tasks
   after: start
   exec: |
-    runner.workflow.new_task(
+    self.workflow.new_task(
         name='dynamic_task',
         cmd="printf 'world! '"
     )
