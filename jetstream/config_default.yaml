@@ -69,6 +69,7 @@ runner:
   autosave_max: 60
 
 
+
 # ================================== Projects =================================
 projects:
   id_format: p{id}
@@ -112,7 +113,8 @@ backends:
   slurm_singularity:
     (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
     sbatch_account: null
-    input_file_validation: False
+    input_file_validation: false
+
 
 # This option controls the number of times the runner will attempt to
 # submit a job to Slurm before giving up. (Use -1 for unlimited)
