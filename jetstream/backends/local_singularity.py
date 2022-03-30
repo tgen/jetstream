@@ -7,6 +7,7 @@ import asyncio
 import subprocess
 import tempfile
 import jetstream
+from jetstream.tasks import get_fd_paths
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 from pathlib import Path
 
@@ -150,7 +151,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 
                 log.debug('Resources reserved: {}'.format(task))
             
-            stdin, stdout, stderr = self.get_fd_paths(task)
+            stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
             if stdin:
                 stdin_fp = open(stdin, 'r')

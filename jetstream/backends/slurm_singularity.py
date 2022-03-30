@@ -17,11 +17,15 @@ from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledEr
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
+from jetstream.tasks import get_fd_paths
 from jetstream import settings
 
 log = logging.getLogger('jetstream.slurm')
-sacct_delimiter = '\037'
-job_id_pattern = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
+SLURM_SACCT_DELIMITER = '\037'
+SLURM_JOB_ID_PATTERN = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?P<stepid>(\d+|batch|extern)))?$")
+SLURM_ACTIVE_STATES = settings['slurm_active_states'].get(list)
+SLURM_PASSED_STATES = settings['slurm_passed_states'].get(list)
+SLURM_SBATCH_RETRY = settings['slurm_sbatch_retry'].get(int)
 
 class SlurmSingularityBackend(BaseBackend):
     """SlurmSingularityBackend will spawn tasks using a Slurm batch scheduler.
@@ -41,7 +45,8 @@ class SlurmSingularityBackend(BaseBackend):
                  sacct_fields=('JobID', 'Elapsed'),
                  job_monitor_max_fails=5, 
                  max_jobs=1024,
-                 singularity_executable=None ):
+                 singularity_executable=None,
+                 input_file_validation=False ):
         """SlurmSingularityBackend submits tasks as jobs to a Slurm batch cluster
 
         :param sacct_frequency: Frequency in seconds that job updates will
@@ -58,6 +63,7 @@ class SlurmSingularityBackend(BaseBackend):
         self.job_monitor_max_fails = job_monitor_max_fails
         self.max_jobs = max_jobs
         self.jobs = dict()
+        self.input_file_validation = settings['backends']['slurm_singularity']['input_file_validation'].get()
 
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
@@ -184,9 +190,11 @@ class SlurmSingularityBackend(BaseBackend):
         if not task.directives.get('cmd'):
             return task.complete()
 
-        # sbatch breaks when called too frequently
+        # sbatch breaks when called too frequently, so this places
+        # a hard limit on the frequency of sbatch calls.
         time.sleep(self.sbatch_delay)
-        stdin, stdout, stderr = self.get_fd_paths(task)
+
+        stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
         input_filenames = task.directives.get( 'input', [] )
         output_filenames = task.directives.get( 'output', [] )
@@ -270,7 +278,8 @@ class SlurmSingularityBackend(BaseBackend):
                 walltime=task.directives.get('walltime'),
                 additional_args=task.directives.get('sbatch_args'),
                 sbatch_executable=self.sbatch_executable,
-                sbatch_account=self.sbatch_account
+                sbatch_account=self.sbatch_account,
+                input_file_validation=self.input_file_validation
             )
 
         task.state.update(
@@ -308,49 +317,6 @@ class SlurmSingularityBackend(BaseBackend):
 
 
 class SlurmBatchJob(object):
-    states = {
-        'BOOT_FAIL': 'Job terminated due to launch failure, typically due to a '
-                     'hardware failure (e.g. unable to boot the node or block '
-                     'and the job can not be requeued).',
-        'CANCELLED': 'Job was explicitly cancelled by the user or system '
-                     'administrator. The job may or may not have been '
-                     'initiated.',
-        'COMPLETED': 'Job has terminated all processes on all nodes with an '
-                     'exit code of zero.',
-        'CONFIGURING': 'Job has been allocated resources, but are waiting for '
-                       'them to become ready for use (e.g. booting).',
-        'COMPLETING': 'Job is in the process of completing. Some processes on '
-                      'some nodes may still be active.',
-        'FAILED': 'Job terminated with non-zero exit code or other failure '
-                  'condition.',
-        'NODE_FAIL': 'Job terminated due to failure of one or more allocated '
-                     'nodes.',
-        'PENDING': 'Job is awaiting resource allocation.',
-        'PREEMPTED': 'Job terminated due to preemption.',
-        'REVOKED': 'Sibling was removed from cluster due to other cluster '
-                   'starting the job.',
-        'RUNNING': 'Job currently has an allocation.',
-        'SPECIAL_EXIT': 'The job was requeued in a special state. This state '
-                        'can be set by users, typically in EpilogSlurmctld, if '
-                        'the job has terminated with a particular exit value.',
-        'STOPPED': 'Job has an allocation, but execution has been stopped with '
-                   'SIGSTOP signal. CPUS have been retained by this job.',
-        'SUSPENDED': 'Job has an allocation, but execution has been suspended '
-                     'and CPUs have been released for other jobs.',
-        'TIMEOUT': 'Job terminated upon reaching its time limit.'
-    }
-
-    active_states = {'CONFIGURING', 'COMPLETING', 'RUNNING', 'SPECIAL_EXIT',
-                     'PENDING'}
-
-    inactive_states = {'BOOT_FAIL', 'CANCELLED', 'COMPLETED', 'FAILED',
-                       'NODE_FAIL', 'PREEMPTED', 'REVOKED',
-                       'STOPPED', 'SUSPENDED', 'TIMEOUT'}
-
-    failed_states = {'BOOT_FAIL', 'CANCELLED', 'FAILED', 'NODE_FAIL'}
-
-    passed_states = {'COMPLETED'}
-
     def __init__(self, jid=None, data=None):
         self.args = None
         self._job_data = None
@@ -418,7 +384,7 @@ class SlurmBatchJob(object):
         if self._job_data:
             state = self._job_data.get('State')
 
-            if state not in self.active_states:
+            if state not in SLURM_ACTIVE_STATES:
                 return True
 
         return False
@@ -427,7 +393,7 @@ class SlurmBatchJob(object):
         if not self.is_done():
             raise ValueError('Job is not complete yet.')
 
-        if self.job_data['State'] in self.passed_states:
+        if self.job_data['State'] in SLURM_PASSED_STATES:
             return True
         else:
             return False
@@ -481,7 +447,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
     return jobs
 
 
-def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
+def launch_sacct(*job_ids, delimiter=SLURM_SACCT_DELIMITER, raw=False):
     """Launch sacct command and return stdout data
 
     This function returns raw query results, sacct() will be more
@@ -507,14 +473,14 @@ def launch_sacct(*job_ids, delimiter=sacct_delimiter, raw=False):
     return parse_sacct(p.stdout.decode(), delimiter=delimiter)
 
 
-def parse_sacct(data, delimiter=sacct_delimiter, id_pattern=job_id_pattern):
+def parse_sacct(data, delimiter=SLURM_SACCT_DELIMITER, id_pattern=SLURM_JOB_ID_PATTERN):
     """Parse stdout from sacct to a dictionary of job ids and data."""
     jobs = dict()
-    lines = iter(data.strip().splitlines())
-    header = next(lines).strip().split(delimiter)
+    lines = iter(data.splitlines())
+    header = next(lines).split(delimiter)
 
     for line in lines:
-        row = dict(zip(header, line.strip().split(delimiter)))
+        row = dict(zip(header, line.split(delimiter)))
 
         try:
             match = id_pattern.match(row['JobID'])
@@ -555,15 +521,21 @@ async def sbatch(cmd, singularity_image,
                  stdin=None, stdout=None, stderr=None, tasks=None,
                  cpus_per_task=1, mem="2G", walltime="1h", comment=None,
                  additional_args=None, sbatch_executable=None,
-                 sbatch_account=None, retry=10):
+                 sbatch_account=None, input_file_validation=False):
 
     # determine input/output mounts needed
     singularity_mounts = set()
-    for input_filename_glob_pattern in input_filenames:
-        input_filenames_glob = glob.glob( input_filename_glob_pattern )
-        if len( input_filenames_glob ) == 0:
-            raise RuntimeError(f'Task {name}: input file(s) do not exist: {input_filename_glob_pattern}')
-        for input_filename in input_filenames_glob:
+    if input_file_validation:
+        for input_filename_glob_pattern in input_filenames:
+            input_filenames_glob = glob.glob( input_filename_glob_pattern )
+            if len( input_filenames_glob ) == 0:
+                raise RuntimeError(f'Task {name}: input file(s) do not exist: {input_filename_glob_pattern}')
+            for input_filename in input_filenames_glob:
+                input_filename = os.path.abspath( input_filename )
+                input_filename_head, input_filename_tail = os.path.split( input_filename )
+                singularity_mounts.add( input_filename_head )
+    else:
+        for input_filename in input_filenames:
             input_filename = os.path.abspath( input_filename )
             input_filename_head, input_filename_tail = os.path.split( input_filename )
             singularity_mounts.add( input_filename_head )
@@ -575,8 +547,6 @@ async def sbatch(cmd, singularity_image,
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )
-    #mount_strings.append( "-B %s" % ( os.getcwd() ) )
-    #mount_strings.append( f'-B {(pwd.getpwuid(os.getuid())).pw_dir}' )
     singularity_mounts_string = " ".join( mount_strings )
     
     # create cmd script
@@ -654,8 +624,8 @@ async def sbatch(cmd, singularity_image,
         sbatch_script_file.write( sbatch_script )
     
     submit_sbatch_args = [ "sbatch", sbatch_script_filename ]
+    remaining_tries = SLURM_SBATCH_RETRY
 
-    remaining_tries = int(retry)
     while 1:
         if singularity_run_sem is not None:
             await singularity_run_sem.acquire()
@@ -663,12 +633,12 @@ async def sbatch(cmd, singularity_image,
             p = subprocess.run(submit_sbatch_args, stdout=subprocess.PIPE, check=True)
             break
         except subprocess.CalledProcessError:
-            if remaining_tries > 0:
+            if remaining_tries == 0:
+                raise
+            else: 
                 remaining_tries -= 1
                 log.exception(f'Error during sbatch, retrying in 60s ...')
                 time.sleep(60)
-            else:
-                raise
         finally:
             if singularity_run_sem is not None:
                 singularity_run_sem.release()

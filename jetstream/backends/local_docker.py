@@ -5,6 +5,7 @@ import shlex
 import logging
 import asyncio
 import jetstream
+from jetstream.tasks import get_fd_paths
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 
 log = logging.getLogger('jetstream.backends')
@@ -111,7 +112,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                 
                 log.debug('Resources reserved: {}'.format(task))
                 
-            stdin, stdout, stderr = self.get_fd_paths(task)
+            stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
             if stdin:
                 stdin_fp = open(stdin, 'r')

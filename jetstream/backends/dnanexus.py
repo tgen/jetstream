@@ -11,6 +11,7 @@ import time
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta
 from jetstream.backends import BaseBackend
+from jetstream.tasks import get_fd_paths
 from jetstream import settings
 
 import dxpy
@@ -139,7 +140,7 @@ class DnanexusBackend(BaseBackend):
             return task.complete()
 
         time.sleep(self.sbatch_delay)
-        stdin, stdout, stderr = self.get_fd_paths(task)
+        stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
         docker_image = task.directives.get( 'docker_image' )
         
@@ -426,25 +427,3 @@ if __name__ == "__main__":
                             wait_on_close = True,
                             use_existing_dxfile = my_new_dx_file )
     my_new_dx_file.close( block=True )
-   
-    
-    # my_backend = DnanexusBackend()
-    # # sbatch( "minimap2 -a /home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/GRCh38tgen_decoy_alts_hla-ont.mmi reads_R1.fastq.gz subfolder_1/reads_R2.fastq.gz > test.sam; ls -lart",
-    # #         input_filenames = [ "/home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/GRCh38tgen_decoy_alts_hla-ont.mmi",
-    # #                             "reads_R1.fastq.gz",
-    # #                             "subfolder_1/reads_R2.fastq.gz" ] )
-    # # sbatch( cmd = "test_ls /home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/",
-    # #         input_filenames = [ "/home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/test.txt",
-    # #                             "reads_R1.fastq.gz",
-    # #                             "subfolder_1/reads_R2.fastq.gz" ] )
-    # # sbatch( cmd = "ls -lart",
-    # #         input_filenames = [ "/home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/test.txt",
-    # #                             "reads_R1.fastq.gz",
-    # #                             "subfolder_1/reads_R2.fastq.gz" ] )
-    # sbatch( cmd = "zcat reads_R1.fastq.gz | head > tiny_test.fastq; gzip tiny_test.fastq",
-    #         input_filenames = [ "/home/tgenref/homo_sapiens/grch38_hg38/hg38tgen/genome_reference/test.txt",
-    #                             "reads_R1.fastq.gz",
-    #                             "subfolder_1/reads_R2.fastq.gz" ],
-    #         output_filenames = [ "tiny_test.fastq.gz" ] )
-    
-    
