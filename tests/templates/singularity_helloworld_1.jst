@@ -1,0 +1,12 @@
+# Basic workflow tests hello world example
+# Expected stdout: Alpine container validation successful! Hello, world!
+- name: hello_world
+  container: alpine:latest
+  cmd: |
+    if [ "$(cat /etc/os-release | grep ^ID)" != "ID=alpine" ]; then
+        echo "Alpine container validation failed"
+        exit 1
+    else
+        echo "Alpine container validation successful! Hello, world!"
+    fi
+

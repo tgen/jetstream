@@ -21,6 +21,17 @@ try:
 except FileNotFoundError:
     is_sbatch_available = False
 
+try:
+    subprocess.run(
+        ["singularity", "--version"],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    is_singularity_available = True
+except FileNotFoundError:
+    is_singularity_available = False
+
 local_tests = {
     "helloworld_1.jst": "single helloworld task",
     "dependencies_1.jst": "dependencies can be declared with before/after",
@@ -44,6 +55,13 @@ slurm_tests = {
     "dependencies_3.jst": "tasks with dependencies can be added during run with exec",
 }
 
+singularity_tests = {
+    "singularity_helloworld_1.jst": "single helloworld task using singularity",
+}
+
+slurm_singularity_tests = {
+    "singularity_helloworld_1.jst": "single helloworld task using singularity and submit to slurm",
+}
 
 @pytest.fixture()
 def cleandir(tmp_path):
@@ -61,6 +79,15 @@ def test_run_template_local(template, cleandir):
     cli_main(args)
 
 
+@pytest.mark.skipif(not is_singularity_available, reason="singularity not available")
+@pytest.mark.parametrize('template', singularity_tests.keys(), ids=singularity_tests.values())
+def test_run_template_slurm(template, cleandir):
+    jetstream.settings["backend"] = "slurm"
+    path = os.path.join(TEST_TEMPLATES, template)
+    args = ("run", path)
+    cli_main(args)
+
+
 @pytest.mark.skipif(not is_sbatch_available, reason="sbatch not available")
 @pytest.mark.parametrize('template', slurm_tests.keys(), ids=slurm_tests.values())
 def test_run_template_slurm(template, cleandir):
@@ -70,3 +97,10 @@ def test_run_template_slurm(template, cleandir):
     cli_main(args)
 
 
+@pytest.mark.skipif(not is_sbatch_available and not is_singularity_available, reason="sbatch not available")
+@pytest.mark.parametrize('template', slurm_singularity_tests.keys(), ids=slurm_singularity_tests.values())
+def test_run_template_slurm(template, cleandir):
+    jetstream.settings["backend"] = "slurm"
+    path = os.path.join(TEST_TEMPLATES, template)
+    args = ("run", path)
+    cli_main(args)
