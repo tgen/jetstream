@@ -133,6 +133,29 @@ slurm_active_states:
 slurm_passed_states:
   - COMPLETED
 
+# This helps decide the formatting of sbatch scripts in the slurm_singularity 
+# backend. Some of these could interfere with jetstreams submission behavior.
+# Options such as --usage, --help, --version, --wait should probably be
+# globally disabled.
+slurm_solo_options:
+  - --exclusive
+  - --get-user-env
+  - --no-kill
+  - --no-requeue
+  - --overcommit
+  - --parsable
+  - --quiet
+  - --requeue
+  - --oversubscribe
+  - --spread-job
+  - --use-min-nodes
+  - --contiguous
+  - --help
+  - --usage
+  - --verbose
+  - --version
+  - --wait
+
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
 # pipelines:home directory. They can be run by name using the jetstream
