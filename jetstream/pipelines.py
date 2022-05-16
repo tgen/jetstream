@@ -1,6 +1,6 @@
 import logging
 import os
-from distutils.version import LooseVersion
+from packaging.version import parse as parse_version
 import jetstream
 
 log = logging.getLogger(__name__)
@@ -183,14 +183,14 @@ def get_pipeline(name, version=None, searchpath=None):
                 matches.append(p)
 
         if matches:
-            s = sorted(matches, key=lambda p: LooseVersion(p.version))
+            s = sorted(matches, key=lambda p: parse_version(p.version))
             return s[-1]
     else:
         # Find a match with name and version
-        version = str(version)
+        # version = LooseVersion(str(version))
         for p in find_pipelines(*searchpath):
             # TODO can we allow > < = syntax here?
-            if p.name == name and LooseVersion(p.version) == LooseVersion(version):
+            if p.name == name and parse_version(p.version) == parse_version(version):
                 return p
 
 

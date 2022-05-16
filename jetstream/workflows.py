@@ -26,7 +26,7 @@ import re
 import shutil
 from collections import Counter, deque
 from datetime import datetime
-from distutils.version import LooseVersion
+from packaging.version import parse as parse_version
 import networkx as nx
 import jetstream
 from jetstream import utils
@@ -81,8 +81,8 @@ class Workflow:
         self.tasks[task.name] = task
 
     def check_versions(self):
-        current_version = LooseVersion(jetstream.__version__)
-        built_w_version = LooseVersion(self.version)
+        current_version = parse_version(jetstream.__version__)
+        built_w_version = parse_version(self.version)
 
         if built_w_version > current_version:
             msg = f'This workflow was built with a newer version of ' \
