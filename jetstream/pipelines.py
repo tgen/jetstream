@@ -187,10 +187,9 @@ def get_pipeline(name, version=None, searchpath=None):
             return s[-1]
     else:
         # Find a match with name and version
-        # version = LooseVersion(str(version))
         for p in find_pipelines(*searchpath):
             # TODO can we allow > < = syntax here?
-            if p.name == name and parse_version(p.version) == parse_version(version):
+            if p.name == name and parse_version(str(p.version)) == parse_version(str(version)):
                 return p
 
 
