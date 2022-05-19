@@ -143,7 +143,6 @@ class Runner:
             log.debug('Running loop until remaining futures return...')
             results = self.loop.run_until_complete(asyncio.gather(
                 *futures,
-                loop=self.loop,
                 return_exceptions=True
             ))
         else:

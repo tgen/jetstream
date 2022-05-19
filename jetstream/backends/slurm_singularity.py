@@ -187,15 +187,15 @@ class SlurmSingularityBackend(BaseBackend):
         input_filenames = task.directives.get( 'input', [] )
         output_filenames = task.directives.get( 'output', [] )
         
-        docker_image = task.directives.get( 'docker_image', None )
-        if docker_image == None:
-            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        docker_image_split = docker_image.split()
+        container = task.directives.get( 'container', None )
+        if container == None:
+            raise RuntimeError(f'container argument missing for task: {task.name}')
+        container_split = container.split()
         
-        if len( docker_image_split ) > 1:
-            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        if len( container_split ) > 1:
+            singularity_image = " ".join(container_split[:-1] + [ f"docker://{container_split[-1]}" ] )
         else:
-            singularity_image = f"docker://{docker_image}"
+            singularity_image = f"docker://{container}"
         
         singularity_hostname = task.directives.get( 'singularity_hostname', None )
         

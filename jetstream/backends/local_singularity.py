@@ -64,14 +64,14 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
-        docker_image = task.directives.get( 'docker_image', None )
-        if docker_image == None:
-            raise RuntimeError(f'docker_image argument missing for task: {task.name}')
-        docker_image_split = docker_image.split()
-        if len( docker_image_split ) > 1:
-            singularity_image = " ".join(docker_image_split[:-1] + [ f"docker://{docker_image_split[-1]}" ] )
+        container = task.directives.get( 'container', None )
+        if container == None:
+            raise RuntimeError(f'container argument missing for task: {task.name}')
+        container_split = container.split()
+        if len( container_split ) > 1:
+            singularity_image = " ".join(container_split[:-1] + [ f"docker://{container_split[-1]}" ] )
         else:
-            singularity_image = f"docker://{docker_image}"
+            singularity_image = f"docker://{container}"
         
         docker_authentication_token = task.directives.get( 'docker_authentication_token' )
         

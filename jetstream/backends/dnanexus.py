@@ -20,6 +20,38 @@ from dxpy.utils.job_log_client import DXJobLogStreamClient
 
 log = logging.getLogger('jetstream.backends')
 
+def get_dx_instance( task ):
+    name = task.directives.get("name")
+    cpus_required = task.directives.get("cpus")
+    memory_gb_required_str = task.directives.get('mem', "4G")
+    memory_gb_required_value = int( memory_gb_required_str[:-1] )
+    memory_gb_required_unit = memory_gb_required_str[-1]
+    if memory_gb_required_unit == "M":
+        memory_gb_required_value = 1
+    elif memory_gb_required_unit != "G":
+        raise RuntimeError('Task memory units must be M or G')
+    memory_gb_required_per_cpu = float(memory_gb_required_value) / float( cpus_required )
+
+    if memory_gb_required_per_cpu <= 2.0:
+        mem_tier = "mem1"
+    elif memory_gb_required_per_cpu <= 4.0:
+        mem_tier = "mem2"
+    else:
+        mem_tier = "mem3"
+
+    mem_cpu_tiers = { "mem1" : ( 2, 4, 8, 16, 36, 72 ),
+                      "mem2" : ( 2, 4, 8, 16, 32, 48, 64, 96 ),
+                      "mem3" : ( 2, 4, 8, 16, 32, 48, 64, 96 ) }
+
+    for cpu_tier in mem_cpu_tiers[ mem_tier ]:
+        if cpu_tier >= cpus_required:
+            break
+    
+    cpu_tier = f'x{cpu_tier}'
+
+    return f"{mem_tier}_ssd1_v2_{cpu_tier}"
+
+
 class DnanexusBackend(BaseBackend):
     count = itertools.count()
     respects = ('cmd', 'stdin', 'stdout', 'stderr', 'cpus', 'mem', 'walltime',
@@ -141,12 +173,13 @@ class DnanexusBackend(BaseBackend):
         time.sleep(self.sbatch_delay)
         stdin, stdout, stderr = self.get_fd_paths(task)
 
-        docker_image = task.directives.get( 'docker_image' )
+        container = task.directives.get( 'container' )
+        instance_type = get_dx_instance( task )
         
         job = sbatch(
             cmd=task.directives['cmd'],
-            docker_image=docker_image,
-            instance_type="mem2_ssd1_v2_x16",
+            container=container,
+            instance_type=instance_type,
             input_filenames=task.directives.get( 'input', [] ),
             output_filenames=task.directives.get( 'output', [] ),
         )
@@ -162,7 +195,7 @@ class DnanexusBackend(BaseBackend):
         self._bump_next_update()
         log.info(f'DnanexusBackend submitted({job.jid}): {task.name}')
 
-        job.event = asyncio.Event(loop=self.runner.loop)
+        job.event = asyncio.Event()
         self.jobs[ job.jid ] = job
 
         await job.event.wait()
@@ -365,7 +398,7 @@ def normalize_command_string( cmd ):
     return normalized_command_string
 
 def sbatch( cmd,
-            docker_image,
+            container,
             instance_type,
             input_filenames = [],
             output_filenames = [],
@@ -388,14 +421,24 @@ def sbatch( cmd,
     command_string = cmd
     
     dx_app_run_args = { 'command_string' : command_string,
-                        'docker_image' : docker_image,
+                        'docker_image' : container,
                         'dnanexus_project_id' : dnanexus_project_id,
                         'dnanexus_project_work_directory' : dnanexus_project_work_directory,
                         'input_filenames' : input_filenames,
                         'output_filenames' : output_filenames }
-    
+
     dx_app = dxpy.bindings.dxapp.DXApp( name = dnanexus_app_name )
-    dx_job = dx_app.run( dx_app_run_args, instance_type = instance_type  )
+
+    try:
+        dx_job = dx_app.run( dx_app_run_args, instance_type = instance_type  )
+    except Exception as e:
+        log.warning(f'''\
+Failed to run dx job:
+command string: {dx_app_run_args.command_string}
+docker image: {dx_app_run_args.docker_image}
+''')
+        return None
+
     dx_job_id = dx_job.describe()["id"]
     
     job = DnanexusBatchJob( dx_job_id )
