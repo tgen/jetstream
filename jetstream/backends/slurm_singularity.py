@@ -26,6 +26,7 @@ SLURM_JOB_ID_PATTERN = re.compile(r"^(?P<jobid>\d+)(_(?P<arraystepid>\d+))?(\.(?
 SLURM_ACTIVE_STATES = settings['slurm_active_states'].get(list)
 SLURM_PASSED_STATES = settings['slurm_passed_states'].get(list)
 SLURM_SBATCH_RETRY = settings['slurm_sbatch_retry'].get(int)
+SLURM_SOLO_OPTIONS = settings['slurm_solo_options'].get(list)
 
 class SlurmSingularityBackend(BaseBackend):
     """SlurmSingularityBackend will spawn tasks using a Slurm batch scheduler.
@@ -265,6 +266,7 @@ class SlurmSingularityBackend(BaseBackend):
                 singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 singularity_hostname=singularity_hostname,
+                backend_args=task.directives.get('backend_args'),
                 docker_authentication_token=docker_authentication_token,
                 name=task.name,
                 input_filenames=input_filenames,
@@ -514,12 +516,11 @@ def parse_sacct(data, delimiter=SLURM_SACCT_DELIMITER, id_pattern=SLURM_JOB_ID_P
     return jobs
 
 
-async def sbatch(cmd, singularity_image,
-                 singularity_executable="singularity", singularity_run_sem=None,
-                 singularity_hostname=None, docker_authentication_token=None,
-                 name=None, input_filenames=[], output_filenames=[],
-                 stdin=None, stdout=None, stderr=None, tasks=None,
-                 cpus_per_task=1, mem="2G", walltime="1h", comment=None,
+async def sbatch(cmd, singularity_image, singularity_executable="singularity", 
+                 singularity_run_sem=None, singularity_hostname=None, backend_args=None, 
+                 docker_authentication_token=None, name=None, input_filenames=[], 
+                 output_filenames=[], stdin=None, stdout=None, stderr=None, 
+                 tasks=None, cpus_per_task=1, mem="2G", walltime="1h", comment=None,
                  additional_args=None, sbatch_executable=None,
                  sbatch_account=None, input_file_validation=False):
 
@@ -601,11 +602,34 @@ async def sbatch(cmd, singularity_image,
             sbatch_args.append(additional_args)
         else:
             sbatch_args.extend(additional_args)
-        
+
     sbatch_script = "#!/bin/bash\n"
-    for i in range( 0, len(sbatch_args), 2 ):
-        sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
+    skip_next = False
+    for i in range( 0, len(sbatch_args)):
+        if skip_next:
+            skip_next = False
+            continue
+        elif sbatch_args[i] in SLURM_SOLO_OPTIONS:
+            sbatch_script += f"#SBATCH {sbatch_args[i]}\n"
+        elif "=" in sbatch_args[i]:
+            sbatch_script += f"#SBATCH {sbatch_args[i]}\n"
+        else:
+            sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
+            skip_next = True
+
+    singularity_args = []
+
+    if backend_args:
+        if isinstance(backend_args, str):
+            singularity_args.append(backend_args)
+        else:
+            singularity_args.extend(backend_args)
+
+    singularity_exec_args = "--cleanenv --nv "
     
+    for arg in singularity_args:
+        singularity_exec_args += f"{arg} " 
+
     singularity_hostname_arg = ""
     if singularity_hostname is not None:
         singularity_hostname_arg = f"--hostname {singularity_hostname} "
@@ -614,7 +638,7 @@ async def sbatch(cmd, singularity_image,
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
         
-    sbatch_script += f"#!/bin/bash\n{singularity_run_env_vars}{singularity_executable} exec --cleanenv --nv {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"{singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
     
     if name == None:
         name = "script"

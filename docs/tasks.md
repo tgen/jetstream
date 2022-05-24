@@ -11,10 +11,10 @@ comparisons, or documenting the tasks)
 
 ## Identity
 
-The identity of a task is a hash of `cmd` and `exec` directives. This identity
-is used to compare tasks against the saved progress records. If the task 
-identity has changed, the task will need to be reset along with any downstream
-tasks. 
+The identity of a task is a hash of `cmd`, `exec`, `container`, and `digest` 
+directives. This identity is used to compare tasks against the saved progress 
+records. If the task identity has changed, the task will need to be reset along 
+with any downstream tasks. 
 
 Identity is a good indicator that tasks have changed and will need to be re-run,
 but it's possible to make changes to a template that go undetected. Understanding 
