@@ -3,6 +3,6 @@ decorator==4.4.0
 filelock==3.0.12
 Jinja2==2.11.3
 MarkupSafe==1.1.1
-networkx==2.3
+networkx==2.5
 PyYAML==5.4
 ulid-py==0.0.9
