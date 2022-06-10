@@ -141,11 +141,18 @@ class Runner:
                 task.cancel()
 
             log.debug('Running loop until remaining futures return...')
-            results = self.loop.run_until_complete(asyncio.gather(
-                *futures,
-                loop=self.loop,
-                return_exceptions=True
-            ))
+            # loop has been deprecated since 3.8
+            if sys.version_info > (3, 8):
+                results = self.loop.run_until_complete(asyncio.gather(
+                    *futures,
+                    return_exceptions=True
+                ))
+            else:
+                results = self.loop.run_until_complete(asyncio.gather(
+                    *futures,
+                    loop=self.loop,
+                    return_exceptions=True
+                ))
         else:
             results = []
 

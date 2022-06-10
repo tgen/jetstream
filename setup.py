@@ -39,7 +39,10 @@ setup(
         'networkx',
         'pyyaml',
         'ulid-py',
-        'jinja2',
+        'sphinx==4.2.0',
+        'sphinx_rtd_theme==1.0.0',
+        'readthedocs-sphinx-search==0.1.1',
+        'jinja2==3.0.0',
         'filelock',
         'confuse'
     ],

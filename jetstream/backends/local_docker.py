@@ -60,7 +60,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
         elif memory_gb_required_unit != "G":
             raise RuntimeError('Task memory units must be M or G')
 
-        container = task.directives.get( 'container', None )
+        container = task.directives.get( 'container', None ).replace( "--nohttps ", "" )
         digest = task.directives.get( 'digest', None )
         if container == None:
             raise RuntimeError(f'container argument missing for task: {task.name}')
@@ -137,7 +137,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                 task_name=task.name,
                 input_filenames=input_filenames,
                 output_filenames=output_filenames,
-                docker_image=docker_image,
+                container=container,
                 docker_authentication_token=docker_authentication_token,
                 stdin=stdin_fp,
                 stdout=stdout_fp,
@@ -175,7 +175,7 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
             return task
 
     async def subprocess_sh( self, args, task_name, *, input_filenames=[], output_filenames=[],
-                             docker_image=None, docker_authentication_token=None,
+                             container=None, docker_authentication_token=None,
                              stdin=None, stdout=None, stderr=None,
                              cwd=None, encoding=None, errors=None, env=None,
                              loop=None, executable='/bin/bash'):
@@ -203,9 +203,9 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                 
             command_run_string = ""
             if docker_authentication_token is not None:
-                docker_image_login_url = docker_image.split("/")[0]
-                command_run_string += f"docker login {docker_image_login_url} -u '$oauthtoken' -p {docker_authentication_token} && "
-            command_run_string += f"""docker pull {docker_image} && docker run --user $(id -u):$(id -g) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {docker_image} bash {run_script_filename}"""
+                container_login_url = container.split("/")[0]
+                command_run_string += f"docker login {container_login_url} -u '$oauthtoken' -p {docker_authentication_token} && "
+            command_run_string += f"""docker pull {container} && docker run --user $(id -u):$(id -g) -v $(pwd):$(pwd) {docker_mounts_string} -w $(pwd) {container} bash {run_script_filename}"""
             
             log.debug('command_run_string:\n------BEGIN------\n{}\n------END------'.format(command_run_string))
             
@@ -221,7 +221,6 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                         encoding=encoding,
                         errors=errors,
                         env=env,
-                        loop=loop,
                         executable=executable
                     )
                     break
@@ -239,6 +238,5 @@ class LocalDockerBackend(jetstream.backends.BaseBackend):
                         encoding=encoding,
                         errors=errors,
                         env=env,
-                        loop=loop,
                         executable=executable )
         return p
