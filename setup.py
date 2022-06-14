@@ -30,7 +30,7 @@ setup(
     keywords='ngs pipeline automation',
     packages=find_packages(exclude=('tests',)),
     include_package_data=True,
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Topic :: Utilities',
@@ -39,10 +39,7 @@ setup(
         'networkx',
         'pyyaml',
         'ulid-py',
-        'sphinx==4.2.0',
-        'sphinx_rtd_theme==1.0.0',
-        'readthedocs-sphinx-search==0.1.1',
-        'jinja2==3.0.0',
+        'jinja2>=3.0.0',
         'filelock',
         'confuse'
     ],
