@@ -41,7 +41,8 @@ setup(
         'ulid-py',
         'jinja2>=3.0.0',
         'filelock',
-        'confuse'
+        'confuse',
+        'packaging'
     ],
     extras_require={
         'dev': [
