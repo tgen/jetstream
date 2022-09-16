@@ -4,14 +4,12 @@ import itertools
 import json
 import logging
 import os
-import pathlib
 import random
 import re
 import shlex
 import shutil
 import signal
 import subprocess
-import tempfile
 import time
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 from asyncio.subprocess import PIPE
@@ -544,7 +542,7 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
         singularity_mounts.add( output_filename_head )
-        pathlib.Path( output_filename_head ).mkdir( parents=True, exist_ok=True )
+        os.makedirs( output_filename_head, exist_ok=True )
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )

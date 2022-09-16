@@ -1,7 +1,6 @@
 import os
 import re
 import glob
-import shlex
 import logging
 import asyncio
 import jetstream
