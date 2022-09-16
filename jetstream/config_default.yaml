@@ -156,6 +156,15 @@ slurm_solo_options:
   - --version
   - --wait
 
+slurm_presets:
+  example:
+    - -p
+    - defq
+
+singularity_presets:
+  example:
+    - null
+
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
 # pipelines:home directory. They can be run by name using the jetstream
