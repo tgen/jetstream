@@ -546,7 +546,14 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
         singularity_mounts.add( output_filename_head )
-        os.makedirs( output_filename_head, exist_ok=True )
+        # make directory if it does not exists and make sure it exists
+        attempts = 0
+        while not os.path.exists( output_filename_head ):
+            os.makedirs( output_filename_head, exist_ok=True )
+            time.sleep(1)
+            attempts += 1
+            if attempts > 5:
+                raise RuntimeError(f'Could not make {output_filename_head} directory, singularity would fail to mount...')
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )
