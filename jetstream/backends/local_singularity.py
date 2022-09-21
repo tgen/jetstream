@@ -1,15 +1,13 @@
+import sys
 import os
 import re
 import glob
-import shlex
 import logging
 import asyncio
 import subprocess
-import tempfile
 import jetstream
 from jetstream.tasks import get_fd_paths
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
-from pathlib import Path
 
 log = logging.getLogger('jetstream.backends')
 
@@ -233,7 +231,7 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 output_filename = os.path.abspath( output_filename )
                 output_filename_head, output_filename_tail = os.path.split( output_filename )
                 singularity_mounts.add( output_filename_head )
-                Path( output_filename_head ).mkdir( parents=True, exist_ok=True )
+                os.makedirs( output_filename_head, exist_ok=True )
             mount_strings = []
             for singularity_mount in singularity_mounts:
                 mount_strings.append( "-B %s" % ( singularity_mount ) )
@@ -255,18 +253,31 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 try:
                     await self._singularity_run_sem.acquire()
                     log.debug('subprocess_run_sh: trying...')
-                    p = await create_subprocess_shell(
-                        command_run_string,
-                        stdin=stdin,
-                        stdout=stdout,
-                        stderr=stderr,
-                        cwd=cwd,
-                        encoding=encoding,
-                        errors=errors,
-                        env=env,
-                        loop=loop,
-                        executable=executable
-                    )
+                    if sys.version_info > (3, 8):
+                        p = await create_subprocess_shell(
+                            command_run_string,
+                            stdin=stdin,
+                            stdout=stdout,
+                            stderr=stderr,
+                            cwd=cwd,
+                            encoding=encoding,
+                            errors=errors,
+                            env=env,
+                            executable=executable
+                        )
+                    else:
+                        p = await create_subprocess_shell(
+                            command_run_string,
+                            stdin=stdin,
+                            stdout=stdout,
+                            stderr=stderr,
+                            cwd=cwd,
+                            encoding=encoding,
+                            errors=errors,
+                            env=env,
+                            loop=loop,
+                            executable=executable
+                        )
                     break
                 except BlockingIOError as e:
                     log.warning(f'System refusing new processes: {e}')
@@ -276,7 +287,20 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     
         except Exception as e:
             log.warning(f'Exception: {e}')
-            p = await create_subprocess_shell(
+            # loop has been deprecated since 3.8
+            if sys.version_info > (3, 8):
+                p = await create_subprocess_shell(
+                        "exit 1;",
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=cwd,
+                        encoding=encoding,
+                        errors=errors,
+                        env=env,
+                        executable=executable )
+            else:
+                p = await create_subprocess_shell(
                         "exit 1;",
                         stdin=stdin,
                         stdout=stdout,

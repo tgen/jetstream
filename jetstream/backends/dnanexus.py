@@ -6,7 +6,6 @@ import re
 import shlex
 import shutil
 import subprocess
-import tempfile
 import time
 from asyncio.subprocess import PIPE
 from datetime import datetime, timedelta

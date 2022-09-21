@@ -1,3 +1,5 @@
+[![Python package](https://github.com/tgen/jetstream/actions/workflows/pythonpackage.yml/badge.svg)](https://github.com/tgen/jetstream/actions/workflows/pythonpackage.yml)
+
 <img src="/images/TGen_Color_LOGO_medium.png" width="208.3" height="78" title="TGen Logo"> <br/>
 # Jetstream
 

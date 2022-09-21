@@ -4,14 +4,12 @@ import itertools
 import json
 import logging
 import os
-import pathlib
 import random
 import re
 import shlex
 import shutil
 import signal
 import subprocess
-import tempfile
 import time
 from asyncio import Lock, BoundedSemaphore, create_subprocess_shell, CancelledError
 from asyncio.subprocess import PIPE
@@ -27,6 +25,8 @@ SLURM_ACTIVE_STATES = settings['slurm_active_states'].get(list)
 SLURM_PASSED_STATES = settings['slurm_passed_states'].get(list)
 SLURM_SBATCH_RETRY = settings['slurm_sbatch_retry'].get(int)
 SLURM_SOLO_OPTIONS = settings['slurm_solo_options'].get(list)
+SLURM_PRESETS = settings['slurm_presets'].get(dict)
+RUNNER_PRESETS = settings['singularity_presets'].get(dict)
 
 class SlurmSingularityBackend(BaseBackend):
     """SlurmSingularityBackend will spawn tasks using a Slurm batch scheduler.
@@ -266,7 +266,8 @@ class SlurmSingularityBackend(BaseBackend):
                 singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 singularity_hostname=singularity_hostname,
-                backend_args=task.directives.get('backend_args'),
+                runner_args=task.directives.get('runner_args'),
+                runner_preset=task.directives.get('runner_preset'),
                 docker_authentication_token=docker_authentication_token,
                 name=task.name,
                 input_filenames=input_filenames,
@@ -278,7 +279,8 @@ class SlurmSingularityBackend(BaseBackend):
                 cpus_per_task=task.directives.get('cpus'),
                 mem=task.directives.get('mem'),
                 walltime=task.directives.get('walltime'),
-                additional_args=task.directives.get('sbatch_args'),
+                queue_args=task.directives.get('queue_args'),
+                queue_preset=task.directives.get('queue_preset'),
                 sbatch_executable=self.sbatch_executable,
                 sbatch_account=self.sbatch_account,
                 input_file_validation=self.input_file_validation
@@ -517,11 +519,11 @@ def parse_sacct(data, delimiter=SLURM_SACCT_DELIMITER, id_pattern=SLURM_JOB_ID_P
 
 
 async def sbatch(cmd, singularity_image, singularity_executable="singularity", 
-                 singularity_run_sem=None, singularity_hostname=None, backend_args=None, 
-                 docker_authentication_token=None, name=None, input_filenames=[], 
-                 output_filenames=[], stdin=None, stdout=None, stderr=None, 
+                 singularity_run_sem=None, singularity_hostname=None, runner_args=None, 
+                 runner_preset=None, docker_authentication_token=None, name=None, 
+                 input_filenames=[], output_filenames=[], stdin=None, stdout=None, stderr=None, 
                  tasks=None, cpus_per_task=1, mem="2G", walltime="1h", comment=None,
-                 additional_args=None, sbatch_executable=None,
+                 queue_args=None, queue_preset=None, sbatch_executable=None,
                  sbatch_account=None, input_file_validation=False):
 
     # determine input/output mounts needed
@@ -544,7 +546,14 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
         singularity_mounts.add( output_filename_head )
-        pathlib.Path( output_filename_head ).mkdir( parents=True, exist_ok=True )
+        # make directory if it does not exists and make sure it exists
+        attempts = 0
+        while not os.path.exists( output_filename_head ):
+            os.makedirs( output_filename_head, exist_ok=True )
+            time.sleep(1)
+            attempts += 1
+            if attempts > 5:
+                raise RuntimeError(f'Could not make {output_filename_head} directory, singularity would fail to mount...')
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )
@@ -597,11 +606,33 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         fixed_comment = '"' + comment.replace('"',"'") + '"'
         sbatch_args.extend(['--comment', fixed_comment])
 
-    if additional_args:
-        if isinstance(additional_args, str):
-            sbatch_args.append(additional_args)
+    if queue_args:
+        if isinstance(queue_args, str):
+            sbatch_args.append(queue_args)
         else:
-            sbatch_args.extend(additional_args)
+            sbatch_args.extend(queue_args)
+
+    """
+    SLURM_PRESETS:
+        The planned usage here is to configure the jetstream settings with a set of presets. This is useful
+        in the case of running a pipeline in two different slurm environments. For example:
+        Slurm env 1:
+            defq = CPU nodes with 7 day walltime
+            overflow = CPU nodes with 1 day walltime
+        Slurm env 2:
+            defq = CPU nodes with 7 day walltime
+            scavenge = CPU nodes with 1 day walltime
+    
+    Instead of pushing out different implementations of the specific pipeline, we can define the changes
+    pseudo-globally. In other words they are slurm environment specific but visually we can maintain the
+    same codebase for the pipelines.
+
+    Example implementation:
+        "data_mover" = ['-p', 'overflow,data-mover']
+        "gpu" = ['-p', 'gpu', '--gres', 'gpu:1']
+    """
+    if queue_preset:
+        sbatch_args.extend(SLURM_PRESETS[queue_preset])
 
     sbatch_script = "#!/bin/bash\n"
     skip_next = False
@@ -617,13 +648,21 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
             sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
             skip_next = True
 
+
     singularity_args = []
 
-    if backend_args:
-        if isinstance(backend_args, str):
-            singularity_args.append(backend_args)
+    """
+    RUNNER_PRESETS:
+        Similar to slurm preset above, but instead these are passed to singularity
+    """
+    if runner_preset:
+        singularity_args.extend(RUNNER_PRESETS[runner_preset])
+
+    if runner_args:
+        if isinstance(runner_args, str):
+            singularity_args.append(runner_args)
         else:
-            singularity_args.extend(backend_args)
+            singularity_args.extend(runner_args)
 
     singularity_exec_args = "--cleanenv --nv "
     
