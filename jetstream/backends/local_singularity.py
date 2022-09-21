@@ -1,3 +1,4 @@
+import sys
 import os
 import re
 import glob
@@ -252,18 +253,31 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                 try:
                     await self._singularity_run_sem.acquire()
                     log.debug('subprocess_run_sh: trying...')
-                    p = await create_subprocess_shell(
-                        command_run_string,
-                        stdin=stdin,
-                        stdout=stdout,
-                        stderr=stderr,
-                        cwd=cwd,
-                        encoding=encoding,
-                        errors=errors,
-                        env=env,
-                        loop=loop,
-                        executable=executable
-                    )
+                    if sys.version_info > (3, 8):
+                        p = await create_subprocess_shell(
+                            command_run_string,
+                            stdin=stdin,
+                            stdout=stdout,
+                            stderr=stderr,
+                            cwd=cwd,
+                            encoding=encoding,
+                            errors=errors,
+                            env=env,
+                            executable=executable
+                        )
+                    else:
+                        p = await create_subprocess_shell(
+                            command_run_string,
+                            stdin=stdin,
+                            stdout=stdout,
+                            stderr=stderr,
+                            cwd=cwd,
+                            encoding=encoding,
+                            errors=errors,
+                            env=env,
+                            loop=loop,
+                            executable=executable
+                        )
                     break
                 except BlockingIOError as e:
                     log.warning(f'System refusing new processes: {e}')
@@ -273,7 +287,20 @@ class LocalSingularityBackend(jetstream.backends.BaseBackend):
                     
         except Exception as e:
             log.warning(f'Exception: {e}')
-            p = await create_subprocess_shell(
+            # loop has been deprecated since 3.8
+            if sys.version_info > (3, 8):
+                p = await create_subprocess_shell(
+                        "exit 1;",
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=cwd,
+                        encoding=encoding,
+                        errors=errors,
+                        env=env,
+                        executable=executable )
+            else:
+                p = await create_subprocess_shell(
                         "exit 1;",
                         stdin=stdin,
                         stdout=stdout,
