@@ -2,6 +2,7 @@ deploy/
 site/
 docs/_build/
 venv/
+env/
 
 .DS_Store
 .idea/

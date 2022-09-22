@@ -1,6 +1,8 @@
+import sys
 import logging
 import asyncio
 import jetstream
+from jetstream.tasks import get_fd_paths
 from asyncio import BoundedSemaphore, create_subprocess_shell, CancelledError
 
 log = logging.getLogger('jetstream.local')
@@ -48,7 +50,7 @@ class LocalBackend(jetstream.backends.BaseBackend):
                 await self._cpu_sem.acquire()
                 cpus_reserved += 1
 
-            stdin, stdout, stderr = self.get_fd_paths(task)
+            stdin, stdout, stderr = get_fd_paths(task, self.runner.project)
 
             if stdin:
                 stdin_fp = open(stdin, 'r')
@@ -114,18 +116,31 @@ class LocalBackend(jetstream.backends.BaseBackend):
 
         while 1:
             try:
-                p = await create_subprocess_shell(
-                    args,
-                    stdin=stdin,
-                    stdout=stdout,
-                    stderr=stderr,
-                    cwd=cwd,
-                    encoding=encoding,
-                    errors=errors,
-                    env=env,
-                    loop=loop,
-                    executable=executable
-                )
+                if sys.version_info > (3, 8):
+                    p = await create_subprocess_shell(
+                        args,
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=cwd,
+                        encoding=encoding,
+                        errors=errors,
+                        env=env,
+                        executable=executable
+                    )
+                else:
+                    p = await create_subprocess_shell(
+                        args,
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=cwd,
+                        encoding=encoding,
+                        errors=errors,
+                        env=env,
+                        loop=loop,
+                        executable=executable
+                    )
                 break
             except BlockingIOError as e:
                 log.warning(f'System refusing new processes: {e}')

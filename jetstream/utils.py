@@ -214,6 +214,24 @@ def dynamic_import(path):
         raise AttributeError(err) from None
 
 
+def get_snippet(path):
+    """
+    Returns a snippet of text from the given path. This uses a command set
+    in the jetstream config file with the "snippet_cmd" option.
+    """
+    cmd = jetstream.settings['snippet_cmd'].as_str()
+    cmd = cmd.format(path=path)
+    p = subprocess.run(
+        cmd,
+        check=False,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding='utf-8',
+    )
+    return p.stdout
+
+
 def guess_local_cpus( default=1):
     return cpu_count() or default
 
@@ -222,11 +240,22 @@ def guess_max_forks(default=500):
     """Returns 1/4 of current ulimit -u value. This leaves a good amount of
     room for subprocesses to continue."""
     try:
-        res = int(0.25 * int(subprocess.check_output('ulimit -u', shell=True)))
-        return res
-    except subprocess.CalledProcessError as e:
+        ulimit_out = subprocess.check_output(
+            'ulimit -u',
+            shell=True,
+            stderr=subprocess.PIPE
+        )
+    except subprocess.CalledProcessError:
         log.debug('Guessing max forks with ulimit -u failed, using default')
         return default
+
+    try:
+        forks = int(0.25 * int(ulimit_out))
+    except ValueError:
+        log.debug(f'ulimit output not interpretable: {ulimit_out}')
+        return default
+
+    return forks
 
 
 def is_gzip(path, magic_number=b'\x1f\x8b'):

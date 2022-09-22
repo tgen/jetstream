@@ -23,6 +23,8 @@ setup(
     version=__version__,
     author='Ryan Richholt',
     author_email='ryan@tgen.org',
+    maintainer='Bryce Turner',
+    maintainer_email='bturner@tgen.org',
     url='https://github.com/tgen/jetstream',
     description='NGS analysis pipeline at TGen.',
     long_description=__readme__,
@@ -30,7 +32,7 @@ setup(
     keywords='ngs pipeline automation',
     packages=find_packages(exclude=('tests',)),
     include_package_data=True,
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Topic :: Utilities',
@@ -39,9 +41,10 @@ setup(
         'networkx',
         'pyyaml',
         'ulid-py',
-        'jinja2',
+        'jinja2>=3.0.0',
         'filelock',
-        'confuse'
+        'confuse',
+        'packaging'
     ],
     extras_require={
         'dev': [

@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from datetime import datetime
 from hashlib import sha1
@@ -10,7 +11,9 @@ log = logging.getLogger(__name__)
 # fields added later (ie container ids)
 IDENTITY = (
     'cmd',
-    'exec'
+    'exec',
+    'container'
+    'digest'
 )
 
 VALID_STATES = (
@@ -265,6 +268,7 @@ def copy(task):
     """Dirty hack to create a new task instance"""
     return from_dict(to_dict(task))
 
+
 def random_task(name=None, input=None):
     if name is None:
         name = jetstream.guid(formatter='random_task_{id}')
@@ -283,3 +287,31 @@ def from_dict(data):
 def to_dict(task):
     """Returns a task as a dictionary that can be easily dumped to YAML/json."""
     return dict(name=task.name, state=task.state, **task.directives)
+
+
+def get_fd_paths(task, project=None):
+    """
+    When working inside project, task outputs will be directed into
+    log files inside project.logs_dir. But task.stdout/stderr should
+    override this behavior. Backend subclasses should use this method to
+    get the correct output paths for a task.
+    """
+    stdin = task.directives.get('stdin')
+
+    if project:
+        if 'stdout' in task.directives:
+            stdout = task.directives['stdout']
+        else:
+            filename = f'{task.name}.log'
+            logs_dir = project.paths.logs_dir
+            stdout = os.path.join(logs_dir, filename)
+        if 'stderr' in task.directives:
+            stderr = task.directives['stderr']
+        else:
+            stderr = stdout
+    else:
+        stdout = task.directives.get('stdout')
+        stderr = task.directives.get('stderr')
+
+    return stdin, stdout, stderr
+
