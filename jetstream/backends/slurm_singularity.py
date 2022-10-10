@@ -263,6 +263,7 @@ class SlurmSingularityBackend(BaseBackend):
             job = await sbatch(
                 cmd=task.directives['cmd'],
                 singularity_image=singularity_image,
+                singularity_image_digest=digest,
                 singularity_executable=self.singularity_executable,
                 singularity_run_sem=self._singularity_run_sem,
                 singularity_hostname=singularity_hostname,
@@ -519,8 +520,8 @@ def parse_sacct(data, delimiter=SLURM_SACCT_DELIMITER, id_pattern=SLURM_JOB_ID_P
 
 
 async def sbatch(cmd, singularity_image, singularity_executable="singularity", 
-                 singularity_run_sem=None, singularity_hostname=None, runner_args=None, 
-                 runner_preset=None, docker_authentication_token=None, name=None, 
+                 singularity_run_sem=None, singularity_hostname=None, singularity_image_digest=None,
+                 runner_args=None, runner_preset=None, docker_authentication_token=None, name=None, 
                  input_filenames=[], output_filenames=[], stdin=None, stdout=None, stderr=None, 
                  tasks=None, cpus_per_task=1, mem="2G", walltime="1h", comment=None,
                  queue_args=None, queue_preset=None, sbatch_executable=None,
@@ -546,14 +547,8 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
         singularity_mounts.add( output_filename_head )
-        # make directory if it does not exists and make sure it exists
-        attempts = 0
-        while not os.path.exists( output_filename_head ):
-            os.makedirs( output_filename_head, exist_ok=True )
-            time.sleep(1)
-            attempts += 1
-            if attempts > 5:
-                raise RuntimeError(f'Could not make {output_filename_head} directory, singularity would fail to mount...')
+        os.makedirs( output_filename_head, exist_ok=True )
+    
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "-B %s" % ( singularity_mount ) )
@@ -677,7 +672,12 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
         
-    sbatch_script += f"{singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
+    sbatch_script += f"if $(ls $SINGULARITY_CACHEDIR/oci-tmp | grep {singularity_image_digest}); then\n"
+    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} $SINGULARITY_CACHEDIR/oci-tmp/{singularity_image_digest} bash {cmd_script_filename}\n"
+    sbatch_script += f"else\n"
+    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"fi\n"
     
     if name == None:
         name = "script"
