@@ -7,8 +7,9 @@ import ulid
 import yaml
 
 __author__ = 'Ryan Richholt'
-__email__ = 'rrichholt@tgen.org'
-__version__ = '1.7.0'
+__maintainer__ = 'Bryce Turner'
+__email__ = 'bturner@tgen.org'
+__version__ = '1.7.1'
 
 
 # Configure parallel library dependencies (Used by numpy)
