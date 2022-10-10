@@ -673,7 +673,7 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
         
     sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
-    sbatch_script += f"if $(ls $SINGULARITY_CACHEDIR/oci-tmp | grep {singularity_image_digest}); then\n"
+    sbatch_script += f"if ls $SINGULARITY_CACHEDIR/oci-tmp | grep {singularity_image_digest} > /dev/null ; then\n"
     sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} $SINGULARITY_CACHEDIR/oci-tmp/{singularity_image_digest} bash {cmd_script_filename}\n"
     sbatch_script += f"else\n"
     sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
