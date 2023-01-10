@@ -660,7 +660,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         else:
             singularity_args.extend(runner_args)
 
-    singularity_exec_args = "--bind $PWD --pwd $PWD --cleanenv --contain"
+    singularity_exec_args = "--bind $JS_PIPELINE_PATH --bind $PWD --pwd $PWD --workdir /tmp --cleanenv --contain"
     
     for arg in singularity_args:
         singularity_exec_args += f" {arg}" 
