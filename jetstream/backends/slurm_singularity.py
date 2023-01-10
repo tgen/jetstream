@@ -663,7 +663,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
     singularity_exec_args = "--bind $PWD --pwd $PWD --cleanenv --contain"
     
     for arg in singularity_args:
-        singularity_exec_args += f"{arg} " 
+        singularity_exec_args += f" {arg}" 
 
     singularity_hostname_arg = ""
     if singularity_hostname is not None:
