@@ -552,7 +552,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
     
     mount_strings = []
     for singularity_mount in singularity_mounts:
-        mount_strings.append( "-B %s" % ( singularity_mount ) )
+        mount_strings.append( "--bind %s" % ( singularity_mount ) )
     singularity_mounts_string = " ".join( mount_strings )
     
     # create cmd script
@@ -660,7 +660,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         else:
             singularity_args.extend(runner_args)
 
-    singularity_exec_args = "--cleanenv --contain"
+    singularity_exec_args = "--bind $PWD --pwd $PWD --cleanenv --contain"
     
     for arg in singularity_args:
         singularity_exec_args += f"{arg} " 
