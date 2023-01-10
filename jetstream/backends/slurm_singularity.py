@@ -262,6 +262,7 @@ class SlurmSingularityBackend(BaseBackend):
             time.sleep(self.sbatch_delay)
             job = await sbatch(
                 cmd=task.directives['cmd'],
+                identity=task.identity,
                 singularity_image=singularity_image,
                 singularity_image_digest=digest,
                 singularity_executable=self.singularity_executable,
@@ -519,7 +520,7 @@ def parse_sacct(data, delimiter=SLURM_SACCT_DELIMITER, id_pattern=SLURM_JOB_ID_P
     return jobs
 
 
-async def sbatch(cmd, singularity_image, singularity_executable="singularity", 
+async def sbatch(cmd, identity, singularity_image, singularity_executable="singularity", 
                  singularity_run_sem=None, singularity_hostname=None, singularity_image_digest=None,
                  runner_args=None, runner_preset=None, docker_authentication_token=None, name=None, 
                  input_filenames=[], output_filenames=[], stdin=None, stdout=None, stderr=None, 
@@ -559,7 +560,7 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
     millis = int(round(time.time() * 1000))
     if name == None:
         name = "script"
-    cmd_script_filename = f"jetstream/cmd/{millis}_{name}.cmd"
+    cmd_script_filename = f"jetstream/cmd/{millis}_{identity}.cmd"
     cmd_script_filename = os.path.abspath( cmd_script_filename )
     with open( cmd_script_filename, "w" ) as cmd_script:
         cmd_script.write( cmd )
@@ -682,7 +683,7 @@ async def sbatch(cmd, singularity_image, singularity_executable="singularity",
     
     if name == None:
         name = "script"
-    sbatch_script_filename = f"jetstream/cmd/{millis}_{name}.sbatch"
+    sbatch_script_filename = f"jetstream/cmd/{millis}_{identity}.sbatch"
     sbatch_script_filename = os.path.abspath( sbatch_script_filename )
     with open( sbatch_script_filename, "w" ) as sbatch_script_file:
         sbatch_script_file.write( sbatch_script )
