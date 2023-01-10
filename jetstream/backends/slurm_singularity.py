@@ -660,7 +660,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         else:
             singularity_args.extend(runner_args)
 
-    singularity_exec_args = "--cleanenv --nv "
+    singularity_exec_args = "--cleanenv --contain"
     
     for arg in singularity_args:
         singularity_exec_args += f"{arg} " 
@@ -673,12 +673,16 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
         
+    # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
+    sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && SINGULARITY_EXEC_ARGS=\"{singularity_exec_args} --nv\" || SINGULARITY_EXEC_ARGS=\"{singularity_exec_args}\" \n"
+    # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
     sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
+    # Searching for the cached image and using it if it exists
     sbatch_script += f"if find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\" | grep \/ > /dev/null ; then\n"
     sbatch_script += f"  IMAGE_PATH=$(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\")\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
+    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
     sbatch_script += f"else\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args}{singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
     sbatch_script += f"fi\n"
     
     if name == None:
