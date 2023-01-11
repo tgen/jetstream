@@ -513,9 +513,9 @@ def mash(G, H):
 
     log.info(
         'Mash report:\n'
-        f'New tasks: {new}\n'
-        f'Modified tasks: {modified}\n'
-        f'Final: {workflow.summary()}'
+        f'Tasks added: {new}\n'
+        f'Tasks modified: {modified}\n'
+        f'Final workflow status: {workflow.summary()}'
     )
 
     return workflow
