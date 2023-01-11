@@ -23,6 +23,8 @@ setup(
     version=__version__,
     author='Ryan Richholt',
     author_email='ryan@tgen.org',
+    maintainer='Bryce Turner',
+    maintainer_email='bturner@tgen.org',
     url='https://github.com/tgen/jetstream',
     description='NGS analysis pipeline at TGen.',
     long_description=__readme__,
