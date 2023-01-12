@@ -678,8 +678,10 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
     # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
     sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
     # Searching for the cached image and using it if it exists
-    sbatch_script += f"if find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\" | grep \/ > /dev/null ; then\n"
-    sbatch_script += f"  IMAGE_PATH=$(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\")\n"
+    sbatch_script += f"for file in $(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\"); do\n"
+    sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
+    sbatch_script += f"done\n"
+    sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
     sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
     sbatch_script += f"else\n"
     sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
