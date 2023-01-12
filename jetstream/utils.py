@@ -12,6 +12,10 @@ import os
 import subprocess
 import sys
 import yaml
+try:
+    from yaml import CSafeLoader as SafeLoader, CSafeDumper as SafeDumper
+except ImportError:
+    from yaml import SafeLoader, SafeDumper
 from collections.abc import Sequence, Mapping
 from datetime import datetime
 from getpass import getuser
@@ -189,13 +193,13 @@ def dumps_json(obj, *args, sort_keys=True, **kwargs):
 
 def dump_yaml(obj, stream):
     """Attempt to dump `obj` to a YAML file"""
-    return yaml.dump(obj, stream=stream, default_flow_style=False)
+    return yaml.dump(obj, stream=stream, default_flow_style=False, Dumper=SafeDumper)
 
 
 def dumps_yaml(obj):
     """Attempt to dump `obj` to a YAML string"""
     stream = io.StringIO()
-    yaml.dump(obj, stream=stream, default_flow_style=False)
+    yaml.dump(obj, stream=stream, default_flow_style=False, Dumper=SafeDumper)
     return stream.getvalue()
 
 
@@ -390,7 +394,7 @@ def parse_txt(data):
 
 
 def parse_yaml(data):
-    return yaml.safe_load(data)
+    return yaml.load(data, Loader=SafeLoader)
 
 
 def _load(path):

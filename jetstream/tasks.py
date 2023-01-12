@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 IDENTITY = (
     'cmd',
     'exec',
-    'container'
+    'container',
     'digest'
 )
 
