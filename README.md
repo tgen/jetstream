@@ -301,7 +301,8 @@ jetstream tasks -v
 # Installation
 
 > TGen users on Diamondback can load the latest version of Python with 
-  `module load Python`.
+  `module load Python` though it is recommended to check which modules 
+  are available via `module avail Python` and using a specific module.
 
 This is a Python package and requires Python3 (>=3.7). Installation guides for 
 Mac/Windows/Linux are available from the 
