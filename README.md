@@ -301,9 +301,10 @@ jetstream tasks -v
 # Installation
 
 > TGen users on Diamondback can load the latest version of Python with 
-  `module load python`.
+  `module load Python` though it is recommended to check which modules 
+  are available via `module avail Python` and using a specific module.
 
-This is a Python package and requires Python3 (>=3.6). Installation guides for 
+This is a Python package and requires Python3 (>=3.7). Installation guides for 
 Mac/Windows/Linux are available from the 
 [Hitchiker's Guide to Python][install_help] After Python3 is installed, you can 
 install Jetstream with Pip (next step).
