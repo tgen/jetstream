@@ -203,60 +203,62 @@ class SlurmSingularityBackend(BaseBackend):
         container = task.directives.get( 'container', None )
         digest = task.directives.get( 'digest', None )
         if container == None:
-            raise RuntimeError(f'container argument missing for task: {task.name}')
-
-        if os.path.exists(container):
-            singularity_image = container
+            # raise RuntimeError(f'container argument missing for task: {task.name}')
+            log.debug( f'Task: {task.name} is missing a container definition! Using basic slurm submission' )
+            singularity_image = None
             singularity_hostname = None
             docker_authentication_token = None
         else:
-            try:
-                image, tag = container.split(':')
-            except ValueError:
-                log.debug( f'Tag not defined for {container}, assuming latest')
-                image = container
-                tag = 'latest'
-
-            if digest == None:
-                singularity_image = f"docker://{image}:{tag}"
+            if os.path.exists(container):
+                singularity_image = container
+                singularity_hostname = None
+                docker_authentication_token = None
             else:
-                # Stripping sha256 in case it was already included in digest
-                digest = re.sub('^sha256:', '', digest)
-                singularity_image = f"docker://{image}@sha256:{digest}"
-            
-            singularity_hostname = task.directives.get( 'singularity_hostname', None )
-            
-            docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
-            
-            log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
-            try:
-                if singularity_image in self._singularity_pull_cache:
-                    pass
-                else:
-                    async with self._singularity_pull_lock:
-                        for i in range( self.max_jobs ):
-                            await self._singularity_run_sem.acquire()
-                        pull_command_run_string = ""
-                        if docker_authentication_token is not None:
-                            pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-                        pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
-                        log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
-                        _p = await create_subprocess_shell( pull_command_run_string,
-                                                            stdout=asyncio.subprocess.PIPE,
-                                                            stderr=asyncio.subprocess.PIPE )
-                        _stdout, _stderr = await _p.communicate()
-                        log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
-                        log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
-                        self._singularity_pull_cache[ singularity_image ] = singularity_image
-                        for i in range( self.max_jobs ):
-                            self._singularity_run_sem.release()
-            except Exception as e:
-                log.warning(f'Exception during singularity prepull: {e}')
-                p = await create_subprocess_shell( "exit 1;" )
+                try:
+                    image, tag = container.split(':')
+                except ValueError:
+                    log.debug( f'Tag not defined for {container}, assuming latest')
+                    image = container
+                    tag = 'latest'
 
-            log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
-        
-        sbatch_account=self.sbatch_account
+                if digest == None:
+                    singularity_image = f"docker://{image}:{tag}"
+                else:
+                    # Stripping sha256 in case it was already included in digest
+                    digest = re.sub('^sha256:', '', digest)
+                    singularity_image = f"docker://{image}@sha256:{digest}"
+                
+                singularity_hostname = task.directives.get( 'singularity_hostname', None )
+                
+                docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
+                
+                log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
+                try:
+                    if singularity_image in self._singularity_pull_cache:
+                        pass
+                    else:
+                        async with self._singularity_pull_lock:
+                            for i in range( self.max_jobs ):
+                                await self._singularity_run_sem.acquire()
+                            pull_command_run_string = ""
+                            if docker_authentication_token is not None:
+                                pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                            pull_command_run_string += f'singularity exec --cleanenv --nohttps {singularity_image} true'
+                            log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
+                            _p = await create_subprocess_shell( pull_command_run_string,
+                                                                stdout=asyncio.subprocess.PIPE,
+                                                                stderr=asyncio.subprocess.PIPE )
+                            _stdout, _stderr = await _p.communicate()
+                            log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
+                            log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
+                            self._singularity_pull_cache[ singularity_image ] = singularity_image
+                            for i in range( self.max_jobs ):
+                                self._singularity_run_sem.release()
+                except Exception as e:
+                    log.warning(f'Exception during singularity prepull: {e}')
+                    p = await create_subprocess_shell( "exit 1;" )
+
+                log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
         async with self.sbatch_lock:
             time.sleep(self.sbatch_delay)
@@ -671,20 +673,23 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
     singularity_run_env_vars = ""
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-        
-    # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
-    sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && SINGULARITY_EXEC_ARGS=\"{singularity_exec_args} --nv\" || SINGULARITY_EXEC_ARGS=\"{singularity_exec_args}\" \n"
-    # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
-    sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
-    # Searching for the cached image and using it if it exists
-    sbatch_script += f"for file in $(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\"); do\n"
-    sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
-    sbatch_script += f"done\n"
-    sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
-    sbatch_script += f"else\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
-    sbatch_script += f"fi\n"
+    
+    if singularity_image:
+        # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
+        sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && SINGULARITY_EXEC_ARGS=\"{singularity_exec_args} --nv\" && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\" || SINGULARITY_EXEC_ARGS=\"{singularity_exec_args}\" \n"
+        # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
+        sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
+        # Searching for the cached image and using it if it exists
+        sbatch_script += f"for file in $(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\"); do\n"
+        sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
+        sbatch_script += f"done\n"
+        sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
+        sbatch_script += f"else\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+        sbatch_script += f"fi\n"
+    else:
+        sbatch_script += f"bash {cmd_script_filename}\n"
     
     if name == None:
         name = "script"
