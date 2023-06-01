@@ -105,6 +105,17 @@ def sha256(value):
     return h.hexdigest()
 
 
+def md5(path):
+    """Allow "{{ path|md5 }}" to be used in templates. A good
+    use case is to track the md5sum of a script or other file that may
+    change over time. Causing the render to update on file change"""
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
 def fromjson(value):
     """Allow "{{ value|fromjson }}" to be used in templates"""
     return json.loads(value)
@@ -151,6 +162,7 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     env.filters['dirname'] = dirname
     env.filters['urlparse'] = urlparse
     env.filters['sha256'] = sha256
+    env.filters['md5'] = md5
     return env
 
 
