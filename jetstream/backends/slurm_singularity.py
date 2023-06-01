@@ -64,7 +64,7 @@ class SlurmSingularityBackend(BaseBackend):
         self.job_monitor_max_fails = job_monitor_max_fails
         self.max_jobs = max_jobs
         self.jobs = dict()
-        self.input_file_validation = settings['backends']['slurm_singularity']['input_file_validation'].get()
+        self.input_file_validation = input_file_validation
 
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
