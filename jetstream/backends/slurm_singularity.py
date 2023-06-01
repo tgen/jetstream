@@ -4,7 +4,7 @@ import itertools
 import json
 import logging
 import os
-import random
+import sys
 import re
 import shlex
 import shutil
@@ -301,7 +301,10 @@ class SlurmSingularityBackend(BaseBackend):
         self._bump_next_update()
         log.info(f'SlurmSingularityBackend submitted({job.jid}): {task.name}')
 
-        job.event = asyncio.Event()
+        if sys.version_info > (3, 8):
+            job.event = asyncio.Event()
+        else:
+            job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
 
         await job.event.wait()
