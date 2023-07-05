@@ -129,7 +129,7 @@ class SlurmBackend(BaseBackend):
                     self._bump_next_update()
                     continue
                 try:
-                    sacct_data = sacct(*self.jobs, self.sacct_fields, return_data=True)
+                    sacct_data = sacct(*self.jobs, sacct_fields=self.sacct_fields, return_data=True)
                 except Exception:
                     if failures <= 0:
                         raise
@@ -337,10 +337,10 @@ class SlurmBatchJob(object):
             return False
 
 
-def wait(*job_ids, sacct_fields, update_frequency=10):
+def wait(*job_ids, sacct_fields=None, update_frequency=10):
     """Wait for one or more slurm batch jobs to complete"""
     while 1:
-        jobs = sacct(*job_ids, sacct_fields)
+        jobs = sacct(*job_ids, sacct_fields=sacct_fields)
 
         if all([j.is_done() for j in jobs]):
             return
@@ -348,7 +348,7 @@ def wait(*job_ids, sacct_fields, update_frequency=10):
             time.sleep(update_frequency)
 
 
-def sacct(*job_ids, sacct_fields, chunk_size=1000, strict=False, return_data=False):
+def sacct(*job_ids, sacct_fields=None, chunk_size=1000, strict=False, return_data=False):
     """Query sacct for job records.
 
     Jobs are returned for each job id, but steps will be combined under a
@@ -365,7 +365,7 @@ def sacct(*job_ids, sacct_fields, chunk_size=1000, strict=False, return_data=Fal
     data = {}
     for i in range(0, len(job_ids), chunk_size):
         chunk = job_ids[i: i + chunk_size]
-        sacct_output = launch_sacct(*chunk, sacct_fields)
+        sacct_output = launch_sacct(*chunk, sacct_fields=sacct_fields)
         data.update(sacct_output)
 
     log.debug('Status updates for {} jobs'.format(len(data)))
@@ -385,7 +385,7 @@ def sacct(*job_ids, sacct_fields, chunk_size=1000, strict=False, return_data=Fal
     return jobs
 
 
-def launch_sacct(*job_ids, sacct_fields, delimiter=SLURM_SACCT_DELIMITER, raw=False):
+def launch_sacct(*job_ids, sacct_fields=None, delimiter=SLURM_SACCT_DELIMITER, raw=False):
     """Launch sacct command and return stdout data
 
     This function returns raw query results, sacct() will be more
