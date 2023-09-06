@@ -221,7 +221,7 @@ class SlurmSingularityBackend(BaseBackend):
                     image = container
                     tag = 'latest'
 
-                if digest == None:
+                if digest is None:
                     singularity_image = f"docker://{image}:{tag}"
                 else:
                     # Stripping sha256 in case it was already included in digest
@@ -354,7 +354,7 @@ class SlurmBatchJob(object):
     def update(self):
         data = launch_sacct(self.jid)
 
-        if not self.jid in data:
+        if self.jid not in data:
             raise ValueError('No job data found for:  {}'.format(self.jid))
         else:
             self.job_data = data[self.jid]
@@ -446,7 +446,7 @@ def sacct(*job_ids, sacct_fields=None, chunk_size=1000, strict=False, return_dat
         return data
 
     for job in jobs:
-        if not job.jid in data:
+        if job.jid not in data:
             if strict:
                 raise ValueError('No records returned for {}'.format(job.jid))
             else:
@@ -542,27 +542,30 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             for input_filename in input_filenames_glob:
                 input_filename = os.path.abspath( input_filename )
                 input_filename_head, input_filename_tail = os.path.split( input_filename )
-                singularity_mounts.add( input_filename_head )
+                if not input_filename_head.startswith(os.getcwd()):
+                    singularity_mounts.add( input_filename_head )
     else:
         for input_filename in input_filenames:
             input_filename = os.path.abspath( input_filename )
             input_filename_head, input_filename_tail = os.path.split( input_filename )
-            singularity_mounts.add( input_filename_head )
+            if not input_filename_head.startswith(os.getcwd()):
+                singularity_mounts.add( input_filename_head )
     for output_filename in output_filenames:
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
-        singularity_mounts.add( output_filename_head )
+        if not output_filename_head.startswith(os.getcwd()):
+            singularity_mounts.add( output_filename_head )
         os.makedirs( output_filename_head, exist_ok=True )
     
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "--bind %s" % ( singularity_mount ) )
-    singularity_mounts_string = " ".join( mount_strings )
+    singularity_mounts_string = " ".join( mount_strings ).strip()
     
     # create cmd script
     os.makedirs( "jetstream/cmd", mode = 0o777, exist_ok = True )
     millis = int(round(time.time() * 1000))
-    if name == None:
+    if name is None:
         name = "script"
     cmd_script_filename = f"jetstream/cmd/{millis}_{identity}.cmd"
     cmd_script_filename = os.path.abspath( cmd_script_filename )
