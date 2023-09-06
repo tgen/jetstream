@@ -651,7 +651,6 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
             skip_next = True
 
-
     singularity_args = []
 
     """
@@ -668,21 +667,24 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             singularity_args.extend(runner_args)
 
     singularity_exec_args = "--bind $JS_PIPELINE_PATH --bind $PWD --pwd $PWD --workdir /tmp --cleanenv --contain"
-    
+
+    if any('gpu' in s for s in singularity_args):
+        singularity_exec_args += ' --nv'
+
     for arg in singularity_args:
         singularity_exec_args += f" {arg}" 
 
     singularity_hostname_arg = ""
     if singularity_hostname is not None:
         singularity_hostname_arg = f"--hostname {singularity_hostname} "
-    
+
     singularity_run_env_vars = ""
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-    
+
     if singularity_image:
         # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
-        sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && SINGULARITY_EXEC_ARGS=\"{singularity_exec_args} --nv\" && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\" || SINGULARITY_EXEC_ARGS=\"{singularity_exec_args}\" \n"
+        sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\"\n"
         # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
         sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
         # Searching for the cached image and using it if it exists
@@ -690,20 +692,20 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
         sbatch_script += f"done\n"
         sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
-        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args} {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
         sbatch_script += f"else\n"
-        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args} {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
         sbatch_script += f"fi\n"
     else:
         sbatch_script += f"bash {cmd_script_filename}\n"
-    
-    if name == None:
+
+    if name is None:
         name = "script"
     sbatch_script_filename = f"jetstream/cmd/{millis}_{identity}.sbatch"
     sbatch_script_filename = os.path.abspath( sbatch_script_filename )
     with open( sbatch_script_filename, "w" ) as sbatch_script_file:
         sbatch_script_file.write( sbatch_script )
-    
+
     submit_sbatch_args = [ "sbatch", sbatch_script_filename ]
     remaining_tries = SLURM_SBATCH_RETRY
 
