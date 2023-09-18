@@ -105,6 +105,33 @@ def sha256(value):
     return h.hexdigest()
 
 
+def md5(path):
+    """Allow "{{ path|md5 }}" to be used in templates. A good
+    use case is to track the md5sum of a script or other file that may
+    change over time. Causing the render to update on file change"""
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def assignbin(value, bins=[0, float('inf')], labels=None):
+    """Allow "{{ value|assignbin }}" to be used in templates. The return value
+    of this filter is the 0-based bin the value falls in. Default bin is 0 to
+    infinity. Edges floor to lower bin. Also accepts a list of labels such
+    that: assignbin(5,[0,2,4,6],['low','med','high']) }} returns 'high'.
+    Returns -1 if the value is out of bounds."""
+    start = bins[:-1]
+    end = bins[1:]
+    for i, (lower_bound, upper_bound) in enumerate(zip(start, end)):
+        if lower_bound <= value <= upper_bound:
+            if labels is not None:
+                return labels[i]
+            return i
+    return -1
+
+
 def fromjson(value):
     """Allow "{{ value|fromjson }}" to be used in templates"""
     return json.loads(value)
@@ -151,6 +178,8 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     env.filters['dirname'] = dirname
     env.filters['urlparse'] = urlparse
     env.filters['sha256'] = sha256
+    env.filters['md5'] = md5
+    env.filters['assignbin'] = assignbin
     return env
 
 

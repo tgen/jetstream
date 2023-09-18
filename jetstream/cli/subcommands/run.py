@@ -140,6 +140,8 @@ def run(wf, args):
     if args.mash_only:
         if args.out:
             wf.save(args.out)
+        else:
+            wf.save()
         log.info('Mashed workflow built successfully!')
         return
 

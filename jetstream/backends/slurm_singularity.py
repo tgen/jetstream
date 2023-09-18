@@ -4,7 +4,7 @@ import itertools
 import json
 import logging
 import os
-import random
+import sys
 import re
 import shlex
 import shutil
@@ -39,11 +39,11 @@ class SlurmSingularityBackend(BaseBackend):
                 'slurm_args')
 
     def __init__(self, 
-                 sacct_frequency=5, 
+                 sacct_frequency=60, 
                  sbatch_delay=0.5,
                  sbatch_executable=None, 
                  sbatch_account=None,
-                 sacct_fields=('JobID', 'Elapsed'),
+                 sacct_fields=('JobID', 'Elapsed', 'State', 'ExitCode'),
                  job_monitor_max_fails=5, 
                  max_jobs=1024,
                  singularity_executable=None,
@@ -64,7 +64,7 @@ class SlurmSingularityBackend(BaseBackend):
         self.job_monitor_max_fails = job_monitor_max_fails
         self.max_jobs = max_jobs
         self.jobs = dict()
-        self.input_file_validation = settings['backends']['slurm_singularity']['input_file_validation'].get()
+        self.input_file_validation = input_file_validation
 
         self.coroutines = (self.job_monitor,)
         self._next_update = datetime.now()
@@ -124,7 +124,7 @@ class SlurmSingularityBackend(BaseBackend):
                     self._bump_next_update()
                     continue
                 try:
-                    sacct_data = sacct(*self.jobs, return_data=True)
+                    sacct_data = sacct(*self.jobs, sacct_fields=self.sacct_fields, return_data=True)
                 except Exception:
                     if failures <= 0:
                         raise
@@ -203,60 +203,62 @@ class SlurmSingularityBackend(BaseBackend):
         container = task.directives.get( 'container', None )
         digest = task.directives.get( 'digest', None )
         if container == None:
-            raise RuntimeError(f'container argument missing for task: {task.name}')
-
-        if os.path.exists(container):
-            singularity_image = container
+            # raise RuntimeError(f'container argument missing for task: {task.name}')
+            log.debug( f'Task: {task.name} is missing a container definition! Using basic slurm submission' )
+            singularity_image = None
             singularity_hostname = None
             docker_authentication_token = None
         else:
-            try:
-                image, tag = container.split(':')
-            except ValueError:
-                log.debug( f'Tag not defined for {container}, assuming latest')
-                image = container
-                tag = 'latest'
-
-            if digest == None:
-                singularity_image = f"docker://{image}:{tag}"
+            if os.path.exists(container):
+                singularity_image = container
+                singularity_hostname = None
+                docker_authentication_token = None
             else:
-                # Stripping sha256 in case it was already included in digest
-                digest = re.sub('^sha256:', '', digest)
-                singularity_image = f"docker://{image}@sha256:{digest}"
-            
-            singularity_hostname = task.directives.get( 'singularity_hostname', None )
-            
-            docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
-            
-            log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
-            try:
-                if singularity_image in self._singularity_pull_cache:
-                    pass
-                else:
-                    async with self._singularity_pull_lock:
-                        for i in range( self.max_jobs ):
-                            await self._singularity_run_sem.acquire()
-                        pull_command_run_string = ""
-                        if docker_authentication_token is not None:
-                            pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-                        pull_command_run_string += f'singularity exec --cleanenv {singularity_image} true'
-                        log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
-                        _p = await create_subprocess_shell( pull_command_run_string,
-                                                            stdout=asyncio.subprocess.PIPE,
-                                                            stderr=asyncio.subprocess.PIPE )
-                        _stdout, _stderr = await _p.communicate()
-                        log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
-                        log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
-                        self._singularity_pull_cache[ singularity_image ] = singularity_image
-                        for i in range( self.max_jobs ):
-                            self._singularity_run_sem.release()
-            except Exception as e:
-                log.warning(f'Exception during singularity prepull: {e}')
-                p = await create_subprocess_shell( "exit 1;" )
+                try:
+                    image, tag = container.split(':')
+                except ValueError:
+                    log.debug( f'Tag not defined for {container}, assuming latest')
+                    image = container
+                    tag = 'latest'
 
-            log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
-        
-        sbatch_account=self.sbatch_account
+                if digest is None:
+                    singularity_image = f"docker://{image}:{tag}"
+                else:
+                    # Stripping sha256 in case it was already included in digest
+                    digest = re.sub('^sha256:', '', digest)
+                    singularity_image = f"docker://{image}@sha256:{digest}"
+                
+                singularity_hostname = task.directives.get( 'singularity_hostname', None )
+                
+                docker_authentication_token = task.directives.get( 'docker_authentication_token', None )
+                
+                log.debug( f'Task: {task.name}, going to pull: {singularity_image}' )
+                try:
+                    if singularity_image in self._singularity_pull_cache:
+                        pass
+                    else:
+                        async with self._singularity_pull_lock:
+                            for i in range( self.max_jobs ):
+                                await self._singularity_run_sem.acquire()
+                            pull_command_run_string = ""
+                            if docker_authentication_token is not None:
+                                pull_command_run_string += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
+                            pull_command_run_string += f'singularity exec --cleanenv --nohttps {singularity_image} true'
+                            log.debug( f'Task: {task.name}, pulling: {pull_command_run_string}' )
+                            _p = await create_subprocess_shell( pull_command_run_string,
+                                                                stdout=asyncio.subprocess.PIPE,
+                                                                stderr=asyncio.subprocess.PIPE )
+                            _stdout, _stderr = await _p.communicate()
+                            log.debug( f'Task: {task.name}, pulled, stdout: {_stdout}' )
+                            log.debug( f'Task: {task.name}, pulled, stderr: {_stderr}' )
+                            self._singularity_pull_cache[ singularity_image ] = singularity_image
+                            for i in range( self.max_jobs ):
+                                self._singularity_run_sem.release()
+                except Exception as e:
+                    log.warning(f'Exception during singularity prepull: {e}')
+                    p = await create_subprocess_shell( "exit 1;" )
+
+                log.debug( f'Task: {task.name}, pull complete: {singularity_image}' )
         
         async with self.sbatch_lock:
             time.sleep(self.sbatch_delay)
@@ -299,15 +301,17 @@ class SlurmSingularityBackend(BaseBackend):
         self._bump_next_update()
         log.info(f'SlurmSingularityBackend submitted({job.jid}): {task.name}')
 
-        job.event = asyncio.Event(loop=self.runner.loop)
+        if sys.version_info > (3, 8):
+            job.event = asyncio.Event()
+        else:
+            job.event = asyncio.Event(loop=self.runner.loop)
         self.jobs[job.jid] = job
 
         await job.event.wait()
         log.debug(f'{task.name}: job info was updated')
 
         if self.sacct_fields:
-            job_info = {k: v for k, v in job.job_data.items() if
-                        k in self.sacct_fields}
+            job_info = {k: v for k, v in job.job_data.items() if k in self.sacct_fields}
             log.debug(f'{task.name} job.job_data: {job.job_data}')
             task.state['slurm_sacct'] = job_info
 
@@ -350,7 +354,7 @@ class SlurmBatchJob(object):
     def update(self):
         data = launch_sacct(self.jid)
 
-        if not self.jid in data:
+        if self.jid not in data:
             raise ValueError('No job data found for:  {}'.format(self.jid))
         else:
             self.job_data = data[self.jid]
@@ -405,10 +409,10 @@ class SlurmBatchJob(object):
             return False
 
 
-def wait(*job_ids, update_frequency=10):
+def wait(*job_ids, sacct_fields=None, update_frequency=10):
     """Wait for one or more slurm batch jobs to complete"""
     while 1:
-        jobs = sacct(*job_ids)
+        jobs = sacct(*job_ids, sacct_fields=sacct_fields)
 
         if all([j.is_done() for j in jobs]):
             return
@@ -416,7 +420,7 @@ def wait(*job_ids, update_frequency=10):
             time.sleep(update_frequency)
 
 
-def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
+def sacct(*job_ids, sacct_fields=None, chunk_size=1000, strict=False, return_data=False):
     """Query sacct for job records.
 
     Jobs are returned for each job id, but steps will be combined under a
@@ -433,7 +437,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
     data = {}
     for i in range(0, len(job_ids), chunk_size):
         chunk = job_ids[i: i + chunk_size]
-        sacct_output = launch_sacct(*chunk)
+        sacct_output = launch_sacct(*chunk, sacct_fields=sacct_fields)
         data.update(sacct_output)
 
     log.debug('Status updates for {} jobs'.format(len(data)))
@@ -442,7 +446,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
         return data
 
     for job in jobs:
-        if not job.jid in data:
+        if job.jid not in data:
             if strict:
                 raise ValueError('No records returned for {}'.format(job.jid))
             else:
@@ -453,7 +457,7 @@ def sacct(*job_ids, chunk_size=1000, strict=False, return_data=False):
     return jobs
 
 
-def launch_sacct(*job_ids, delimiter=SLURM_SACCT_DELIMITER, raw=False):
+def launch_sacct(*job_ids, sacct_fields=None, delimiter=SLURM_SACCT_DELIMITER, raw=False):
     """Launch sacct command and return stdout data
 
     This function returns raw query results, sacct() will be more
@@ -465,7 +469,7 @@ def launch_sacct(*job_ids, delimiter=SLURM_SACCT_DELIMITER, raw=False):
     :return: Dict or Bytes
     """
     log.debug('Sacct request for {} jobs...'.format(len(job_ids)))
-    args = ['sacct', '-P', '--format', 'all', '--delimiter={}'.format(delimiter)]
+    args = ['sacct', '-P', '--format', '{}'.format(','.join(sacct_fields)), '--delimiter={}'.format(delimiter)]
 
     for jid in job_ids:
         args.extend(['-j', str(jid)])
@@ -538,27 +542,30 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             for input_filename in input_filenames_glob:
                 input_filename = os.path.abspath( input_filename )
                 input_filename_head, input_filename_tail = os.path.split( input_filename )
-                singularity_mounts.add( input_filename_head )
+                if not input_filename_head.startswith(os.getcwd()):
+                    singularity_mounts.add( input_filename_head )
     else:
         for input_filename in input_filenames:
             input_filename = os.path.abspath( input_filename )
             input_filename_head, input_filename_tail = os.path.split( input_filename )
-            singularity_mounts.add( input_filename_head )
+            if not input_filename_head.startswith(os.getcwd()):
+                singularity_mounts.add( input_filename_head )
     for output_filename in output_filenames:
         output_filename = os.path.abspath( output_filename )
         output_filename_head, output_filename_tail = os.path.split( output_filename )
-        singularity_mounts.add( output_filename_head )
+        if not output_filename_head.startswith(os.getcwd()):
+            singularity_mounts.add( output_filename_head )
         os.makedirs( output_filename_head, exist_ok=True )
     
     mount_strings = []
     for singularity_mount in singularity_mounts:
         mount_strings.append( "--bind %s" % ( singularity_mount ) )
-    singularity_mounts_string = " ".join( mount_strings )
+    singularity_mounts_string = " ".join( mount_strings ).strip()
     
     # create cmd script
     os.makedirs( "jetstream/cmd", mode = 0o777, exist_ok = True )
     millis = int(round(time.time() * 1000))
-    if name == None:
+    if name is None:
         name = "script"
     cmd_script_filename = f"jetstream/cmd/{millis}_{identity}.cmd"
     cmd_script_filename = os.path.abspath( cmd_script_filename )
@@ -644,7 +651,6 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             sbatch_script += f"#SBATCH {sbatch_args[i]} {sbatch_args[i+1]}\n"
             skip_next = True
 
-
     singularity_args = []
 
     """
@@ -661,39 +667,46 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             singularity_args.extend(runner_args)
 
     singularity_exec_args = "--bind $JS_PIPELINE_PATH --bind $PWD --pwd $PWD --workdir /tmp --cleanenv --contain"
-    
+
+    if any('gpu' in s for s in [singularity_args, sbatch_args]):
+        if all('--nv' not in s for s in singularity_args):
+            singularity_exec_args += ' --nv'
+
     for arg in singularity_args:
         singularity_exec_args += f" {arg}" 
 
     singularity_hostname_arg = ""
     if singularity_hostname is not None:
         singularity_hostname_arg = f"--hostname {singularity_hostname} "
-    
+
     singularity_run_env_vars = ""
     if docker_authentication_token is not None:
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
-        
-    # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
-    sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && SINGULARITY_EXEC_ARGS=\"{singularity_exec_args} --nv\" || SINGULARITY_EXEC_ARGS=\"{singularity_exec_args}\" \n"
-    # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
-    sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
-    # Searching for the cached image and using it if it exists
-    sbatch_script += f"for file in $(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\"); do\n"
-    sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
-    sbatch_script += f"done\n"
-    sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
-    sbatch_script += f"else\n"
-    sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec $SINGULARITY_EXEC_ARGS {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
-    sbatch_script += f"fi\n"
-    
-    if name == None:
+
+    if singularity_image:
+        # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
+        sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\"\n"
+        # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
+        sbatch_script += f"[[ -v SINGULARITY_CACHEDIR ]] || SINGULARITY_CACHEDIR=$HOME/.singularity/cache\n"
+        # Searching for the cached image and using it if it exists
+        sbatch_script += f"for file in $(find $SINGULARITY_CACHEDIR -type f -name \"{singularity_image_digest}\"); do\n"
+        sbatch_script += f"  {singularity_executable} inspect $file > /dev/null 2>&1 && IMAGE_PATH=$file\n"
+        sbatch_script += f"done\n"
+        sbatch_script += f"if [[ -v IMAGE_PATH ]] ; then\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args} {singularity_hostname_arg}{singularity_mounts_string} $IMAGE_PATH bash {cmd_script_filename}\n"
+        sbatch_script += f"else\n"
+        sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args} {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
+        sbatch_script += f"fi\n"
+    else:
+        sbatch_script += f"bash {cmd_script_filename}\n"
+
+    if name is None:
         name = "script"
     sbatch_script_filename = f"jetstream/cmd/{millis}_{identity}.sbatch"
     sbatch_script_filename = os.path.abspath( sbatch_script_filename )
     with open( sbatch_script_filename, "w" ) as sbatch_script_file:
         sbatch_script_file.write( sbatch_script )
-    
+
     submit_sbatch_args = [ "sbatch", sbatch_script_filename ]
     remaining_tries = SLURM_SBATCH_RETRY
 

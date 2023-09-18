@@ -86,10 +86,33 @@ backends:
     (): jetstream.backends.local.LocalBackend
     blocking_io_penalty: 30
     cpus: null
+  local_docker:
+    (): jetstream.backends.local_docker.LocalDockerBackend
+  local_singularity:
+    (): jetstream.backends.local_singularity.LocalSingularityBackend
+    pullfolder: null
   slurm:
     (): jetstream.backends.slurm.SlurmBackend
     job_monitor_max_fails: 5
-    sacct_frequency: 10
+    sacct_frequency: 60
+    sacct_fields:
+      - JobID
+      - JobName
+      - Partition
+      - Account
+      - AllocCPUS
+      - State
+      - ExitCode
+      - Elapsed
+      - ElapsedRaw
+      - Start
+      - End
+      - MaxRSS
+  slurm_singularity:
+    (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
+    sbatch_account: null
+    input_file_validation: false
+    sacct_frequency: 60
     sacct_fields:
       - JobID
       - JobName
@@ -105,15 +128,6 @@ backends:
       - MaxRSS
   dnanexus:
     (): jetstream.backends.dnanexus.DnanexusBackend
-  local_docker:
-    (): jetstream.backends.local_docker.LocalDockerBackend
-  local_singularity:
-    (): jetstream.backends.local_singularity.LocalSingularityBackend
-    pullfolder: null
-  slurm_singularity:
-    (): jetstream.backends.slurm_singularity.SlurmSingularityBackend
-    sbatch_account: null
-    input_file_validation: false
 
 
 # This option controls the number of times the runner will attempt to
@@ -157,13 +171,10 @@ slurm_solo_options:
   - --wait
 
 slurm_presets:
-  example:
-    - -p
-    - defq
+  example: ['-p', 'defq']
 
 singularity_presets:
-  example:
-    - null
+  example: []
 
 # ================================== Pipelines ================================
 # Pipelines are a collection of pre-built workflows that are installed in the
