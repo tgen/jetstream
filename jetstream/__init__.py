@@ -9,7 +9,7 @@ import yaml
 __author__ = 'Ryan Richholt'
 __maintainer__ = 'Bryce Turner'
 __email__ = 'bturner@tgen.org'
-__version__ = '1.7.2'
+__version__ = '1.7.3'
 
 
 # Configure parallel library dependencies (Used by numpy)
