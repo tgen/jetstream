@@ -267,6 +267,10 @@ several other tools have been added with Jetstream and can be used inside templa
 
 - `sha256`: Returns sha256 hexdigest for a string
 
+- `md5`: Returns md5sum of a file defined with a path
+  Example: `{{ required_scripts.some_script.path | md5 }}`
+
+- `assignbin`: Returns the 0-based bin the value falls in. Default bin is 0 to infinity, meaning this will return 0 if the bins are not defined. Edges floor to lower bin. Also accepts a list of labels such that: `{{ assignbin(5,[0,2,4,6],['low','med','high']) }}` returns 'high'. Returns -1 if the value is out of bounds.
 
 # Template rendering data
 
