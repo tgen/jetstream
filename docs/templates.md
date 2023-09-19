@@ -238,21 +238,21 @@ several other tools have been added with Jetstream and can be used inside templa
 ### Globals
 
 - `raise`: Raise an error while rendering the template
-  Example: `{{ if foo < 42 }}{{ raise('foo should be at least 42') }}{{ endif }}`
+  - Example: `{{ if foo < 42 }}{{ raise('foo should be at least 42') }}{{ endif }}`
 
 - `log`: Log messages to the Jetstream logger while template renders
-  Example: `{{ log('Foo is {}'.format(foo), level='CRITICAL') }}`
+  - Example: `{{ log('Foo is {}'.format(foo), level='CRITICAL') }}`
 
 - `env`: Returns environment variable value
-  Example: `echo foo is {{ getenv('FOO') }}`
+  - Example: `echo foo is {{ getenv('FOO') }}`
 
 - `getenv`: Returns environment variable value, this will return None if value 
   is not set whereas `env` will raise an error. A different fallback value can
   be given as the second argument.
-  Example: `echo foo is {{ getenv('FOO', None) }}`
+  - Example: `echo foo is {{ getenv('FOO', None) }}`
 
 - `setenv`: Sets an environment variable when the template is rendered
-  Example: `{{ setenv('FOO', '42') }}`
+  - Example: `{{ setenv('FOO', '42') }}`
 
 
 ### Filters
@@ -268,9 +268,13 @@ several other tools have been added with Jetstream and can be used inside templa
 - `sha256`: Returns sha256 hexdigest for a string
 
 - `md5`: Returns md5sum of a file defined with a path
-  Example: `{{ required_scripts.some_script.path | md5 }}`
+  - Example: `{{ required_scripts.some_script.path | md5 }}`
 
-- `assignbin`: Returns the 0-based bin the value falls in. Default bin is 0 to infinity, meaning this will return 0 if the bins are not defined. Edges floor to lower bin. Also accepts a list of labels such that: `{{ assignbin(5,[0,2,4,6],['low','med','high']) }}` returns 'high'. Returns -1 if the value is out of bounds.
+- `assignbin`: Returns the 0-based bin the value falls in. 
+  - The default bin edges are 0 to infinity, meaning this will return 0 if the bin edges are not defined. 
+  - Returns -1 if the input value is out of bounds.
+  - Any value landing on an edge will floor to lower bin. 
+  - This also accepts a list of labels such that: `{{ assignbin(5,[0,2,4,6],['low','med','high']) }}` returns 'high'. Moreover, `{{ assignbin(4,[0,2,4,6],['low','med','high']) }}` would return 'med'.
 
 # Template rendering data
 
