@@ -134,6 +134,7 @@ class Pipeline:
             bin_path = os.path.join(self.path, bin_path)
             new_path = f'{bin_path}:{os.environ["PATH"]}'
             os.environ['PATH'] = new_path
+            os.environ['SINGULARITYENV_APPEND_PATH'] = bin_path
 
         if self.env:
             for k, v in self.env.items():
