@@ -229,5 +229,5 @@ def is_pipeline(path):
 
 
 def list_pipelines(*dirs):
-    """Returns all pipelines found as a list"""
-    return list(find_pipelines(*dirs))
+    """Returns all pipelines found as a sorted list"""
+    return list(sorted(find_pipelines(*dirs), key=lambda p: parse_pipeline_version(p.version)))
