@@ -1,6 +1,6 @@
 import logging
 import os
-from packaging.version import parse as parse_version
+from packaging.version import parse
 import jetstream
 
 log = logging.getLogger(__name__)
@@ -69,10 +69,10 @@ class Pipeline:
         return f'<Pipeline {self.name} ({self.version}): {self.path}>'
 
     def __lt__(self, other):
-        return (self.name, parse_pipeline_version(self.version)) < (other.name, parse_pipeline_version(other.version))
+        return (self.name, parse_version(self.version)) < (other.name, parse_version(other.version))
 
     def __eq__(self, other):
-        return (self.name, parse_pipeline_version(self.version)) == (other.name, parse_pipeline_version(other.version))
+        return (self.name, parse_version(self.version)) == (other.name, parse_version(other.version))
 
     def get_context(self):
         ctx = self.manifest.copy()
@@ -176,7 +176,7 @@ def find_pipelines(*dirs):
                 yield from find_pipelines(path)
 
 
-def parse_pipeline_version(version):
+def parse_version(version):
     """
     Pipeline versions generally should not use epochs however if an epoch is used, then it
     should be less than 999 as in other words that means we had 999 versioning format changes
@@ -189,9 +189,9 @@ def parse_pipeline_version(version):
     2014.04           1!2.0
     """
     if version in ["dev", "develop", "development"]:
-        return parse_version("999!9.dev")
+        return parse("999!9.dev")
     else:
-        return parse_version(version)
+        return parse(str(version))
 
 
 def get_pipeline(name, version=None, searchpath=None):
@@ -208,11 +208,11 @@ def get_pipeline(name, version=None, searchpath=None):
                 matches.append(p)
 
         if matches:
-            s = sorted(matches, key=lambda p: parse_pipeline_version(p.version))
+            s = sorted(matches, key=lambda p: parse_version(p.version))
             if version in [None, "latest"]:
-                return max([p for p in s if not parse_pipeline_version(p.version).is_devrelease])
+                return max([p for p in s if not parse_version(p.version).is_devrelease])
             else:
-                return max([p for p in s if parse_pipeline_version(p.version).is_devrelease])
+                return max([p for p in s if parse_version(p.version).is_devrelease])
     else:
         # Find a match with name and version
         for p in find_pipelines(*searchpath):
