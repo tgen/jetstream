@@ -10,6 +10,7 @@ Pipeline names may also include a version number <name>@<version>.
 For complete option listing see "jetstream run" """
 import logging
 import sys
+import errno
 import jetstream
 from jetstream.cli.subcommands import run_common_options, run
 
@@ -42,20 +43,28 @@ def main(args):
         searchpath = args.search_path
     else:
         searchpath = jetstream.settings['pipelines']['searchpath'].get()
-        searchpath = searchpath.split(':') 
+        searchpath = searchpath.split(':')
 
     # load and describe pipeline
     if args.verbose and args.pipeline:
         # Direct pipeline path given, just load and show details
         ctx = args.pipeline.get_context()
-        jetstream.utils.dump_yaml(ctx, sys.stdout)
+        try:
+            jetstream.utils.dump_yaml(ctx, sys.stdout)
+        except IOError as e:
+            if e.errno == errno.EPIPE:
+                pass
     elif args.verbose and args.name:
         # Find a pipeline and show details
         pipeline, *version = args.name.rsplit('@', 1)
         version = next(iter(version), None)
         args.pipeline = jetstream.get_pipeline(pipeline, version, searchpath=searchpath)
         ctx = args.pipeline.get_context()
-        jetstream.utils.dump_yaml(ctx, sys.stdout)
+        try:
+            jetstream.utils.dump_yaml(ctx, sys.stdout)
+        except IOError as e:
+            if e.errno == errno.EPIPE:
+                pass
     elif args.pipeline:
         # Direct pipeline path give, just load and run
         run.main(args)
@@ -69,4 +78,8 @@ def main(args):
         # List all pipelines
         all_pipelines = jetstream.list_pipelines(*searchpath)
         output = '\n'.join(f'{p.name} ({p.version}): {p.path}' for p in all_pipelines)
-        print(output)
+        try:
+            print(output)
+        except IOError as e:
+            if e.errno == errno.EPIPE:
+                pass
