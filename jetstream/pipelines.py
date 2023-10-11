@@ -68,6 +68,12 @@ class Pipeline:
             return f'<Pipeline(Not loaded yet): {self.path}>'
         return f'<Pipeline {self.name} ({self.version}): {self.path}>'
 
+    def __lt__(self, other):
+        return (self.name, parse_pipeline_version(self.version)) < (other.name, parse_pipeline_version(other.version))
+
+    def __eq__(self, other):
+        return (self.name, parse_pipeline_version(self.version)) == (other.name, parse_pipeline_version(other.version))
+
     def get_context(self):
         ctx = self.manifest.copy()
         ctx['__pipeline__']['path'] = self.path
@@ -182,8 +188,8 @@ def parse_pipeline_version(version):
     2013.10           1!1.1
     2014.04           1!2.0
     """
-    if version in ["dev", "develop", "development", "latest"]:
-        return parse_version("999!9")
+    if version in ["dev", "develop", "development"]:
+        return parse_version("999!9.dev")
     else:
         return parse_version(version)
 
@@ -203,12 +209,18 @@ def get_pipeline(name, version=None, searchpath=None):
 
         if matches:
             s = sorted(matches, key=lambda p: parse_pipeline_version(p.version))
-            return s[-1]
+            if version in [None, "latest"]:
+                return max([p for p in s if not parse_pipeline_version(p.version).is_devrelease])
+            else:
+                return max([p for p in s if parse_pipeline_version(p.version).is_devrelease])
     else:
         # Find a match with name and version
         for p in find_pipelines(*searchpath):
             # TODO can we allow > < = syntax here?
-            if p.name == name and parse_version(str(p.version)) == parse_version(str(version)):
+            query = Pipeline(validate=False)
+            query.name = name
+            query.version = version
+            if p == query:
                 return p
 
     if version is None:
@@ -230,4 +242,4 @@ def is_pipeline(path):
 
 def list_pipelines(*dirs):
     """Returns all pipelines found as a sorted list"""
-    return list(sorted(find_pipelines(*dirs), key=lambda p: parse_pipeline_version(p.version)))
+    return list(sorted(find_pipelines(*dirs)))
