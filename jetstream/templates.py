@@ -3,6 +3,7 @@ locations set by arguments or environment variables. """
 import json
 import hashlib
 import logging
+import glob
 import os
 import re
 import urllib.parse
@@ -139,6 +140,14 @@ def assignbin(value, bins=[0, float('inf')], labels=None):
     return -1
 
 
+@pass_context
+def list_files(ctx, path):
+    """Allow "{{ path|list_files }}" or "{{ list_files(path) }}" to be used in templates.
+    Also accepts globs as part of the path. This can be helpful in cases where we want to
+    create tasks by iterating over the file/directory list returned by glob."""
+    return glob.glob(expand_path(ctx=ctx, path=path))
+
+
 def fromjson(value):
     """Allow "{{ value|fromjson }}" to be used in templates"""
     return json.loads(value)
@@ -146,7 +155,7 @@ def fromjson(value):
 
 def env(value):
     return os.environ[value]
-    
+
 
 def getenv(value, default=None):
     return os.environ.get(value, default)
@@ -180,6 +189,7 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     env.globals['log'] = log_helper
     env.globals['getenv'] = getenv
     env.globals['setenv'] = setenv
+    env.globals['list_files'] = list_files
     env.filters['fromjson'] = fromjson
     env.filters['basename'] = basename
     env.filters['dirname'] = dirname
@@ -187,6 +197,7 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
     env.filters['sha256'] = sha256
     env.filters['md5'] = md5
     env.filters['assignbin'] = assignbin
+    env.filters['list_files'] = list_files
     return env
 
 
