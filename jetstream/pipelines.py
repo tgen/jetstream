@@ -1,6 +1,6 @@
 import logging
 import os
-from packaging.version import parse as parse_version
+from packaging.version import parse
 import jetstream
 
 log = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ class Pipeline:
       these: can be anything
 
     """
+
     def __init__(self, path=None, validate=True):
         if path is None:
             path = os.getcwd()
@@ -66,6 +67,12 @@ class Pipeline:
         if self.name is None:
             return f'<Pipeline(Not loaded yet): {self.path}>'
         return f'<Pipeline {self.name} ({self.version}): {self.path}>'
+
+    def __lt__(self, other):
+        return (self.name, parse_version(self.version)) < (other.name, parse_version(other.version))
+
+    def __eq__(self, other):
+        return (self.name, parse_version(self.version)) == (other.name, parse_version(other.version))
 
     def get_context(self):
         ctx = self.manifest.copy()
@@ -141,7 +148,6 @@ class Pipeline:
                 os.environ[k] = v
 
 
-
 def find_pipelines(*dirs):
     """Generator yields all pipelines in given directories. Any pipeline found will also
     be searched for nested pipelines. """
@@ -170,13 +176,31 @@ def find_pipelines(*dirs):
                 yield from find_pipelines(path)
 
 
+def parse_version(version):
+    """
+    Pipeline versions generally should not use epochs however if an epoch is used, then it
+    should be less than 999 as in other words that means we had 999 versioning format changes
+    https://peps.python.org/pep-0440/#version-epochs
+    For example an epoch is used to fix this sort order:
+    1.0               2013.10
+    1.1               2014.04
+    2.0       --->    1!1.0
+    2013.10           1!1.1
+    2014.04           1!2.0
+    """
+    if version in ["dev", "develop", "development"]:
+        return parse("999!9.dev")
+    else:
+        return parse(str(version))
+
+
 def get_pipeline(name, version=None, searchpath=None):
     """Get a pipeline by name and version(optional)"""
     if searchpath is None:
         searchpath = jetstream.settings['pipelines']['searchpath'].get()
         searchpath = searchpath.split(':')
 
-    if version is None:
+    if version in [None, "dev", "develop", "development", "latest"]:
         # Find all but then sort by version and return the latest
         matches = []
         for p in find_pipelines(*searchpath):
@@ -185,14 +209,19 @@ def get_pipeline(name, version=None, searchpath=None):
 
         if matches:
             s = sorted(matches, key=lambda p: parse_version(p.version))
-            return s[-1]
+            if version in [None, "latest"]:
+                return max([p for p in s if not parse_version(p.version).is_devrelease])
+            else:
+                return max([p for p in s if parse_version(p.version).is_devrelease])
     else:
         # Find a match with name and version
         for p in find_pipelines(*searchpath):
             # TODO can we allow > < = syntax here?
-            if p.name == name and parse_version(str(p.version)) == parse_version(str(version)):
+            query = Pipeline(validate=False)
+            query.name = name
+            query.version = version
+            if p == query:
                 return p
-
 
     if version is None:
         msg = f'Pipeline "{name}" not found!'
@@ -212,6 +241,5 @@ def is_pipeline(path):
 
 
 def list_pipelines(*dirs):
-    """Returns all pipelines found as a list"""
-    return list(find_pipelines(*dirs))
-
+    """Returns all pipelines found as a sorted list"""
+    return list(sorted(find_pipelines(*dirs)))
