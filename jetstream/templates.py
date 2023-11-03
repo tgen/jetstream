@@ -4,6 +4,7 @@ import json
 import hashlib
 import logging
 import os
+import re
 import urllib.parse
 import textwrap
 from collections.abc import Mapping
@@ -76,10 +77,15 @@ def raise_helper(ctx, msg):
 
 @pass_context
 def log_helper(ctx, msg, level='INFO'):
-    """Allow "raise('msg')" to be used in templates"""
+    """Allow "log('msg')" to be used in templates"""
     level = logging._checkLevel(level)
     log.log(level, f'{ctx.name}: {msg}')
     return ''
+
+
+def expand_path(ctx, path):
+    """"""
+    return re.sub(r'\$(JS_PIPELINE_PATH|\{([^}]*)\})', ctx.get("__pipeline__")["path"], os.path.expandvars(path))
 
 
 def basename(path):
@@ -105,12 +111,13 @@ def sha256(value):
     return h.hexdigest()
 
 
-def md5(path):
+@pass_context
+def md5(ctx, path):
     """Allow "{{ path|md5 }}" to be used in templates. A good
     use case is to track the md5sum of a script or other file that may
     change over time. Causing the render to update on file change"""
     hash_md5 = hashlib.md5()
-    with open(path, "rb") as f:
+    with open(expand_path(ctx=ctx, path=path), "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
