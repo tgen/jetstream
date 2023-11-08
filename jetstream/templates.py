@@ -146,7 +146,7 @@ def fromjson(value):
 
 def env(value):
     return os.environ[value]
-    
+
 
 def getenv(value, default=None):
     return os.environ.get(value, default)
@@ -154,7 +154,18 @@ def getenv(value, default=None):
 
 def setenv(key, value):
     os.environ[key] = value
-    return '' 
+    return ''
+
+
+def get_sam_header(path):
+    """This is an advanced function that is optionally available if pysam is
+    installed. This returns the header of a sam, bam, or cram as a dictionary."""
+    try:
+        import pysam
+    except (ImportError, ModuleNotFoundError):
+        print('This template is attempting to use pysam, but pysam is not installed')
+    with pysam.AlignmentFile(path, 'rb', check_sq=False) as f:
+        return f.header.to_dict()
 
 
 def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
