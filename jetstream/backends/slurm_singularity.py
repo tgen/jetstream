@@ -673,8 +673,8 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         singularity_exec_args += " --bind {}".format(os.getenv('JS_PIPELINE_PATH'))
         sbatch_script += "export SINGULARITYENV_JS_PIPELINE_PATH={}\n".format(os.getenv('JS_PIPELINE_PATH'))
 
-    if any('gpu' in s for s in [singularity_args, sbatch_args]):
-        if all('--nv' not in s for s in singularity_args):
+    if 'gpu' in ' '.join(map(str, sbatch_args)):
+        if '--nv' not in singularity_exec_args:
             singularity_exec_args += ' --nv'
 
     for arg in singularity_args:

@@ -38,7 +38,7 @@ setup(
         'Topic :: Utilities',
     ],
     install_requires=[
-        'networkx',
+        'networkx>=2.6,<3',
         'pyyaml',
         'ulid-py',
         'jinja2>=3.0.0',
