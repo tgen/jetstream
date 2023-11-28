@@ -544,18 +544,18 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
             for input_filename in input_filenames_glob:
                 input_filename = os.path.abspath(input_filename)
                 input_filename_head, input_filename_tail = os.path.split(input_filename)
-                if not input_filename_head.startswith(os.getcwd()):
+                if not input_filename_head.startswith(f'{os.getcwd()}/'):
                     singularity_mounts.add(input_filename_head)
     else:
         for input_filename in input_filenames:
             input_filename = os.path.abspath(input_filename)
             input_filename_head, input_filename_tail = os.path.split(input_filename)
-            if not input_filename_head.startswith(os.getcwd()):
+            if not input_filename_head.startswith(f'{os.getcwd()}/'):
                 singularity_mounts.add(input_filename_head)
     for output_filename in output_filenames:
         output_filename = os.path.abspath(output_filename)
         output_filename_head, output_filename_tail = os.path.split(output_filename)
-        if not output_filename_head.startswith(os.getcwd()):
+        if not output_filename_head.startswith(f'{os.getcwd()}/'):
             singularity_mounts.add(output_filename_head)
         os.makedirs(output_filename_head, exist_ok=True)
 
