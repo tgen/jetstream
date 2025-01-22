@@ -22,7 +22,8 @@ acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
   * [Templates](docs/templates.md)
 - [Vignette](#vignette)
 - [Installation](#installation)
-  * [Troubleshooting: Command not found after install](#troubleshooting--command-not-found-after-install)
+  * [Install with Pip](#install-with-pip)
+  * [Troubleshooting: Command not found after install](#troubleshooting-command-not-found-after-install)
 
 
 # Getting Started
@@ -30,7 +31,7 @@ acyclic graphs (DAGs), and execution on batch schedulers (Slurm).
 Jetstream can be installed with Pip:
 
 ```shell
-pip install git+https://github.com/tgen/jetstream.git@master
+pip3 install git+https://github.com/tgen/jetstream.git@master
 ```
 
 After installing with Pip, the command line utility can be launched with
@@ -300,19 +301,30 @@ jetstream tasks -v
 
 # Installation
 
-> TGen users on Diamondback can load the latest version of Python with 
-  `module load Python` though it is recommended to check which modules 
-  are available via `module avail Python` and using a specific module.
+> TGen users on Gemini should use `module load python37` as this already has
+many dependencies preinstalled and is currently used in production. Additional
+installation help can be found in this [`presentation`][presentation]
 
 This is a Python package and requires Python3 (>=3.7). Installation guides for 
-Mac/Windows/Linux are available from the 
-[Hitchiker's Guide to Python][install_help] After Python3 is installed, you can 
-install Jetstream with Pip (next step).
+Mac/Windows/Linux are available from the [Hitchiker's Guide to Python][install_help].
+After Python3 is installed, you can install Jetstream with Pip (next step).
 
-Install with Pip
+## Install with Pip
 
+_It is recommended to install a specific release tag_:
 ```shell
-pip install git+https://github.com/tgen/jetstream.git@master
+pip3 install git+https://github.com/tgen/jetstream.git@v1.7.4
+```
+
+Optionally, jetstream can be installed via a branch name:
+```shell
+pip3 install git+https://github.com/tgen/jetstream.git@master
+```
+
+For most users in an HPC environment, installing to /usr/bin will not be possible
+due to permissions. In this case we will need to add `--user` to the pip3 command:
+```shell
+pip3 install --user git+https://github.com/tgen/jetstream.git@v1.7.4
 ```
 
 ## Troubleshooting: Command not found after install
@@ -346,3 +358,4 @@ where these scripts are stored.
 [PATH]: http://www.linfo.org/path_env_var.html
 [install_help]: http://docs.python-guide.org/en/latest/starting/installation/
 [path_help]: https://stackoverflow.com/questions/35898734/pip-installs-packages-successfully-but-executables-not-found-from-command-line
+[presentation]: https://docs.google.com/presentation/d/1Xd6SYaLW6ka1xXE1f8I3bH1LQYNg1-NE-j5wg9eKHrU/edit?usp=sharing
