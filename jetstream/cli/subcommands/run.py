@@ -11,7 +11,7 @@ log = logging.getLogger('jetstream.cli')
 def add_arguments(parser):
     parser.add_argument(
         'file',
-        nargs='?',
+        nargs='*',
         help='path to a template, module, workflow, or pipeline'
     )
 
@@ -162,7 +162,11 @@ def main(args):
     log.debug(f'{__name__} {args}')
 
     if not (args.pipeline or args.file):
-        raise ValueError('Must give file path if pipeline is not set')
+        if args.project:
+            args.file = args.project.paths.workflow_path
+            workflow(args)
+        else:
+            raise ValueError('Must give file path if pipeline is not set and current directory is not a project')
 
     if args.pipeline:
         t = args.pipeline.load_template()
