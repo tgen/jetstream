@@ -127,6 +127,13 @@ def add_arguments(p):
     )
 
     p.add_argument(
+        '--update',
+        action='append',
+        help='Update directives of the selected tasks, expects key,value input '
+             'like "cpus,8". (can be used multiple times)'
+    )
+
+    p.add_argument(
         '--action',
         default=None,
         help=argparse.SUPPRESS
@@ -230,6 +237,12 @@ def main(args):
     if args.status:
         tasks = [t for t in tasks if t.status in args.status]
 
+    if args.update:
+        directive, value = args.update.split(',')
+        for task in tasks:
+            task.update_directive(directive, value)
+        workflow.save()
+
     if args.action == 'verbose':
         for task in tasks:
             details = get_details(
@@ -257,7 +270,4 @@ def main(args):
     else:
         for task in tasks:
             print(task)
-
-
-
 
