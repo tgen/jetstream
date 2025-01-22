@@ -238,9 +238,10 @@ def main(args):
         tasks = [t for t in tasks if t.status in args.status]
 
     if args.update:
-        directive, value = args.update.split(',')
-        for task in tasks:
-            task.update_directive(directive, value)
+        for update in args.update:
+            directive, value = update.split(',')
+            for task in tasks:
+                task.update_directive(directive, value)
         workflow.save()
 
     if args.action == 'verbose':
