@@ -209,10 +209,13 @@ def get_pipeline(name, version=None, searchpath=None):
 
         if matches:
             s = sorted(matches, key=lambda p: parse_version(p.version))
-            if version in [None, "latest"]:
-                return max([p for p in s if not parse_version(p.version).is_devrelease])
+            if len(s) > 1:
+                if version in [None, "latest"]:
+                    return max([p for p in s if not parse_version(p.version).is_devrelease])
+                else:
+                    return max([p for p in s if parse_version(p.version).is_devrelease])
             else:
-                return max([p for p in s if parse_version(p.version).is_devrelease])
+                return s.pop()
     else:
         # Find a match with name and version
         for p in find_pipelines(*searchpath):
