@@ -164,7 +164,7 @@ def main(args):
     if not (args.pipeline or args.file):
         if args.project:
             args.file = args.project.paths.workflow_path
-            workflow(args)
+            args.format = 'workflow'
         else:
             raise ValueError('Must give file path if pipeline is not set and current directory is not a project')
 
