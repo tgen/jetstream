@@ -10,16 +10,15 @@ TASK_DETAILS = """\
   {% if task.directives.cmd %}
   cmd: |
     {{ task.directives.cmd|indent(4) }}
-  directives:
-  {% for k, v in task.directives.items() if k != 'cmd' %}
-    {{ k }}: {{ v|tojson|safe }}
-  {% endfor %}
-  {% else %}
-  directives:
-  {% for k, v in task.directives.items() %}
-    {{ k }}: {{ v|tojson|safe }}
-  {% endfor %}
   {% endif %}
+  {% if task.directives.exec %}
+  exec: |
+    {{ task.directives.exec|indent(4) }}
+  {% endif %}
+  directives:
+  {% for k, v in task.directives.items() if k not in ('cmd','exec') %}
+    {{ k }}: {{ v|tojson|safe }}
+  {% endfor %}
   state:
   {% for k, v in task.state.items() %}
     {{ k }}: {{ v|tojson|safe }}
