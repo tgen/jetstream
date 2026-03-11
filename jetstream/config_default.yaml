@@ -20,6 +20,14 @@ snippet_cmd: tail "{path}"
 # loading functions
 dynamic_import: true
 
+# Template context load order, overrides will be populated via order in this list
+# For example by default, the values in the pipeline context will override values
+# in the project context
+template_load_order:
+  - project
+  - pipeline
+  - command_args
+
 # Config data is handled with loaders (for files) and parsers (for data passed
 # as arguments). These settings configure the functions that will be used for
 # loading or parsing items when given with -c/--config arguments.
