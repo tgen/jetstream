@@ -38,18 +38,32 @@ class TemplateContext:
         self.sources = []
         self.stack = []
 
-        if project is not None:
+        handlers = {
+            'project': lambda: self._add_project(project),
+            'pipeline': lambda: self._add_pipeline(pipeline),
+            'command_args': lambda: self._add_command_args(command_args)
+        }
+
+        load_order = jetstream.settings['template_load_order'].get(list)
+        for key in load_order:
+            if key in handlers:
+                handlers[key]()
+
+    def _add_project(self, project):
+        if project:
             rep = textwrap.shorten(str(project.index), 76)
             self.sources.append(f'Project: {rep}')
             self.stack.append(project.index)
 
-        if pipeline is not None:
+    def _add_pipeline(self, pipeline):
+        if pipeline:
             ctx = pipeline.get_context()
             rep = textwrap.shorten(str(ctx), 76)
             self.sources.append(f'Pipeline: {rep}')
             self.stack.append(ctx)
 
-        if command_args is not None:
+    def _add_command_args(self, command_args):
+        if command_args:
             rep = textwrap.shorten(str(command_args), 76)
             self.sources.append(f'Command: {rep}')
             self.stack.append(command_args)
