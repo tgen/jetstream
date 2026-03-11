@@ -221,6 +221,10 @@ class Task:
         if returncode is not None:
             self.state['returncode'] = returncode
 
+    def update_directive(self, directive, value):
+        if directive in self.directives:
+            self.directives[directive] = value
+
     def is_new(self):
         if self.status == 'new':
             return True
