@@ -668,7 +668,11 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         else:
             singularity_args.extend(runner_args)
 
-    singularity_exec_args = "--bind $PWD --pwd $PWD --workdir /tmp --cleanenv --contain"
+    job_tmpdir_name = f"jetstream/tmp/{millis}_{identity}"
+    job_tmpdir = os.path.abspath(job_tmpdir_name)
+    # We could create the tmp_dir within jetstream/python. But then the generated script becomes dependent on jetstream.
+    # os.makedirs(job_tmpdir, mode=0o755, exist_ok=True)
+    singularity_exec_args = f"--bind $PWD --pwd $PWD --workdir {job_tmpdir} --cleanenv --compat"
     if os.getenv('JS_PIPELINE_PATH') is not None:
         singularity_exec_args += " --bind {}".format(os.getenv('JS_PIPELINE_PATH'))
         sbatch_script += "export SINGULARITYENV_JS_PIPELINE_PATH={}\n".format(os.getenv('JS_PIPELINE_PATH'))
@@ -689,6 +693,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
 
     if singularity_image:
+        sbatch_script += f"mkdir -p {job_tmpdir}\n"
         # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
         sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\"\n"
         # We set the SINGULARITY_CACHEDIR to the default if it isn't defined by the user
@@ -702,6 +707,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         sbatch_script += f"else\n"
         sbatch_script += f"  {singularity_run_env_vars}{singularity_executable} exec {singularity_exec_args} {singularity_hostname_arg}{singularity_mounts_string} {singularity_image} bash {cmd_script_filename}\n"
         sbatch_script += f"fi\n"
+        sbatch_script += f"rm -r {job_tmpdir}\n"
     else:
         sbatch_script += f"bash {cmd_script_filename}\n"
 
