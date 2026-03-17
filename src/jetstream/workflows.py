@@ -18,6 +18,7 @@ can be saved in files located in the config directory of project, or given as
 arguments to template.
 
 """
+
 import logging
 import glob
 import pickle
@@ -76,7 +77,7 @@ class Workflow:
 
     def add(self, task, overwrite=False):
         if not overwrite and task.name in self.tasks:
-            err = f'Duplicate task name added to workflow: {task.name}'
+            err = f"Duplicate task name added to workflow: {task.name}"
             raise ValueError(err)
         self.tasks[task.name] = task
 
@@ -85,36 +86,38 @@ class Workflow:
         built_w_version = parse_version(self.version)
 
         if built_w_version > current_version:
-            msg = f'This workflow was built with a newer version of ' \
-                  f'Jetstream: {built_w_version}'
+            msg = (
+                f"This workflow was built with a newer version of "
+                f"Jetstream: {built_w_version}"
+            )
             log.warning(msg)
             return False
         else:
             return True
 
-    def find(self, pattern, style='regex', fallback=utils.sentinel):
+    def find(self, pattern, style="regex", fallback=utils.sentinel):
         """Find tasks by matching the pattern with the task ID. If no matches
         are found, and fallback is not set, a ValueError will be raised. If
         fallback is set, it will be returned when no matches are found.
         Regex patterns are used by default. Set format to glob for glob
-        patterns. """
-        log.debug(f'Find({style}): {pattern}')
+        patterns."""
+        log.debug(f"Find({style}): {pattern}")
 
-        if style == 'exact':
+        if style == "exact":
             matches = set(list(self.tasks.get(pattern, None)))
-        elif style == 'regex':
+        elif style == "regex":
             regex = compile(pattern)
             matches = set([t for t in self if regex.match(t.name)])
-        elif style == 'glob':
+        elif style == "glob":
             matches = set([t for t in self if glob.fnmatch.fnmatch(t.name, pattern)])
         else:
-            msg = f'Unrecognized pattern style: {style}'
+            msg = f"Unrecognized pattern style: {style}"
             raise ValueError(msg)
 
         if matches:
             return matches
         elif fallback is utils.sentinel:
-            err = f'No task names match value: {pattern}'
+            err = f"No task names match value: {pattern}"
             raise ValueError(err)
         else:
             return fallback
@@ -146,35 +149,37 @@ class Workflow:
         resume - Resets state for all "pending" tasks
         retry - Resets state for all "pending" and "failed" tasks
         """
-        if method == 'retry':
+        if method == "retry":
             self.retry()
-        elif method == 'resume':
+        elif method == "resume":
             self.resume()
-        elif method == 'all':
+        elif method == "all":
             self.reset_all()
         else:
-            err = f'Unrecognized workflow reset method: {method} Choose one ' \
-                  f'of all, retry, resume'
+            err = (
+                f"Unrecognized workflow reset method: {method} Choose one "
+                f"of all, retry, resume"
+            )
             raise ValueError(err)
 
     def reset_all(self):
         """Resets state for all tasks"""
-        log.critical('Reset: Resetting state for all tasks...')
+        log.critical("Reset: Resetting state for all tasks...")
         for task in self:
             self.reset_task(task)
 
     def resume(self):
-        """Resets state for any "pending" tasks """
-        log.info('Resume: Resetting state for any pending tasks...')
+        """Resets state for any "pending" tasks"""
+        log.info("Resume: Resetting state for any pending tasks...")
         for task in self:
-            if task.status == 'pending':
+            if task.status == "pending":
                 self.reset_task(task)
 
     def retry(self):
-        """Resets state for any "pending" or "failed" tasks """
-        log.info('Retry: Resetting state for any pending or failed tasks...')
+        """Resets state for any "pending" or "failed" tasks"""
+        log.info("Retry: Resetting state for any pending or failed tasks...")
         for task in self:
-            if task.status in ('pending', 'failed', 'skipped'):
+            if task.status in ("pending", "failed", "skipped"):
                 self.reset_task(task)
 
     def reset_task(self, task):
@@ -182,32 +187,31 @@ class Workflow:
 
         # Here we trace any reset directives and also reset those tasks
         try:
-            reset_directive = task.directives['reset']
+            reset_directive = task.directives["reset"]
         except KeyError:
             return
 
         for item in reset_directive:
-            if item == 'predecessors' or item == 'parents':
+            if item == "predecessors" or item == "parents":
                 for t in self.graph.predecessors(task):
                     self.reset_task(t)
             else:
                 self.reset_task(self.tasks[item])
 
-
     def save(self, path=None):
         save_workflow(self, path or self.path)
 
     def summary(self):
-        return dict(Counter((t.status for t  in self)))
-
+        return dict(Counter((t.status for t in self)))
 
 
 class WorkflowGraph:
     """Tasks are stored in separate lists in order to reduce the search time
     for the next available task. If a change to the graph occurs during
-    iteration, these lists should be recalculated. """
+    iteration, these lists should be recalculated."""
+
     def __init__(self, workflow):
-        log.info(f'Building workflow graph for {workflow}...')
+        log.info(f"Building workflow graph for {workflow}...")
         self.workflow = workflow
         self.G = nx.DiGraph()
         self.nodes = self.G.nodes
@@ -220,12 +224,12 @@ class WorkflowGraph:
             try:
                 self._make_edges(task)
             except ValueError as e:
-                err = f'While adding edges for: {task}\n{e}'
+                err = f"While adding edges for: {task}\n{e}"
                 raise ValueError(err) from None
 
         if not nx.is_directed_acyclic_graph(self.G):
             cycles = nx.find_cycle(self.G)
-            raise ValueError(f'Not a DAG! Possible causes:{list(cycles)}')
+            raise ValueError(f"Not a DAG! Possible causes:{list(cycles)}")
 
     def __iter__(self):
         return WorkflowGraphIterator(self)
@@ -240,8 +244,8 @@ class WorkflowGraph:
 
         This means that the in-degree of a node represents the number of
         dependencies it has. A node with zero in-edges is a "root" node, or a
-        task with no dependencies. """
-        log.debug(f'Adding edge: {f} -> {t}')
+        task with no dependencies."""
+        log.debug(f"Adding edge: {f} -> {t}")
         if f == t:
             return
 
@@ -255,7 +259,6 @@ class WorkflowGraph:
 
         self.G.add_edge(f, t)
 
-
     def _make_edges(self, task):
         """Generate edges based on the floww directives of a task.
 
@@ -266,35 +269,35 @@ class WorkflowGraph:
         Note: output directives do not create edges but serve as the targets of
         the input directives for other tasks
         """
-        log.debug(f'Adding edges for {task}')
+        log.debug(f"Adding edges for {task}")
 
-        for name in task.directives['after']:
+        for name in task.directives["after"]:
             self._add_edge(name, task.name)
 
-        for name in task.directives['before']:
+        for name in task.directives["before"]:
             self._add_edge(task.name, name)
 
-        for file in task.directives['input']:
+        for file in task.directives["input"]:
             for other_task in self.workflow:
-                if file in other_task.directives['output']:
+                if file in other_task.directives["output"]:
                     self._add_edge(other_task.name, task.name)
 
-        for pattern in task.directives['after-re']:
+        for pattern in task.directives["after-re"]:
             pattern = compile(pattern)
             for other_task in self.workflow:
                 if pattern.match(other_task.name):
                     self._add_edge(other_task.name, task.name)
 
-        for pattern in task.directives['before-re']:
+        for pattern in task.directives["before-re"]:
             pattern = compile(pattern)
             for other_task in self.workflow:
                 if pattern.match(other_task.name):
                     self._add_edge(task.name, other_task.name)
 
-        for pattern in task.directives['input-re']:
+        for pattern in task.directives["input-re"]:
             pattern = compile(pattern)
             for other_task in self.workflow:
-                for output in other_task.directives['output']:
+                for output in other_task.directives["output"]:
                     if pattern.match(output):
                         self._add_edge(other_task.name, task.name)
 
@@ -315,7 +318,7 @@ class WorkflowGraph:
             yield self.workflow[suc]
 
     def is_ready(self, task):
-        if task.status != 'new':
+        if task.status != "new":
             return False
 
         for dep in self.predecessors(task):
@@ -358,19 +361,19 @@ class WorkflowGraphIterator:
 
 def random_workflow(n=50, timeout=None, connectedness=3, trail=10):
     """Random workflow generator. The time to generate a random task for a
-     workflow scales exponentially, so this can take a very long time for
-     large numbers of tasks.
+    workflow scales exponentially, so this can take a very long time for
+    large numbers of tasks.
 
-     Workflow size can be controlled by n, timeout, or both. But, at least
-     one must be set. Timeout is the number of seconds (approx.) before the
-     workflow will be returned.
+    Workflow size can be controlled by n, timeout, or both. But, at least
+    one must be set. Timeout is the number of seconds (approx.) before the
+    workflow will be returned.
 
-     Connectedness is the maximum number of connections to proc when
-     generating each task.
+    Connectedness is the maximum number of connections to proc when
+    generating each task.
 
-     """
+    """
     if not (n or timeout):
-        raise ValueError('Must set n or timeout')
+        raise ValueError("Must set n or timeout")
 
     wf = Workflow()
     added = 0
@@ -382,25 +385,25 @@ def random_workflow(n=50, timeout=None, connectedness=3, trail=10):
 
     while 1:
         if n and added >= n:
-            log.critical('Task limit reached!')
+            log.critical("Task limit reached!")
             break
 
         if timeout and (datetime.now() - start).seconds > timeout:
-            log.critical('Timeout reached!')
+            log.critical("Timeout reached!")
             break
 
         conns = random.randint(0, connectedness)
         inputs = []
         for i in range(conns):
             task = random.choice(queue)
-            output = task.directives.get('output')
+            output = task.directives.get("output")
             inputs.append(output)
 
         try:
             task = jetstream.tasks.random_task(input=inputs)
             wf.add(task)
             queue.append(task)
-            log.info('{} tasks added!'.format(added))
+            log.info("{} tasks added!".format(added))
             added += 1
         except Exception as e:
             log.exception(e)
@@ -409,11 +412,11 @@ def random_workflow(n=50, timeout=None, connectedness=3, trail=10):
 
 
 def compile(pattern):
-    return re.compile('^{}$'.format(pattern))
+    return re.compile("^{}$".format(pattern))
 
 
 def load_workflow(path):
-    with open(path, 'rb') as fp:
+    with open(path, "rb") as fp:
         wf = pickle.load(fp)
     wf.path = path
     return wf
@@ -421,17 +424,17 @@ def load_workflow(path):
 
 def save_workflow(workflow, path):
     """Save a workflow to the path"""
-    log.debug('Saving workflow: {}'.format(path))
+    log.debug("Saving workflow: {}".format(path))
 
     start = datetime.now()
-    lock_path = path + '.lock'
+    lock_path = path + ".lock"
 
-    with open(lock_path, 'wb') as fp:
+    with open(lock_path, "wb") as fp:
         pickle.dump(workflow, fp)
 
     shutil.move(lock_path, path)
     elapsed = datetime.now() - start
-    log.debug('Workflow saved (after {}): {}'.format(elapsed, path))
+    log.debug("Workflow saved (after {}): {}".format(elapsed, path))
 
 
 def mash(G, H):
@@ -466,14 +469,14 @@ def mash(G, H):
     # If either workflow is empty, just copy the tasks in the other and return.
     # note that the props always come from G
     if len(H) <= 0:
-        log.debug('wf H is empty, no mashing')
+        log.debug("wf H is empty, no mashing")
         return jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
     elif len(G) <= 0:
-        log.debug('wf G is empty, no mashing')
+        log.debug("wf G is empty, no mashing")
         return jetstream.Workflow([t.copy() for t in H], props=G.props.copy())
 
     # Determine which tasks need to be replaced in new workflow
-    log.info(f'Mashing {G.summary()}({G.path}) with {H.summary()}({H.path})')
+    log.info(f"Mashing {G.summary()}({G.path}) with {H.summary()}({H.path})")
     workflow = jetstream.Workflow([t.copy() for t in G], props=G.props.copy())
     new = 0
     modified = 0
@@ -482,25 +485,25 @@ def mash(G, H):
         try:
             g_task = G[name]
         except KeyError:
-            log.debug(f'{h_task} not in G, adding to new workflow..')
+            log.debug(f"{h_task} not in G, adding to new workflow..")
             workflow.add(h_task)
             modified_tasks.add(name)
             new += 1
             continue
 
         if g_task.is_failed():
-            log.debug(f'{h_task} is failed in G, replacing in new workflow..')
+            log.debug(f"{h_task} is failed in G, replacing in new workflow..")
             workflow.add(h_task, overwrite=True)
             modified_tasks.add(name)
         elif h_task.identity != g_task.identity:
-            log.debug(f'{h_task} has changed, replacing in new workflow..')
+            log.debug(f"{h_task} has changed, replacing in new workflow..")
             workflow.add(h_task, overwrite=True)
             modified_tasks.add(name)
             modified += 1
         else:
             continue
 
-    log.debug('Identifying tasks that need to be reset...')
+    log.debug("Identifying tasks that need to be reset...")
     graph = workflow.reload_graph()
     all_affected = set()
     for task in modified_tasks:
@@ -512,10 +515,10 @@ def mash(G, H):
         workflow.reset_task(workflow.tasks[t])
 
     log.info(
-        'Mash report:\n'
-        f'Tasks added: {new}\n'
-        f'Tasks modified: {modified}\n'
-        f'Final workflow status: {workflow.summary()}'
+        "Mash report:\n"
+        f"Tasks added: {new}\n"
+        f"Tasks modified: {modified}\n"
+        f"Final workflow status: {workflow.summary()}"
     )
 
     return workflow

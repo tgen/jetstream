@@ -76,15 +76,12 @@ runner:
   autosave_min: 5
   autosave_max: 60
 
-
-
 # ================================== Projects =================================
 projects:
   id_format: p{id}
   lock_timeout: 60
   history_max_tries: 10
   history_filename: %Y-%m-%dT%H-%M-%SZ.yaml
-
 
 # ================================== Backends =================================
 # Backends handle the tasks when they are ready to be executed. Each backend
@@ -137,7 +134,6 @@ backends:
   dnanexus:
     (): jetstream.backends.dnanexus.DnanexusBackend
 
-
 # This option controls the number of times the runner will attempt to
 # submit a job to Slurm before giving up. (Use -1 for unlimited)
 slurm_sbatch_retry: 10
@@ -155,7 +151,7 @@ slurm_active_states:
 slurm_passed_states:
   - COMPLETED
 
-# This helps decide the formatting of sbatch scripts in the slurm_singularity 
+# This helps decide the formatting of sbatch scripts in the slurm_singularity
 # backend. Some of these could interfere with jetstreams submission behavior.
 # Options such as --usage, --help, --version, --wait should probably be
 # globally disabled.
@@ -179,7 +175,7 @@ slurm_solo_options:
   - --wait
 
 slurm_presets:
-  example: ['-p', 'defq']
+  example: ["-p", "defq"]
 
 singularity_presets:
   example: []
@@ -191,7 +187,6 @@ singularity_presets:
 # the pipelines command
 pipelines:
   searchpath: ~/
-
 
 # ================================== Logging ==================================
 # To permanently force a single logging style, create a key in your user
@@ -233,9 +228,9 @@ logging_profiles:
     version: 1
     formatters:
       f:
-        format: '[{asctime}]: {message}'
-        datefmt: '%Y-%m-%d %H:%M:%S'
-        style: '{'
+        format: "[{asctime}]: {message}"
+        datefmt: "%Y-%m-%d %H:%M:%S"
+        style: "{"
     handlers:
       h:
         class: logging.StreamHandler
@@ -249,9 +244,9 @@ logging_profiles:
     version: 1
     formatters:
       f:
-        format: '{name}:{lineno} {levelname} {asctime}: {message}'
-        datefmt: '%Y-%m-%d %H:%M:%S'
-        style: '{'
+        format: "{name}:{lineno} {levelname} {asctime}: {message}"
+        datefmt: "%Y-%m-%d %H:%M:%S"
+        style: "{"
     handlers:
       h:
         class: logging.StreamHandler
@@ -266,8 +261,8 @@ logging_profiles:
     formatters:
       f:
         format: "[\x1b[4m\x1b[92m\U0001F335 {name}\x1b[0m] {asctime} {levelname}: {message}"
-        datefmt: '%Y-%m-%d %H:%M:%S'
-        style: '{'
+        datefmt: "%Y-%m-%d %H:%M:%S"
+        style: "{"
     handlers:
       h:
         class: logging.StreamHandler
@@ -277,7 +272,6 @@ logging_profiles:
       jetstream:
         level: INFO
         handlers: [h]
-
 
 # =============================== Notifications ===============================
 # Notification settings control how the runner should alert users when

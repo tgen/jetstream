@@ -2,12 +2,13 @@
 
 See "jetstream settings -h" to for more info on application settings.
 """
+
 import json
 import logging
 import os
 import jetstream
 
-log = logging.getLogger('jetstream.cli')
+log = logging.getLogger("jetstream.cli")
 template = """# Jetstream Common User Settings
 backend: {backend}
 pipelines:
@@ -36,41 +37,45 @@ pipelines:
 
 def add_arguments(parser):
     parser.add_argument(
-        '-v', '--verbose',
-        action='store_true',
-        help='show the full settings values loaded from all sources'
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="show the full settings values loaded from all sources",
     )
 
-    create = parser.add_argument_group('Create a new settings file')
+    create = parser.add_argument_group("Create a new settings file")
 
     create.add_argument(
-        '-c', '--create',
-        action='store_true',
-        help='initialize an example config file at the user config path'
-    )
-
-    create.add_argument(
-        '-b', '--backend',
-        default='local',
-        help='backend to use when initializing a user settings file'
+        "-c",
+        "--create",
+        action="store_true",
+        help="initialize an example config file at the user config path",
     )
 
     create.add_argument(
-        '-P', '--pipelines_searchpath',
-        default='null',
-        help='pipelines searchpath to use when initializing a user'
-             'settings file'
+        "-b",
+        "--backend",
+        default="local",
+        help="backend to use when initializing a user settings file",
     )
 
     create.add_argument(
-        '-f', '--force',
-        action='store_true',
-        help='ignore FileExistsError when creating a settings file'
+        "-P",
+        "--pipelines_searchpath",
+        default="null",
+        help="pipelines searchpath to use when initializing a usersettings file",
+    )
+
+    create.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="ignore FileExistsError when creating a settings file",
     )
 
 
 def main(args):
-    log.debug(f'{__name__} {args}')
+    log.debug(f"{__name__} {args}")
     path = jetstream.settings.user_config_path()
 
     if args.verbose:
@@ -80,22 +85,25 @@ def main(args):
 
     if args.create:
         if os.path.exists(path) and not args.force:
-            err = f'There is already a user settings file here:\n{path}\nUse ' \
-                  '-f/--force to ignore this error and create a new one.'
+            err = (
+                f"There is already a user settings file here:\n{path}\nUse "
+                "-f/--force to ignore this error and create a new one."
+            )
             raise FileExistsError(err)
         else:
-            with open(path, 'w') as fp:
+            with open(path, "w") as fp:
                 settings = template.format(
-                    backend=args.backend,
-                    pipelines_searchpath=args.pipelines_searchpath
+                    backend=args.backend, pipelines_searchpath=args.pipelines_searchpath
                 )
                 fp.write(settings)
-            log.info(f'Created settings file at: {path}')
+            log.info(f"Created settings file at: {path}")
     else:
         if os.path.exists(path):
-            info = f'User application settings will be loaded from: {path}'
+            info = f"User application settings will be loaded from: {path}"
         else:
-            info = 'No user settings file found. Use "jetstream settings -c ' \
-                   '" to initialize a settings file.'
+            info = (
+                'No user settings file found. Use "jetstream settings -c '
+                '" to initialize a settings file.'
+            )
         print(__doc__)
         print(info)

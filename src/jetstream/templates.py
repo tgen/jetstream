@@ -1,5 +1,6 @@
 """Initiate a Jinja2 environment with template loaders that search
-locations set by arguments or environment variables. """
+locations set by arguments or environment variables."""
+
 import json
 import hashlib
 import logging
@@ -10,12 +11,7 @@ import textwrap
 from collections.abc import Mapping
 import jetstream
 import jinja2
-from jinja2 import (
-    Environment,
-    StrictUndefined,
-    Undefined,
-    FileSystemLoader
-)
+from jinja2 import Environment, StrictUndefined, Undefined, FileSystemLoader
 
 log = logging.getLogger(__name__)
 
@@ -34,17 +30,18 @@ class TemplateContext:
     high priority --> 3) Command Args: -c/--config and -C/--config-file options
 
     """
+
     def __init__(self, *, project=None, pipeline=None, command_args=None):
         self.sources = []
         self.stack = []
 
         handlers = {
-            'project': lambda: self._add_project(project),
-            'pipeline': lambda: self._add_pipeline(pipeline),
-            'command_args': lambda: self._add_command_args(command_args)
+            "project": lambda: self._add_project(project),
+            "pipeline": lambda: self._add_pipeline(pipeline),
+            "command_args": lambda: self._add_command_args(command_args),
         }
 
-        load_order = jetstream.settings['template_load_order'].get(list)
+        load_order = jetstream.settings["template_load_order"].get(list)
         for key in load_order:
             if key in handlers:
                 handlers[key]()
@@ -52,31 +49,30 @@ class TemplateContext:
     def _add_project(self, project):
         if project:
             rep = textwrap.shorten(str(project.index), 76)
-            self.sources.append(f'Project: {rep}')
+            self.sources.append(f"Project: {rep}")
             self.stack.append(project.index)
 
     def _add_pipeline(self, pipeline):
         if pipeline:
             ctx = pipeline.get_context()
             rep = textwrap.shorten(str(ctx), 76)
-            self.sources.append(f'Pipeline: {rep}')
+            self.sources.append(f"Pipeline: {rep}")
             self.stack.append(ctx)
 
     def _add_command_args(self, command_args):
         if command_args:
             rep = textwrap.shorten(str(command_args), 76)
-            self.sources.append(f'Command: {rep}')
+            self.sources.append(f"Command: {rep}")
             self.stack.append(command_args)
 
     def __str__(self):
-        sources = [f'{i}: {text}' for i, text in enumerate(self.sources)]
-        return '\n'.join(sources)
+        sources = [f"{i}: {text}" for i, text in enumerate(self.sources)]
+        return "\n".join(sources)
 
     def flatten(self):
         """Returns a single config object created by flattening the sources
-        in """
+        in"""
         return jetstream.utils.config_stack(*self.stack)
-
 
 
 class TemplateException(Exception):
@@ -86,20 +82,24 @@ class TemplateException(Exception):
 @pass_context
 def raise_helper(ctx, msg):
     """Allow "raise('msg')" to be used in templates"""
-    raise TemplateException(f'{ctx.name}: {msg}')
+    raise TemplateException(f"{ctx.name}: {msg}")
 
 
 @pass_context
-def log_helper(ctx, msg, level='INFO'):
+def log_helper(ctx, msg, level="INFO"):
     """Allow "log('msg')" to be used in templates"""
     level = logging._checkLevel(level)
-    log.log(level, f'{ctx.name}: {msg}')
-    return ''
+    log.log(level, f"{ctx.name}: {msg}")
+    return ""
 
 
 def expand_path(ctx, path):
     """"""
-    return re.sub(r'\$(JS_PIPELINE_PATH|\{([^}]*)\})', ctx.get("__pipeline__")["path"], os.path.expandvars(path))
+    return re.sub(
+        r"\$(JS_PIPELINE_PATH|\{([^}]*)\})",
+        ctx.get("__pipeline__")["path"],
+        os.path.expandvars(path),
+    )
 
 
 def basename(path):
@@ -137,7 +137,7 @@ def md5(ctx, path):
     return hash_md5.hexdigest()
 
 
-def assignbin(value, bins=[0, float('inf')], labels=None):
+def assignbin(value, bins=[0, float("inf")], labels=None):
     """Allow "{{ value|assignbin }}" to be used in templates. The return value
     of this filter is the 0-based bin the value falls in. Default bin is 0 to
     infinity. Edges floor to lower bin. Also accepts a list of labels such
@@ -160,7 +160,7 @@ def fromjson(value):
 
 def env(value):
     return os.environ[value]
-    
+
 
 def getenv(value, default=None):
     return os.environ.get(value, default)
@@ -168,7 +168,7 @@ def getenv(value, default=None):
 
 def setenv(key, value):
     os.environ[key] = value
-    return '' 
+    return ""
 
 
 def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
@@ -180,33 +180,35 @@ def environment(*searchpath, strict=True, trim_blocks=True, lstrip_blocks=True):
         undefined_handler = Undefined
 
     if searchpath is None:
-        searchpath = [os.getcwd(),]
+        searchpath = [
+            os.getcwd(),
+        ]
 
     env = Environment(
         trim_blocks=trim_blocks,
         lstrip_blocks=lstrip_blocks,
         undefined=undefined_handler,
         loader=FileSystemLoader(searchpath=searchpath),
-        extensions=['jinja2.ext.do']
+        extensions=["jinja2.ext.do"],
     )
 
-    env.globals['raise'] = raise_helper
-    env.globals['log'] = log_helper
-    env.globals['getenv'] = getenv
-    env.globals['setenv'] = setenv
-    env.filters['fromjson'] = fromjson
-    env.filters['basename'] = basename
-    env.filters['dirname'] = dirname
-    env.filters['urlparse'] = urlparse
-    env.filters['sha256'] = sha256
-    env.filters['md5'] = md5
-    env.filters['assignbin'] = assignbin
+    env.globals["raise"] = raise_helper
+    env.globals["log"] = log_helper
+    env.globals["getenv"] = getenv
+    env.globals["setenv"] = setenv
+    env.filters["fromjson"] = fromjson
+    env.filters["basename"] = basename
+    env.filters["dirname"] = dirname
+    env.filters["urlparse"] = urlparse
+    env.filters["sha256"] = sha256
+    env.filters["md5"] = md5
+    env.filters["assignbin"] = assignbin
     return env
 
 
 def load_template(path, *searchpath, **kwargs):
     """Helper function to quickly load a template from a file. Remaining args and kwargs
-    are passed to jetstream.templates.environment() """
+    are passed to jetstream.templates.environment()"""
     template_dir = os.path.dirname(path)
     template_name = os.path.basename(path)
     env = environment(template_dir, *searchpath, **kwargs)
@@ -215,26 +217,24 @@ def load_template(path, *searchpath, **kwargs):
 
 def from_string(data, *searchpath, **kwargs):
     """Helper function to quickly load a template from a string. Remaining args and kwargs
-    are passed to jetstream.templates.environment() """
+    are passed to jetstream.templates.environment()"""
     env = environment(*searchpath, **kwargs)
     return env.from_string(data)
 
 
 def render_template(template, project=None, pipeline=None, command_args=None):
     """Render a template and return as a string"""
-    log.info('Rendering template...')
+    log.info("Rendering template...")
 
     context = TemplateContext(
-        project=project,
-        pipeline=pipeline,
-        command_args=command_args
+        project=project, pipeline=pipeline, command_args=command_args
     )
 
     sources = textwrap.indent(str(context), " " * 4)
     if sources:
-        log.info(f'Template rendering data sources include:\n{sources}')
+        log.info(f"Template rendering data sources include:\n{sources}")
     else:
-        log.warning(f'No data for rendering template variables')
+        log.warning(f"No data for rendering template variables")
 
     context = context.flatten()
     return template.render(**context)
@@ -242,17 +242,17 @@ def render_template(template, project=None, pipeline=None, command_args=None):
 
 def load_workflow(render):
     """Given a rendered template string, loads the tasks and returns a workflow"""
-    log.debug(f'Parsing tasks from render:\n{render}')
+    log.debug(f"Parsing tasks from render:\n{render}")
     tasks = jetstream.utils.parse_yaml(render)
 
     if not tasks:
-        raise ValueError('No tasks found!')
+        raise ValueError("No tasks found!")
 
-    log.info('Loading tasks...')
+    log.info("Loading tasks...")
     if isinstance(tasks, Mapping):
         # If template is a mapping, it is expected to have a tasks section
-        props = {k: v for k, v in tasks.items() if k != 'tasks'}
-        tasks = [jetstream.Task(**t) for t in tasks['tasks']]
+        props = {k: v for k, v in tasks.items() if k != "tasks"}
+        tasks = [jetstream.Task(**t) for t in tasks["tasks"]]
         wf = jetstream.Workflow(tasks=tasks, props=props)
     else:
         tasks = [jetstream.Task(**t) for t in tasks]
@@ -260,4 +260,3 @@ def load_workflow(render):
 
     wf.reload_graph()
     return wf
-

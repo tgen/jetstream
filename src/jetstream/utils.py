@@ -1,4 +1,5 @@
 """Shared utilities"""
+
 import builtins
 import confuse
 import csv
@@ -12,6 +13,7 @@ import os
 import subprocess
 import sys
 import yaml
+
 try:
     from yaml import CSafeLoader as SafeLoader, CSafeDumper as SafeDumper
 except ImportError:
@@ -31,11 +33,12 @@ log = logging.getLogger(__name__)
 
 class Fingerprint:
     """Generate a snapshot of the system info."""
+
     def __init__(self, note=None, id=None, pid=False):
         self.datetime = datetime.utcnow().isoformat()
         self.user = getuser()
         self.version = str(jetstream.__version__)
-        self.args = ' '.join(sys.argv)
+        self.args = " ".join(sys.argv)
         self.hostname = gethostname()
         self.pwd = os.getcwd()
         self.note = str(note)
@@ -57,11 +60,11 @@ def coerce_tuple(obj):
     """Coerce an object to a tuple.
     Since strings are sequences, iterating over an object that can be a string
     or a sequence can be difficult. This solves the problem by ensuring scalars
-    are converted to sequences. """
+    are converted to sequences."""
     if obj is None:
         return tuple()
     elif isinstance(obj, str):
-        return (obj, )
+        return (obj,)
     else:
         return tuple(obj)
 
@@ -70,11 +73,13 @@ def coerce_list(obj):
     """Coerce an object to a list.
     Since strings are sequences, iterating over an object that can be a string
     or a sequence can be difficult. This solves the problem by ensuring scalars
-    are converted to sequences. """
+    are converted to sequences."""
     if obj is None:
         return list()
     elif isinstance(obj, str):
-        return [obj, ]
+        return [
+            obj,
+        ]
     else:
         return list(obj)
 
@@ -121,14 +126,14 @@ def config_stack(*sources):
     """
     # Hack to prevent Confuse from accidentally finding a config file on the
     # system when were just trying to create an in-memory config object
-    n = 'UNLIKELYAPPNAME-' + str(uuid4())
+    n = "UNLIKELYAPPNAME-" + str(uuid4())
     conf = confuse.Configuration(n, read=False)
     for s in sources:
         if s:
             if isinstance(s, Mapping):
                 conf.set(confuse.ConfigSource(s))
             else:
-                err = 'Config sources should return Mapping-type objects'
+                err = "Config sources should return Mapping-type objects"
                 raise ValueError(err)
 
     # Hack to remove the ordereddicts, they're just ugly to look at and when
@@ -146,7 +151,7 @@ def dict_update_dot_notation(d, key, value):
         >>> d
         {'foo': {'bar': 'valA', 'baz': 42}}
     """
-    path = key.split('.')
+    path = key.split(".")
     k = path.pop(0)
 
     while 1:
@@ -167,7 +172,7 @@ def dict_update_dot_notation(d, key, value):
 
 
 def dict_lookup_dot_notation(d, path):
-    path = path.split('.')
+    path = path.split(".")
 
     k = path.pop(0)
     v = d[k]
@@ -205,10 +210,10 @@ def dumps_yaml(obj):
 
 def dynamic_import(path):
     """Imports functions from other libraries when needed"""
-    m, _, f = path.rpartition('.')
+    m, _, f = path.rpartition(".")
 
     try:
-        if m and jetstream.settings['dynamic_import'].get():
+        if m and jetstream.settings["dynamic_import"].get():
             mod = importlib.import_module(m)
             return getattr(mod, f)
         else:
@@ -223,7 +228,7 @@ def get_snippet(path):
     Returns a snippet of text from the given path. This uses a command set
     in the jetstream config file with the "snippet_cmd" option.
     """
-    cmd = jetstream.settings['snippet_cmd'].as_str()
+    cmd = jetstream.settings["snippet_cmd"].as_str()
     cmd = cmd.format(path=path)
     p = subprocess.run(
         cmd,
@@ -231,12 +236,12 @@ def get_snippet(path):
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        encoding='utf-8',
+        encoding="utf-8",
     )
     return p.stdout
 
 
-def guess_local_cpus( default=1):
+def guess_local_cpus(default=1):
     return cpu_count() or default
 
 
@@ -245,31 +250,31 @@ def guess_max_forks(default=500):
     room for subprocesses to continue."""
     try:
         ulimit_out = subprocess.check_output(
-            'ulimit -u',
-            shell=True,
-            stderr=subprocess.PIPE
+            "ulimit -u", shell=True, stderr=subprocess.PIPE
         )
     except subprocess.CalledProcessError:
-        log.debug('Guessing max forks with ulimit -u failed, using default')
+        log.debug("Guessing max forks with ulimit -u failed, using default")
         return default
 
     try:
         forks = int(0.25 * int(ulimit_out))
     except ValueError:
-        log.debug(f'ulimit output not interpretable: {ulimit_out}')
+        log.debug(f"ulimit output not interpretable: {ulimit_out}")
         return default
 
     return forks
 
 
-def is_gzip(path, magic_number=b'\x1f\x8b'):
+def is_gzip(path, magic_number=b"\x1f\x8b"):
     """Returns True if the path is gzipped."""
     if os.path.exists(path) and not os.path.isfile(path):
-        err = 'This should only be used with regular files because otherwise ' \
-              'it will lose some data.'
+        err = (
+            "This should only be used with regular files because otherwise "
+            "it will lose some data."
+        )
         raise ValueError(err)
 
-    with open(path, 'rb') as fp:
+    with open(path, "rb") as fp:
         if fp.read(2) == magic_number:
             return True
         else:
@@ -286,7 +291,7 @@ def is_multiline(s):
     lines = 1
 
     while True:
-        idx = s.find('\n', start)
+        idx = s.find("\n", start)
 
         if idx == -1:
             return lines > 1
@@ -341,9 +346,15 @@ def find(path, name=None):
 
 def parse_bool(data):
     """Parse a string value to bool"""
-    if data.lower() in ('yes', 'true',):
+    if data.lower() in (
+        "yes",
+        "true",
+    ):
         return True
-    elif data.lower() in ('no', 'false',):
+    elif data.lower() in (
+        "no",
+        "false",
+    ):
         return False
     else:
         err = f'"{data}" could not be interpreted as a boolean'
@@ -352,22 +363,22 @@ def parse_bool(data):
 
 def parse_csv(data):
     """Parse csv with headers, returns list of dicts"""
-    return parse_table(data, dialect='unix', headers=True)
+    return parse_table(data, dialect="unix", headers=True)
 
 
 def parse_csv_nh(data):
     """Parse csv with no header, returns list of lists"""
-    return parse_table(data, dialect='unix', headers=False)
+    return parse_table(data, dialect="unix", headers=False)
 
 
 def parse_json(data):
     return json.loads(data)
 
 
-def parse_table(data, dialect='unix', headers=True, ordered=False):
-    """Attempts to load a table file in any format. Returns a list of 
-    dictionaries (or list of lists if no header is available). This requires 
-    does not handle comment lines."""    
+def parse_table(data, dialect="unix", headers=True, ordered=False):
+    """Attempts to load a table file in any format. Returns a list of
+    dictionaries (or list of lists if no header is available). This requires
+    does not handle comment lines."""
     if headers:
         rows = csv.DictReader(data.splitlines(), dialect=dialect)
         if not ordered:
@@ -377,15 +388,15 @@ def parse_table(data, dialect='unix', headers=True, ordered=False):
 
     return list(rows)
 
-    
+
 def parse_tsv(data):
     """Parse tsv with headers, returns list of dicts"""
-    return parse_table(data, dialect='excel-tab', headers=True)
+    return parse_table(data, dialect="excel-tab", headers=True)
 
 
 def parse_tsv_nh(data):
     """Parse tsv with no header, returns list of lists"""
-    return parse_table(data, dialect='excel-tab', headers=False)
+    return parse_table(data, dialect="excel-tab", headers=False)
 
 
 def parse_txt(data):
@@ -399,7 +410,7 @@ def parse_yaml(data):
 
 def _load(path):
     # todo, if path is valid uri, download
-    with open(path, 'r') as fp:
+    with open(path, "r") as fp:
         return fp.read()
 
 
@@ -411,13 +422,13 @@ def load_file(path, filetype=None):
             if path.endswith(ext):
                 return fn(path)
         else:
-            err = f'No loader extension pattern matched path: {path}'
+            err = f"No loader extension pattern matched path: {path}"
             raise ValueError(err)
     else:
         try:
             return loaders[filetype](path)
         except KeyError:
-            err = f'No loader defined for {filetype}'
+            err = f"No loader defined for {filetype}"
             raise ValueError(err)
 
 
@@ -459,12 +470,12 @@ def load_yaml(path):
 def read_lines_allow_gzip(path):
     """Reads line-separated text files, handles gzipped files and recognizes
     universal newlines. This can cause bytes to be lost when reading from a
-    pipe. """
+    pipe."""
     if is_gzip(path):
-        with gzip.open(path, 'rb') as fp:
-            data = fp.read().decode('utf-8')
+        with gzip.open(path, "rb") as fp:
+            data = fp.read().decode("utf-8")
     else:
-        with open(path, 'r') as fp:
+        with open(path, "r") as fp:
             data = fp.read()
     lines = data.splitlines()
     return lines
@@ -479,9 +490,9 @@ def records_to_csv(records, outpath):
     for record in records:
         keys = keys.union(set(record.keys()))
 
-    log.debug('Found keys: {}'.format(keys))
+    log.debug("Found keys: {}".format(keys))
 
-    with open(outpath, 'w') as fp:
+    with open(outpath, "w") as fp:
         dw = csv.DictWriter(fp, keys)
         dw.writeheader()
         for record in records:
@@ -494,10 +505,14 @@ def records_to_csv(records, outpath):
 
 def remove_prefix(string, prefix):
     if string.startswith(prefix):
-        return string[len(prefix):]
+        return string[len(prefix) :]
     else:
         return string
 
 
-loaders = {k: dynamic_import(v) for k, v in jetstream.settings['loaders'].get(dict).items()}
-parsers = {k: dynamic_import(v) for k, v in jetstream.settings['parsers'].get(dict).items()}
+loaders = {
+    k: dynamic_import(v) for k, v in jetstream.settings["loaders"].get(dict).items()
+}
+parsers = {
+    k: dynamic_import(v) for k, v in jetstream.settings["parsers"].get(dict).items()
+}

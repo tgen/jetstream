@@ -17,24 +17,32 @@ log = logging.getLogger(__name__)
 def sigterm_ignored():
     """Context manager that temporarily catches SIGTERM signals and raises
     a KeyboardInterrupt instead."""
+
     def signal_handler(signum, frame):
-        log.debug(f'SIGNAL received: {signum}!')
+        log.debug(f"SIGNAL received: {signum}!")
         raise KeyboardInterrupt
 
     original_sigint_handler = signal.getsignal(signal.SIGTERM)
     signal.signal(signal.SIGTERM, signal_handler)
     try:
-        log.debug('Replacing SIGTERM handler')
+        log.debug("Replacing SIGTERM handler")
         yield
     finally:
-        log.debug('Restoring SIGTERM handler')
+        log.debug("Restoring SIGTERM handler")
         signal.signal(signal.SIGTERM, original_sigint_handler)
 
 
 class Runner:
-    def __init__(self, backend=None, max_concurrency=None, throttle=None,
-                 autosave=True, autosave_min=None, autosave_max=None):
-        backend = backend or jetstream.settings['backend'].get(str)
+    def __init__(
+        self,
+        backend=None,
+        max_concurrency=None,
+        throttle=None,
+        autosave=True,
+        autosave_min=None,
+        autosave_max=None,
+    ):
+        backend = backend or jetstream.settings["backend"].get(str)
 
         # Runner backends also connect the asyncio event loop, so they can't
         # be instantiated until the loop is setup. Here I lookup the backend
@@ -45,11 +53,12 @@ class Runner:
         self.backend = None
 
         self.autosave = autosave
-        self.autosave_min = autosave_min or settings['runner']['autosave_min'].get()
-        self.autosave_max = autosave_max or settings['runner']['autosave_max'].get()
-        self.throttle = throttle or settings['runner']['throttle'].get()
-        self.max_concurrency = max_concurrency \
-                               or settings['runner']['max_concurrency'].get()
+        self.autosave_min = autosave_min or settings["runner"]["autosave_min"].get()
+        self.autosave_max = autosave_max or settings["runner"]["autosave_max"].get()
+        self.throttle = throttle or settings["runner"]["throttle"].get()
+        self.max_concurrency = (
+            max_concurrency or settings["runner"]["max_concurrency"].get()
+        )
         self._conc_sem = None
         self._condition = None
         self._errs = False
@@ -91,7 +100,7 @@ class Runner:
 
     async def _autosave_coro(self):
         try:
-            log.debug('Autosaver started!')
+            log.debug("Autosaver started!")
             last_save = datetime.now()
             mn = timedelta(seconds=self.autosave_min)
             mx = timedelta(seconds=self.autosave_max)
@@ -101,58 +110,55 @@ class Runner:
                 # the minimum interval is reached.
                 time_since_last = datetime.now() - last_save
                 delay_for = mn - time_since_last
-                log.debug(f'Autosaver hold for {delay_for}')
+                log.debug(f"Autosaver hold for {delay_for}")
                 await asyncio.sleep(delay_for.seconds)
 
                 # Otherwise, wait for the next future to return and then save
                 # but do not wait longer than autosave_max
                 timeout_at = last_save + mx
                 timeout_in = (timeout_at - datetime.now()).seconds
-                log.debug(f'Autosaver next save in {timeout_in}s')
+                log.debug(f"Autosaver next save in {timeout_in}s")
 
                 try:
                     await self.wait_for_next_task_future(timeout=timeout_in)
-                    log.debug('Autosaver wait cleared by runner')
+                    log.debug("Autosaver wait cleared by runner")
                 except asyncio.TimeoutError:
-                    log.debug('Autosaver wait timed out')
+                    log.debug("Autosaver wait timed out")
 
-                log.debug('Autosaver saving workflow...')
+                log.debug("Autosaver saving workflow...")
                 self.workflow.save()
                 last_save = datetime.now()
         except asyncio.CancelledError:
             pass
         finally:
-            log.debug('Autosaver stopped!')
+            log.debug("Autosaver stopped!")
 
     def _cleanup_event_loop(self):
         """If the async event loop has outstanding futures, they must be
         cancelled, and results collected, prior to exiting. Otherwise, lots of
-        ugly error messages will be shown to the user. """
-        log.debug('Cleanup event loop')
+        ugly error messages will be shown to the user."""
+        log.debug("Cleanup event loop")
         if sys.version_info < (3, 7):
             futures = asyncio.Task.all_tasks(self.loop)
         else:
             futures = asyncio.all_tasks(self.loop)
 
-        log.debug(f'{len(futures)} outstanding futures to cancel')
+        log.debug(f"{len(futures)} outstanding futures to cancel")
         if futures:
             for task in futures:
-                log.debug(f'Cancelling: {task}')
+                log.debug(f"Cancelling: {task}")
                 task.cancel()
 
-            log.debug('Running loop until remaining futures return...')
+            log.debug("Running loop until remaining futures return...")
             # loop has been deprecated since 3.8
             if sys.version_info > (3, 8):
-                results = self.loop.run_until_complete(asyncio.gather(
-                    *futures,
-                    return_exceptions=True
-                ))
+                results = self.loop.run_until_complete(
+                    asyncio.gather(*futures, return_exceptions=True)
+                )
             else:
-                results = self.loop.run_until_complete(asyncio.gather(
-                    *futures,
-                    loop=self.loop,
-                    return_exceptions=True
-                ))
+                results = self.loop.run_until_complete(
+                    asyncio.gather(*futures, loop=self.loop, return_exceptions=True)
+                )
         else:
             results = []
 
@@ -161,13 +167,13 @@ class Runner:
                 self._errs = True
 
         if self.loop:
-            log.debug('Closing event loop')
+            log.debug("Closing event loop")
             self.loop.close()
 
     async def _spawn_new_tasks(self):
         """This coroutine is where the runner spends most of its time.
         It returns when the workflow raises StopIteration signalling that
-        there are no more tasks to run. """
+        there are no more tasks to run."""
         while 1:
             try:
                 task = next(self._workflow_iterator)
@@ -179,20 +185,20 @@ class Runner:
             else:
                 self.process_exec_directives(task)
 
-                if task.directives.get('cmd'):
+                if task.directives.get("cmd"):
                     if not task.is_done():
                         # If the task was completed by the exec directive, we
                         # do not need to attempt to run the cmd
                         await self.process_cmd_directives(task)
                 else:
-                    log.info(f'Complete: {task.name}')
+                    log.info(f"Complete: {task.name}")
                     task.complete()
                     await asyncio.sleep(0)
 
         if self._futures:
             await asyncio.wait(self._futures)
 
-        log.info('Run complete!')
+        log.info("Run complete!")
 
     def _start_autosave(self):
         """Starts the autosaver coroutine"""
@@ -202,10 +208,10 @@ class Runner:
         """Starts up any additional coroutines required by the backend"""
         self.backend = self.backend_cls(**self.backend_params)
         self.backend.runner = self
-        backend_coroutines = getattr(self.backend, 'coroutines', [])
+        backend_coroutines = getattr(self.backend, "coroutines", [])
 
         if not isinstance(backend_coroutines, (list, tuple)):
-            raise ValueError('Backend.coroutines must be a list, or tuple')
+            raise ValueError("Backend.coroutines must be a list, or tuple")
         else:
             for c in backend_coroutines:
                 task = self.loop.create_task(c())
@@ -225,9 +231,9 @@ class Runner:
         allows the runner to "pause" checking the workflow until a task
         future returns, or a timeout (whichever happens first). This greatly
         reduces the cpu load of the runner while idle by not constantly
-        checking the workflow for new tasks. """
+        checking the workflow for new tasks."""
         delay = self.throttle * (self._workflow_len or 0)
-        log.debug(f'Yield for {delay}s or when next future returns')
+        log.debug(f"Yield for {delay}s or when next future returns")
 
         try:
             await self.wait_for_next_task_future(timeout=delay)
@@ -241,7 +247,7 @@ class Runner:
         self._futures.append(future)
 
     def process_exec_directives(self, task):
-        exec_directive = task.directives.get('exec')
+        exec_directive = task.directives.get("exec")
 
         if exec_directive:
             exec(exec_directive)
@@ -252,13 +258,13 @@ class Runner:
         """Called prior to start"""
         if self.autosave:
             if self.workflow.path:
-                log.info(f'Saving workflow: {self.workflow.path}')
+                log.info(f"Saving workflow: {self.workflow.path}")
                 self.workflow.save()
                 self._start_autosave()
             else:
                 log.warning(
-                    'Autosave is enabled, but no path has been set for this '
-                    'workflow. Progress will not be saved.'
+                    "Autosave is enabled, but no path has been set for this "
+                    "workflow. Progress will not be saved."
                 )
         self.set_environment_variables()
 
@@ -266,10 +272,10 @@ class Runner:
         """Called after shutdown"""
         if self.autosave:
             if self.workflow.path:
-                log.info(f'Saving workflow: {self.workflow.path}')
+                log.info(f"Saving workflow: {self.workflow.path}")
                 self.workflow.save()
 
-        log.info(f'Total run time: {datetime.now() - self._run_started}')
+        log.info(f"Total run time: {datetime.now() - self._run_started}")
 
     def handler(self, future):
         """Callback added to task futures when they are spawned"""
@@ -277,12 +283,12 @@ class Runner:
             res = future.result()
             if isinstance(res, jetstream.Task):
                 if res.is_failed():
-                    log.debug(f'Skipping descendants for: {res.name}')
+                    log.debug(f"Skipping descendants for: {res.name}")
                     self._workflow_iterator.graph.skip_descendants(res)
         except (KeyboardInterrupt, asyncio.CancelledError):
             self._errs = True
         except Exception:
-            log.exception(f'Unhandled exception in a task future: {future}')
+            log.exception(f"Unhandled exception in a task future: {future}")
             if self._main and not self._main.cancelled():
                 self._main.cancel()
         finally:
@@ -296,7 +302,7 @@ class Runner:
 
         if self.project:
             self.project.set_environment_variables()
-            os.environ['JS_PROJECT_PATH'] = self.project.path
+            os.environ["JS_PROJECT_PATH"] = self.project.path
 
     def start(self, workflow, pipeline=None, project=None):
         """Called to start the runner on a workflow."""
@@ -304,9 +310,11 @@ class Runner:
             try:
                 project.lock.acquire()
             except TimeoutError:
-                err = 'Failed to acquire project lock, there may be a run pending. If ' \
-                      'this problem persists, and a run is not pending, remove the lock ' \
-                      'file located at <project>/jetstream/pid.lock'
+                err = (
+                    "Failed to acquire project lock, there may be a run pending. If "
+                    "this problem persists, and a run is not pending, remove the lock "
+                    "file located at <project>/jetstream/pid.lock"
+                )
                 raise TimeoutError(err) from None
 
             self._previous_directory = os.getcwd()
@@ -335,7 +343,7 @@ class Runner:
                 self.loop.run_until_complete(self._main)
             finally:
                 self._cleanup_event_loop()
-                log.debug(f'Runner finished shutdown, errs={self._errs}')
+                log.debug(f"Runner finished shutdown, errs={self._errs}")
 
                 if self._errs:
                     self.backend.cancel()
