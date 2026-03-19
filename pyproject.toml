@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jetstream"
-version = "1.7.5"
+version = "1.7.5.dev1"
 description = "NGS analysis pipeline at TGen"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,3 +32,6 @@ jetstream = "jetstream.cli:main"
 [project.urls]
 Homepage = "https://github.com/tgen/jetstream"
 Repository = "https://github.com/tgen/jetstream"
+
+[tool.setuptools.package-data]
+jetstream = ["default_config.yaml"]

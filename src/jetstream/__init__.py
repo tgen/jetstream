@@ -6,10 +6,12 @@ import confuse
 import ulid
 import yaml
 
+from importlib.metadata import version
+
 __author__ = "Ryan Richholt"
 __maintainer__ = "Bryce Turner"
 __email__ = "bturner@tgen.org"
-__version__ = "1.7.5"
+__version__ = version("jetstream")
 
 
 # Configure parallel library dependencies (Used by numpy)
