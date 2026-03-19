@@ -34,4 +34,4 @@ Homepage = "https://github.com/tgen/jetstream"
 Repository = "https://github.com/tgen/jetstream"
 
 [tool.setuptools.package-data]
-jetstream = ["default_config.yaml"]
+jetstream = ["config_default.yaml"]
