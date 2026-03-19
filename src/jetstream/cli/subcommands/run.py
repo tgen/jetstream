@@ -11,7 +11,7 @@ log = logging.getLogger('jetstream.cli')
 def add_arguments(parser):
     parser.add_argument(
         'file',
-        nargs='*',
+        nargs='?',
         help='path to a template, module, workflow, or pipeline'
     )
 
