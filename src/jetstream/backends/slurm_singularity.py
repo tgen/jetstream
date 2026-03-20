@@ -211,7 +211,7 @@ class SlurmSingularityBackend(BaseBackend):
             singularity_hostname = None
             docker_authentication_token = None
         else:
-            if os.path.exists(container) or os.PathLike(container):
+            if os.path.exists(container) or container.startswith("/"):
                 singularity_image = container
                 singularity_hostname = None
                 docker_authentication_token = None
