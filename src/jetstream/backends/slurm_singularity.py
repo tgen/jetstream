@@ -211,7 +211,7 @@ class SlurmSingularityBackend(BaseBackend):
             singularity_hostname = None
             docker_authentication_token = None
         else:
-            if os.path.exists(container):
+            if os.path.exists(container) or os.PathLike(container):
                 singularity_image = container
                 singularity_hostname = None
                 docker_authentication_token = None
@@ -693,6 +693,7 @@ async def sbatch(cmd, identity, singularity_image, singularity_executable="singu
         singularity_run_env_vars += f"""SINGULARITY_DOCKER_USERNAME='$oauthtoken' SINGULARITY_DOCKER_PASSWORD={docker_authentication_token} """
 
     if singularity_image:
+        sbatch_script += f"set -e\n"
         sbatch_script += f"mkdir -p {job_tmpdir}\n"
         # CUDA_VISIBLE_DEVICES is a standard method for declaring which GPUs a user is authorized to use - recognized by tensorflow for example
         sbatch_script += f"[[ -v CUDA_VISIBLE_DEVICES ]] && export SINGULARITYENV_CUDA_VISIBLE_DEVICES=\"$CUDA_VISIBLE_DEVICES\"\n"
